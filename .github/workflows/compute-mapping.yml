@@ -1,0 +1,53 @@
+name: Compute Mapping
+
+on:
+  schedule:
+    - cron: '0 */4 * * *'  # 每 4 小时
+  workflow_dispatch:
+  repository_dispatch:
+    types: [models-updated]
+  push:
+    paths:
+      - 'models.csv'
+
+jobs:
+  compute:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name: Fetch arena data
+        run: |
+          python3 scripts/fetch_data.py || EXIT_CODE=$?
+          if [[ "${EXIT_CODE:-0}" -eq 2 ]]; then
+            echo "No changes in arena data"
+            echo "ARENA_CHANGED=false" >> $GITHUB_ENV
+          elif [[ "${EXIT_CODE:-0}" -eq 0 ]]; then
+            echo "Arena data updated"
+            echo "ARENA_CHANGED=true" >> $GITHUB_ENV
+          else
+            echo "Error fetching arena data"
+            exit 1
+          fi
+      
+      - name: Compute mapping
+        if: env.ARENA_CHANGED == 'true'
+        run: |
+          python3 scripts/compute_mapping.py --output data/mapping-$(date +%y%m%d).csv
+      
+      - name: Commit and push
+        if: env.ARENA_CHANGED == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "40985853+github-actions[bot]@users.noreply.github.com"
+          git add data/
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "data: update arena mapping $(date +%y%m%d)"
+            git push
+          fi

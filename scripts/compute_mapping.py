@@ -350,12 +350,11 @@ def main():
     args = parser.parse_args()
 
     script_dir = Path(__file__).parent
-    skill_dir = script_dir.parent
-    repo_root = skill_dir.parent
-    refs = skill_dir / "references"
+    repo_root = script_dir.parent
+    data_dir = repo_root / "data"
 
     models_csv_path = repo_root / "models.csv"
-    leaderboard_path = refs / "leaderboard.json"
+    leaderboard_path = data_dir / "leaderboard.json"
 
     if not models_csv_path.exists():
         print(f"Missing: {models_csv_path}", file=sys.stderr)
@@ -386,7 +385,7 @@ def main():
 
     # Write to file
     today = datetime.now().strftime("%y%m%d")
-    output_path = args.output or (refs / f"mapping-{today}.csv")
+    output_path = args.output or (data_dir / f"mapping-{today}.csv")
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write(csv_content)
     print(f"Written: {output_path}", file=sys.stderr)

@@ -1,10 +1,14 @@
 # models-mapping
 
-Monitor [OpenCode Go](https://opencode.ai/docs/go/) model changes and maintain an up-to-date `models.csv` with pricing, rate limits, and metadata.
+Monitor [OpenCode Go](https://opencode.ai/docs/go/) model changes and compute optimal claude/gpt → opencode model mappings using arena leaderboard data.
 
 ## What this does
 
-A GitHub Actions workflow polls the [opencode go.mdx Atom feed](https://github.com/anomalyco/opencode/commits/dev/packages/web/src/content/docs/go.mdx.atom) every 15 minutes. When the source document changes, it fetches the updated `.mdx` file, parses four markdown tables (usage limits, pricing, endpoints, privacy), and commits the updated `models.csv`.
+Two GitHub Actions workflows automate the pipeline:
+
+1. **watch-opencode.yml** (every 15 min): Polls the [opencode go.mdx Atom feed](https://github.com/anomalyco/opencode/commits/dev/packages/web/src/content/docs/go.mdx.atom). When the source document changes, fetches the updated `.mdx` file, parses four markdown tables (usage limits, pricing, endpoints, privacy), and updates `models.csv`.
+
+2. **compute-mapping.yml** (every 4 hours or on models.csv change): Fetches arena leaderboard data from lmarena.ai, combines with `models.csv`, computes optimal mappings using proximity-based scoring, and outputs `data/mapping-{YYMMDD}.csv`.
 
 ## Output: models.csv
 
@@ -51,43 +55,44 @@ Models with `free` in their model_id (e.g. `ox-alpha-free`) get special treatmen
 
 This logic is in `fix_free_model()` and is called only when free models are detected. Users can manually update the CSV later with actual measured values.
 
-## Local usage
-
-```bash
-# Parse .mdx from stdin
-curl -sL "https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/web/src/content/docs/go.mdx" | python3 scripts/parse_opencode_mdx.py
-
-# Parse local file
-python3 scripts/parse_opencode_mdx.py go.mdx --output models.csv
-```
-
 ## Project structure
 
 ```
 .
-├── .github/workflows/watch-opencode.yml  # Atom feed monitor
-├── .opencode-commit-hash                 # Latest known commit hash
-├── models.csv                            # Parsed model data (22 models)
-├── go.mdx                                # Reference copy of source document
 ├── scripts/
-│   └── parse_opencode_mdx.py            # .mdx parser
-├── models-mapping/                       # Skill: arena-based mapping
-│   ├── SKILL.md
-│   ├── scripts/
-│   │   ├── fetch_data.py                # Arena + opencode fetcher (Mac only)
-│   │   ├── compute_mapping.py           # Proximity-based model mapping
-│   │   └── watch_opencode.sh            # Local launchd watch script
-│   └── references/                      # Cached data and outputs
-└── axonhub-config/                       # Skill: apply mappings to AxonHub
+│   ├── parse_opencode_mdx.py       # go.mdx → models.csv
+│   ├── fetch_data.py               # Arena leaderboard → data/leaderboard.json
+│   └── compute_mapping.py          # models.csv + leaderboard → data/mapping-*.csv
+├── data/                           # Runtime data (auto-updated)
+│   ├── leaderboard.json            # Arena leaderboard data
+│   ├── leaderboard.hash            # Hash for change detection
+│   ├── mapping-*.csv               # Computed mappings
+│   └── formula.md                  # Scoring formula documentation
+├── models.csv                      # OpenCode model data (auto-updated)
+├── go.mdx                          # Reference copy of source document
+├── .github/workflows/
+│   ├── watch-opencode.yml          # Every 15 min
+│   └── compute-mapping.yml         # Every 4 hours
+├── models-mapping/                 # Skill: documentation only
+│   └── SKILL.md
+└── axonhub-config/                 # Skill: apply mappings (server only)
     └── SKILL.md
+```
+
+## Local usage
+
+```bash
+# Parse .mdx → models.csv
+python3 scripts/parse_opencode_mdx.py go.mdx --output models.csv
+
+# Fetch arena data
+python3 scripts/fetch_data.py
+
+# Compute mapping
+python3 scripts/compute_mapping.py --output data/mapping-$(date +%y%m%d).csv
 ```
 
 ## Related skills
 
-- **models-mapping**: Fetches arena leaderboard data and computes optimal claude/gpt → opencode model mappings using proximity-based scoring. Runs on Mac only (arena blocks datacenter IPs).
+- **models-mapping**: Documentation for the mapping pipeline. Scripts moved to root `scripts/`.
 - **axonhub-config**: Applies model mappings to AxonHub channels/associations. Runs on server.
-
-## Future work
-
-- **Arena data merge**: Separate script to merge arena leaderboard data (rank, rating, context, organization, effort) into models.csv using fuzzy matching on model_id.
-- **Data validation**: Agent-based validation via models-mapping skill to verify data quality periodically.

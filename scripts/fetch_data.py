@@ -112,12 +112,12 @@ def fetch_arena_leaderboard(top_n: int = 100) -> List[dict]:
 
 def main():
     script_dir = Path(__file__).parent
-    skill_dir = script_dir.parent
-    refs = skill_dir / "references"
-    refs.mkdir(exist_ok=True)
+    repo_root = script_dir.parent
+    data_dir = repo_root / "data"
+    data_dir.mkdir(exist_ok=True)
 
-    leaderboard_path = refs / "leaderboard.json"
-    leaderboard_hash_path = refs / "leaderboard.hash"
+    leaderboard_path = data_dir / "leaderboard.json"
+    leaderboard_hash_path = data_dir / "leaderboard.hash"
 
     print("=" * 60)
     print("Fetching Arena WebDev leaderboard...")

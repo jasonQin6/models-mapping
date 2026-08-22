@@ -1,51 +1,49 @@
 ---
 name: models-mapping
-description: Fetch arena data and compute claude/gpt → opencode model mappings. Runs on Mac only.
+description: Compute claude/gpt → opencode model mappings using arena data. Scripts moved to root scripts/.
 ---
 
 # models-mapping
 
-Fetches arena leaderboard data, combines with `models.csv` (maintained by GitHub Actions), computes optimal claude/gpt → opencode mappings using proximity-based scoring, outputs CSV for user review.
+Computes optimal claude/gpt → opencode mappings using proximity-based scoring on arena leaderboard data.
 
-**Runs on Mac only** — arena.ai blocks datacenter IPs.
+## Architecture
 
-## Prerequisites
+Scripts have been moved to the root `scripts/` directory and are orchestrated by GitHub Actions:
 
-`models.csv` at repo root is maintained by GitHub Actions workflow (`watch-opencode.yml`). It contains opencode model data parsed from `go.mdx`.
+- `scripts/fetch_data.py` — Fetches arena leaderboard data (runs every 4 hours)
+- `scripts/compute_mapping.py` — Computes mapping from models.csv + arena data
+- `scripts/parse_opencode_mdx.py` — Parses opencode go.mdx → models.csv (separate workflow)
 
-## Workflow
+## Data Flow
 
-1. `python3 scripts/fetch_data.py`
-   - Completion: exits 0 (arena data changed) or 2 (no changes)
-   - Fetches arena leaderboard (top 100)
-   - If exit 2, stop — no downstream work needed
+1. **watch-opencode.yml** (every 15 min): polls Atom feed → if changed → fetch `go.mdx` → parse → update `models.csv`
+2. **compute-mapping.yml** (every 4 hours or on models.csv change): fetch arena data → compute mapping → output `data/mapping-{YYMMDD}.csv`
+3. **Manual**: Post mapping CSV to Multica issue for user confirmation
+4. **Server agent**: Apply confirmed mapping to AxonHub via `axonhub-config` skill
 
-2. `python3 scripts/compute_mapping.py --stdout`
-   - Completion: CSV written to `references/mapping-{YYMMDD}.csv`
-   - Reads `models.csv` (opencode data) + `references/leaderboard.json` (arena data)
-   - Review CSV output
+## Data Locations
 
-3. Post CSV to Multica issue for user confirmation
-   - Completion: user confirms in issue
+- `models.csv` — OpenCode model data (auto-updated by watch-opencode.yml)
+- `data/leaderboard.json` — Arena leaderboard data (auto-updated by compute-mapping.yml)
+- `data/mapping-{YYMMDD}.csv` — Computed mappings (output of compute_mapping.py)
 
-4. Handoff: server agent runs `axonhub-config` with the CSV
+## Manual Execution
 
-## Quick Reference
+```bash
+# Fetch arena data (exit 0 = changed, exit 2 = no changes)
+python3 scripts/fetch_data.py
 
-| Operation | Command | Trigger |
-|-----------|---------|---------|
-| Fetch arena data | `python3 scripts/fetch_data.py` | manual or scheduled |
-| Compute mapping | `python3 scripts/compute_mapping.py --stdout` | after fetch_data.py exits 0 |
+# Compute mapping
+python3 scripts/compute_mapping.py --stdout
+```
+
+## Scoring Formula
+
+See `data/formula.md` for the proximity-based scoring algorithm.
 
 ## Error Handling
 
-| Error | Action |
-|-------|--------|
-| Arena 404 | Check URL; Cloudflare may have updated rules |
-| Empty leaderboard cache | Run `fetch_data.py` to refresh |
-| models.csv missing | Check GitHub Actions workflow status |
-
-## References
-
-- [Scoring formula](references/formula.md)
-- [Data schema](references/schema.md)
+- Arena fetch fails → Check if lmarena.ai is accessible (GitHub Actions can access it)
+- models.csv missing → Check watch-opencode.yml workflow status
+- Empty leaderboard → Run fetch_data.py manually
