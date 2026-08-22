@@ -1,71 +1,61 @@
-# AxonHub Models Mapping
+# models-mapping
 
-自动化模型映射和配置系统，包含数据获取、映射计算和 AxonHub 配置应用。
+Monitor [OpenCode Go](https://opencode.ai/docs/go/) model changes and maintain an up-to-date `models.csv` with pricing, rate limits, and metadata.
 
-## 项目结构
+## What this does
+
+A GitHub Actions workflow polls the [opencode go.mdx Atom feed](https://github.com/anomalyco/opencode/commits/dev/packages/web/src/content/docs/go.mdx.atom) every 15 minutes. When the source document changes, it fetches the updated `.mdx` file, parses four markdown tables (usage limits, pricing, endpoints, privacy), and commits the updated `models.csv`.
+
+## Output: models.csv
+
+| Column | Description |
+|--------|-------------|
+| model_id | Standardized model identifier (e.g. `kimi-k3`) |
+| name | Display name |
+| protocol | API protocol: `completions` / `messages` / `responses` |
+| rp5h | Requests per 5 hours |
+| rpw | Requests per week |
+| rpm | Requests per month |
+| usage_quota | Dollar usage quota |
+| price_input | Input price per 1M tokens |
+| price_output | Output price per 1M tokens |
+| price_cached_read | Cached read price per 1M tokens |
+| price_cached_write | Cached write price per 1M tokens |
+| retention | Data retention in days (0 = ZDR) |
+| retention_note | Additional retention notes |
+| model_training | Whether data is used for model training |
+
+## Local usage
+
+```bash
+# Parse .mdx from stdin
+curl -sL "https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/web/src/content/docs/go.mdx" | python3 scripts/parse_opencode_mdx.py
+
+# Parse local file
+python3 scripts/parse_opencode_mdx.py /path/to/go.mdx --output models.csv
+```
+
+## Project structure
 
 ```
-models-mapping/
-├── models-mapping/          # 数据获取和映射计算（Mac 运行）
+.
+├── .github/workflows/watch-opencode.yml  # Atom feed monitor
+├── .opencode-commit-hash                 # Latest known commit hash
+├── models.csv                            # Parsed model data
+├── scripts/
+│   └── parse_opencode_mdx.py            # .mdx parser
+├── models-mapping/                       # Skill: arena-based mapping
 │   ├── SKILL.md
 │   ├── scripts/
-│   │   ├── fetch_data.py        # 获取 opencode 和 arena 数据
-│   │   └── compute_mapping.py   # 计算模型映射
-│   └── references/              # 缓存数据和配置
-│
-├── axonhub-config/          # AxonHub 配置应用（Server 运行）
-│   ├── SKILL.md
-│   ├── scripts/
-│   │   ├── apply_mapping.py       # 应用映射到 AxonHub
-│   │   ├── configure_channels.py  # 配置 channels
-│   │   └── configure_models.py    # 配置模型关联
-│   └── references/                # 配置文档
-│
-└── .github/workflows/
-    └── fetch.yml            # GitHub Actions 自动化数据获取
+│   │   ├── fetch_data.py                # Arena + opencode fetcher (Mac only)
+│   │   ├── compute_mapping.py           # Proximity-based model mapping
+│   │   └── watch_opencode.sh            # Local launchd watch script
+│   └── references/                      # Cached data and outputs
+└── axonhub-config/                       # Skill: apply mappings to AxonHub
+    └── SKILL.md
 ```
 
-## 工作流程
+## Related skills
 
-### 1. 数据获取（Mac 或 GitHub Actions）
-
-```bash
-# 获取数据
-cd models-mapping
-python3 scripts/fetch_data.py
-
-# 计算映射
-python3 scripts/compute_mapping.py --stdout
-```
-
-### 2. 应用配置（Server）
-
-```bash
-# 预览映射
-cd axonhub-config
-python3 scripts/apply_mapping.py --axonhub-url <URL> --token <JWT> --dry-run
-
-# 应用映射
-python3 scripts/apply_mapping.py --axonhub-url <URL> --token <JWT>
-```
-
-## 数据源
-
-- **OpenCode 模型列表**: 从 GitHub 仓库的 `.mdx` 文件解析
-- **Arena Leaderboard**: 从 lmarena.ai 爬取（需要 Mac 运行，避免 Cloudflare）
-
-## 自动化
-
-GitHub Actions 每天自动运行数据获取流程：
-- 时间：UTC 01:37（北京 09:37）
-- 触发：定时 + 手动触发
-- 输出：更新 `models-mapping/references/` 下的缓存数据
-
-## 技能引用
-
-这两个 skill 原本位于 `~/.agents/skills/`，现已移动到本项目。如需保持向后兼容，可以创建符号链接：
-
-```bash
-ln -s /Users/jason/Documents/workspace/models-mapping/models-mapping ~/.agents/skills/models-mapping
-ln -s /Users/jason/Documents/workspace/models-mapping/axonhub-config ~/.agents/skills/axonhub-config
-```
+- **models-mapping**: Fetches arena leaderboard data and computes optimal claude/gpt → opencode model mappings using proximity-based scoring. Runs on Mac only (arena blocks datacenter IPs).
+- **axonhub-config**: Applies model mappings to AxonHub channels/associations. Runs on server.

@@ -1,0 +1,118 @@
+# watch-opencode.yml
+#
+# Monitors the opencode go.mdx source file via Atom feed.
+# When a change is detected, re-parses the .mdx and updates models.csv.
+#
+# Schedule: every 15 minutes (Atom feed is lightweight)
+# Manual trigger: workflow_dispatch with optional force flag
+
+name: Watch OpenCode
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'   # Every 15 minutes
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Force update regardless of change detection'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            .opencode-commit-hash
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Fetch Atom feed and extract latest commit hash
+        id: atom
+        run: |
+          ATOM_URL="https://github.com/anomalyco/opencode/commits/dev/packages/web/src/content/docs/go.mdx.atom"
+          FEED=$(curl -sL --max-time 30 "$ATOM_URL")
+          
+          # Extract first commit hash from the feed entry ID
+          # Format: tag:github.com,2008:Grit::Commit/<hash>
+          LATEST_HASH=$(echo "$FEED" | grep -oP 'Grit::Commit/\K[a-f0-9]+' | head -1)
+          
+          if [[ -z "$LATEST_HASH" ]]; then
+            echo "ERROR: Could not extract commit hash from Atom feed"
+            exit 1
+          fi
+          
+          echo "hash=$LATEST_HASH" >> "$GITHUB_OUTPUT"
+          echo "Latest commit: $LATEST_HASH"
+
+      - name: Read stored hash
+        id: stored
+        run: |
+          HASH_FILE=".opencode-commit-hash"
+          if [[ -f "$HASH_FILE" ]]; then
+            echo "hash=$(cat "$HASH_FILE")" >> "$GITHUB_OUTPUT"
+            echo "Stored: $(cat "$HASH_FILE")"
+          else
+            echo "hash=" >> "$GITHUB_OUTPUT"
+            echo "No stored hash (first run)"
+          fi
+
+      - name: Check if update needed
+        id: check
+        run: |
+          FORCE="${{ inputs.force || 'false' }}"
+          REMOTE="${{ steps.atom.outputs.hash }}"
+          STORED="${{ steps.stored.outputs.hash }}"
+
+          if [[ "$FORCE" == "true" ]]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "reason=force" >> "$GITHUB_OUTPUT"
+          elif [[ -z "$STORED" ]]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "reason=first-run" >> "$GITHUB_OUTPUT"
+          elif [[ "$REMOTE" != "$STORED" ]]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "reason=new-commit" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "reason=no-change" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Fetch .mdx and parse
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          MDX_URL="https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/web/src/content/docs/go.mdx"
+          curl -sL --max-time 30 "$MDX_URL" -o /tmp/go.mdx
+          
+          if [[ ! -s /tmp/go.mdx ]]; then
+            echo "ERROR: Failed to fetch .mdx file"
+            exit 1
+          fi
+          
+          python3 scripts/parse_opencode_mdx.py /tmp/go.mdx --output models.csv
+
+      - name: Update stored hash and commit
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          echo "${{ steps.atom.outputs.hash }}" > .opencode-commit-hash
+          
+          git config user.name "github-actions[bot]"
+          git config user.email "40985853+github-actions[bot]@users.noreply.github.com"
+          git add models.csv .opencode-commit-hash
+          
+          if git diff --staged --quiet; then
+            echo "No changes to models.csv (hash changed but content identical)"
+          else
+            git commit -m "data: update models.csv (${{ steps.check.outputs.reason }})"
+            git push
+          fi

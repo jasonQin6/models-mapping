@@ -1,0 +1,6 @@
+[2026-08-22 22:24:16] --- watch_opencode.sh start ---
+[2026-08-22 22:24:18] Remote hash: b1f32be8f74bfcc7...
+[2026-08-22 22:24:18] Change detected: stored=... remote=b1f32be8f74bfcc7...
+[2026-08-22 22:24:18] TRIGGER: opencode go.mdx changed, invoking codex exec
+[2026-08-22 22:24:18] DRY-RUN: would run: codex exec "Run the models-mapping skill: execute python3 scripts/fetch_data.py --skip hash to force-refresh both opencode and arena data, then run python3 scripts/compute_mapping.py --stdout to produce the updated mapping CSV."
+[2026-08-22 22:24:18] --- watch_opencode.sh done ---

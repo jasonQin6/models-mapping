@@ -1,0 +1,24 @@
+model_id,name,protocol,rp5h,rpw,rpm,usage_quota,price_input,price_output,price_cached_read,price_cached_write,retention,retention_note,model_training
+deepseek-v4-flash,DeepSeek V4 Flash,completions,7600,18900,37800,30.0,0.22,0.66,0.007,,0,See footnote,Not used
+deepseek-v4-flash-vision-exp,DeepSeek V4 Flash Vision Exp,completions,3800,9450,18900,15.0,0.22,0.66,0.007,,0,See footnote,Not used
+deepseek-v4-pro,DeepSeek V4 Pro,completions,1050,2600,5200,15.0,0.66,1.98,0.022,,0,See footnote,Not used
+glm-5.1,GLM-5.1,completions,880,2150,4300,60.0,1.4,4.4,0.26,,0,,Not used
+glm-5.2,GLM-5.2,completions,880,2150,4300,60.0,1.4,4.4,0.26,,0,,Not used
+glm-5.3,GLM-5.3,completions,220,540,1080,15.0,1.4,4.4,0.26,,0,,Not used
+gpt-5.6-luna,GPT 5.6 Luna,responses,2050,5100,10250,15.0,0.2,1.2,0.02,0.25,30,,Not used
+grok-4.5,Grok 4.5,responses,120,300,600,15.0,2.0,6.0,0.3,,30,,Not used
+hy3,Hy3,completions,4300,10750,21500,60.0,0.14,0.58,0.035,,0,,Not used
+kimi-k2.6,Kimi K2.6,completions,1150,2880,5750,60.0,0.95,4.0,0.16,,0,,Not used
+kimi-k2.7-code,Kimi K2.7 Code,completions,1350,3380,6750,60.0,0.95,4.0,0.19,,0,,Not used
+kimi-k3,Kimi K3,completions,110,250,490,15.0,3.0,15.0,0.3,,0,,Not used
+mimo-v2.5,MiMo-V2.5,completions,30100,75200,150400,60.0,0.14,0.28,0.0028,,0,,Not used
+mimo-v2.5-pro,MiMo-V2.5-Pro,completions,3250,8150,16300,15.0,0.435,0.87,0.003625,,0,,Not used
+minimax-m2.5,MiniMax M2.5,messages,,,,60.0,0.3,1.2,0.06,0.375,,,
+minimax-m2.7,MiniMax M2.7,messages,3400,8500,17000,60.0,0.3,1.2,0.06,0.375,0,,Not used
+minimax-m3,MiniMax M3,messages,3200,8000,16000,60.0,0.3,1.2,0.06,,0,,Not used
+muse-spark-1.2-contributor,Muse Spark 1.2 Contributor,responses,45300,113300,226600,60.0,0.1,0.2,0.002,,0,Not ZDR,Yes
+ox-alpha-free,Ox Alpha Free,completions,,,,,,,,,0,,Not used
+qwen3.6-plus,Qwen3.6 Plus,messages,3300,8200,16300,60.0,0.5,3.0,0.05,0.625,0,,Not used
+qwen3.7-max,Qwen3.7 Max,messages,340,840,1690,60.0,2.5,7.5,0.5,3.125,0,,Not used
+qwen3.7-plus,Qwen3.7 Plus,messages,4300,10800,21600,60.0,0.4,1.6,0.04,0.5,0,,Not used
+qwen3.8-max,Qwen3.8 Max,messages,160,400,810,15.0,2.0,6.0,0.25,2.5,0,,Not used
