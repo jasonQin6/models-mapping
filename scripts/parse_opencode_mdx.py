@@ -10,6 +10,12 @@ Extracts data from four markdown tables:
 
 Handles pricing variants (context length, peak/off-peak) by keeping the
 cheapest output price as base and recording max_price_output.
+
+Free models (model_id contains "free") get special treatment:
+- rp5h = max of other models
+- usage_quota = max of other models
+- price = 0
+This logic is in fix_free_model(), called only when free models are detected.
 """
 
 import csv
@@ -20,10 +26,7 @@ from typing import Dict, List, Optional, Tuple
 
 
 def normalize_name(name: str) -> str:
-    """Normalize model name for matching across tables.
-    
-    Strips parenthetical notes, lowercases, replaces spaces with hyphens.
-    """
+    """Normalize model name for matching across tables."""
     name = re.sub(r'\s*\([^)]+\)', '', name)
     name = re.sub(r'\s*\(.*$', '', name)
     name = name.strip().lower().replace(' ', '-')
@@ -35,9 +38,6 @@ def extract_variant_condition(name: str) -> Tuple[str, Optional[str], Optional[s
     """Extract variant condition from model name.
     
     Returns (base_name, context_threshold, peak_hours).
-    Examples:
-        "GPT 5.6 Luna (≤ 272K tokens)" -> ("GPT 5.6 Luna", "272K", None)
-        "DeepSeek V4 Pro (Peak)" -> ("DeepSeek V4 Pro", None, "peak")
     """
     match = re.search(r'\(([^)]+)\)', name)
     base_name = re.sub(r'\s*\([^)]+\)', '', name).strip()
@@ -47,7 +47,7 @@ def extract_variant_condition(name: str) -> Tuple[str, Optional[str], Optional[s
     
     condition = match.group(1).strip()
     
-    # Context length variants: "≤ 272K tokens" or "> 272K tokens"
+    # Context length variants
     context_match = re.search(r'[≤<>=]\s*(\d+K?)', condition, re.IGNORECASE)
     if context_match and 'token' in condition.lower():
         threshold = context_match.group(1).upper()
@@ -55,7 +55,7 @@ def extract_variant_condition(name: str) -> Tuple[str, Optional[str], Optional[s
             threshold += 'K'
         return (base_name, threshold, None)
     
-    # Time-based variants: "Off-Peak" or "Peak"
+    # Time-based variants
     if 'peak' in condition.lower():
         if 'off-peak' in condition.lower():
             return (base_name, None, 'off-peak')
@@ -87,16 +87,20 @@ def parse_int_or_none(value: str) -> Optional[int]:
         return None
 
 
-def parse_retention(value: str) -> Tuple[int, str]:
+def parse_retention(value: str) -> int:
+    """Parse retention value to integer days.
+    
+    Not ZDR -> 999
+    "30 days" -> 30
+    "0 days" -> 0
+    """
     value = value.strip()
     if 'Not ZDR' in value or 'not zdr' in value.lower():
-        return (0, 'Not ZDR')
+        return 999
     match = re.search(r'(\d+)', value)
     if match:
-        days = int(match.group(1))
-        note = 'See footnote' if '*' in value else ''
-        return (days, note)
-    return (0, value)
+        return int(match.group(1))
+    return 0
 
 
 def find_tables_in_text(text: str) -> List[List[str]]:
@@ -146,7 +150,6 @@ def extract_section(text: str, heading: str) -> Optional[str]:
 
 def extract_peak_hours(text: str) -> Optional[str]:
     """Extract peak hours from document text."""
-    # Look for pattern like "Peak hours are 01:00-04:00 and 06:00-10:00 UTC"
     match = re.search(r'Peak hours? are ([^.;]+(?:UTC|utc))', text, re.IGNORECASE)
     if match:
         return match.group(1).strip()
@@ -162,13 +165,46 @@ def merge_model(existing: dict, new_data: dict) -> dict:
     return result
 
 
+def fix_free_model(model: dict, all_models: Dict[str, dict]) -> dict:
+    """Fix free model by setting rp5h and usage_quota to max of other models.
+    
+    Called only when model_id contains "free".
+    This is a one-time fix; users can manually update the CSV later.
+    """
+    if 'free' not in model.get('model_id', '').lower():
+        return model
+    
+    # Find max rp5h and usage_quota from non-free models
+    max_rp5h = 0
+    max_usage = 0
+    
+    for key, m in all_models.items():
+        if 'free' in key.lower():
+            continue
+        rp5h = m.get('rp5h')
+        if rp5h is not None and rp5h > max_rp5h:
+            max_rp5h = rp5h
+        usage = m.get('usage_quota')
+        if usage is not None and usage > max_usage:
+            max_usage = usage
+    
+    # Apply fixes
+    model['rp5h'] = max_rp5h
+    model['usage_quota'] = max_usage
+    model['price_input'] = 0.0
+    model['price_output'] = 0.0
+    model['max_price_output'] = 0.0
+    model['price_cached_read'] = 0.0
+    model['price_cached_write'] = 0.0
+    
+    return model
+
+
 def parse_mdx(content: str) -> Dict[str, dict]:
     models = {}
-    
-    # Extract peak hours for DeepSeek models
     peak_hours = extract_peak_hours(content)
 
-    # 1. Usage limits section: rp5h/rpw/rpm table + pricing table
+    # 1. Usage limits section
     usage_section = extract_section(content, 'Usage limits')
     if usage_section:
         tables = find_tables_in_text(usage_section)
@@ -191,9 +227,8 @@ def parse_mdx(content: str) -> Dict[str, dict]:
         # Second table: pricing (with variants)
         if len(tables) >= 2:
             rows = parse_table_lines(tables[1])
-            
-            # Group by base model
             model_variants = {}
+            
             for row in rows:
                 raw_name = row.get('Model', '').strip()
                 base_name, context_thresh, peak_type = extract_variant_condition(raw_name)
@@ -217,9 +252,8 @@ def parse_mdx(content: str) -> Dict[str, dict]:
                     'usage_quota': parse_price(row.get('Usage', '-')),
                 })
             
-            # Process each model's variants
+            # Process variants
             for key, variants in model_variants.items():
-                # Find variant with lowest output price (base)
                 valid_variants = [v for v in variants if v['price_output'] is not None]
                 if not valid_variants:
                     continue
@@ -227,7 +261,6 @@ def parse_mdx(content: str) -> Dict[str, dict]:
                 base_variant = min(valid_variants, key=lambda v: v['price_output'])
                 max_output = max(v['price_output'] for v in valid_variants)
                 
-                # Determine context_threshold and peak_hours
                 context_threshold = None
                 peak_hours_value = None
                 
@@ -235,9 +268,8 @@ def parse_mdx(content: str) -> Dict[str, dict]:
                     if v['context_threshold'] and v['price_output'] == base_variant['price_output']:
                         context_threshold = v['context_threshold']
                     if v['peak_type'] == 'off-peak':
-                        peak_hours_value = peak_hours  # Use extracted peak hours
+                        peak_hours_value = peak_hours
                 
-                # For models with peak/off-peak, record peak_hours
                 has_peak_variant = any(v['peak_type'] == 'peak' for v in variants)
                 if has_peak_variant and peak_hours:
                     peak_hours_value = peak_hours
@@ -295,52 +327,72 @@ def parse_mdx(content: str) -> Dict[str, dict]:
                 key = normalize_name(raw_name)
                 if not key:
                     continue
-                retention_str = row.get('Data retention', '0 days')
-                retention_days, retention_note = parse_retention(retention_str)
-                model_training = row.get('Model training', 'Not used').strip()
+                retention_days = parse_retention(row.get('Data retention', '0 days'))
                 if key not in models:
                     models[key] = {'name': raw_name}
                 models[key] = merge_model(models[key], {
                     'retention': retention_days,
-                    'retention_note': retention_note,
-                    'model_training': model_training,
                 })
 
-    return models
+    # 4. Fix free models
+    free_models = [key for key in models if 'free' in key.lower()]
+    if free_models:
+        for key in free_models:
+            models[key] = fix_free_model(models[key], models)
+
+    # 5. Filter out incomplete models (missing rp5h or usage_quota)
+    # But keep free models (they were just fixed)
+    complete_models = {}
+    for key, model in models.items():
+        if 'free' in key.lower():
+            complete_models[key] = model
+        elif model.get('rp5h') is not None and model.get('usage_quota') is not None:
+            complete_models[key] = model
+    
+    return complete_models
 
 
 def generate_csv(models: Dict[str, dict]) -> str:
     output = io.StringIO()
     writer = csv.writer(output)
+    
+    # Column order: weighted columns first, then metadata
     writer.writerow([
         'model_id', 'name', 'protocol',
-        'rp5h', 'rpw', 'rpm',
-        'usage_quota', 'price_input', 'price_output', 'max_price_output',
-        'price_cached_read', 'price_cached_write',
+        # Weighted columns (participate in scoring)
+        'rp5h', 'usage_quota', 'price_output', 'max_price_output',
+        # Other pricing
+        'rpw', 'rpm', 'price_input', 'price_cached_read', 'price_cached_write',
+        # Variant conditions
         'context_threshold', 'peak_hours',
-        'retention', 'retention_note', 'model_training',
+        # Privacy
+        'retention',
     ])
+    
     sorted_models = sorted(models.values(), key=lambda m: m.get('model_id', m.get('name', '')))
     for model in sorted_models:
         writer.writerow([
             model.get('model_id', ''),
             model.get('name', ''),
             model.get('protocol', ''),
+            # Weighted
             model.get('rp5h', ''),
-            model.get('rpw', ''),
-            model.get('rpm', ''),
             model.get('usage_quota', ''),
-            model.get('price_input', ''),
             model.get('price_output', ''),
             model.get('max_price_output', ''),
+            # Other
+            model.get('rpw', ''),
+            model.get('rpm', ''),
+            model.get('price_input', ''),
             model.get('price_cached_read', ''),
             model.get('price_cached_write', ''),
+            # Variants
             model.get('context_threshold', '-'),
             model.get('peak_hours', '-'),
+            # Privacy
             model.get('retention', ''),
-            model.get('retention_note', ''),
-            model.get('model_training', ''),
         ])
+    
     return output.getvalue()
 
 
