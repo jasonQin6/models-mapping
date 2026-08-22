@@ -1,0 +1,38 @@
+name: Fetch Models Data
+
+on:
+  schedule:
+    - cron: '37 1 * * *'  # Daily at 01:37 UTC (09:37 CST)
+  workflow_dispatch:       # Manual trigger
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Fetch data
+        run: |
+          cd models-mapping
+          python3 scripts/fetch_data.py
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "40985805+github-actions[bot]@users.noreply.github.com"
+          git add models-mapping/references/
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            DATE=$(date -u +%Y-%m-%d)
+            git commit -m "data: update models mapping $DATE"
+            git push
+          fi
