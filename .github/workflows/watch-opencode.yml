@@ -10,7 +10,7 @@ name: Watch OpenCode
 
 on:
   schedule:
-    - cron: '*/15 * * * *'   # Every 15 minutes
+    - cron: '0 */4 * * *'    # 每 4 小时整点（00:00, 04:00, 08:00...）
   workflow_dispatch:
     inputs:
       force:

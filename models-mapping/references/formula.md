@@ -26,8 +26,6 @@ Cheap models skip scoring:
 - **claude-haiku** → free opencode model (id contains "free"), or highest RP5H if none
 - **gpt-5.4-mini** → highest RP5H model
 
-Free model compatibility: if an opencode model's id contains "free" and its RP* values are 0, fetch_data copies them from the highest RP5H model.
-
 ## Tuning notes
 
 Weights are in `scripts/compute_mapping.py`. Changes need re-validation against real data.

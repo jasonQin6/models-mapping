@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """
-Compute model mapping from cached JSON data.
+Compute model mapping from models.csv + arena leaderboard.
 Outputs CSV for user review and server-side consumption.
 
-Self-contained: no common.py dependency.
+Reads:
+  - models.csv (root): opencode model data
+  - references/leaderboard.json: arena leaderboard data
 """
 
 import csv
@@ -19,7 +21,6 @@ from typing import Dict, List, Optional, Tuple
 # Constants — Models
 # ---------------------------------------------------------------------------
 
-# Scored models (participate in proximity-based selection)
 CLAUDE_MODELS = [
     "claude-opus-5",
     "claude-fable-5",
@@ -34,26 +35,22 @@ GPT_MODELS = [
     "gpt-5.4",
 ]
 
-# Cheap models — fixed routing, skip scoring
 CHEAP_MODELS = ["claude-haiku", "gpt-5.4-mini"]
 CHEAP_MODELS_SET = set(CHEAP_MODELS)
 
-# Channel ID for opencode-go
 CHANNEL_ID = 7
 
 # ---------------------------------------------------------------------------
 # Constants — Proximity formula weights
 # ---------------------------------------------------------------------------
-# Tuned to prefer high-quality models with upgrade bonus.
 
-SCORE_W = 0.30      # candidate arena score (normalized)
-RP5H_W = 0.25       # log-rp5h ratio
-USAGE_W = 0.15      # usage_quota ratio
-PROXIMITY_W = 0.30  # score closeness bonus
-PENALTY_K = 0.2     # asymmetric downgrade penalty
-UPGRADE_BONUS = 0.1 # bonus when cand_score > src_score (encourages upgrades)
+SCORE_W = 0.30
+RP5H_W = 0.25
+USAGE_W = 0.15
+PROXIMITY_W = 0.30
+PENALTY_K = 0.2
+UPGRADE_BONUS = 0.1
 
-# Effort levels for name normalization (order doesn't matter, just checking suffixes)
 EFFORT_LEVELS = {"max", "xhigh", "ultra", "high", "medium", "low"}
 
 
@@ -80,8 +77,39 @@ def normalize_opencode_id(model_id: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# JSON I/O
+# I/O
 # ---------------------------------------------------------------------------
+
+def read_csv(path: Path) -> Dict[str, dict]:
+    """Read models.csv and return dict keyed by model_id."""
+    if not path.exists():
+        return {}
+    models = {}
+    with open(path, 'r', encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            model_id = row.get('model_id', '').strip()
+            if not model_id:
+                continue
+            # Convert numeric fields
+            models[model_id] = {
+                'name': row.get('name', ''),
+                'protocol': row.get('protocol', ''),
+                'rp5h': int(row['rp5h']) if row.get('rp5h') else 0,
+                'rpw': int(row['rpw']) if row.get('rpw') else 0,
+                'rpm': int(row['rpm']) if row.get('rpm') else 0,
+                'usage_quota': float(row['usage_quota']) if row.get('usage_quota') else 0,
+                'price_output': float(row['price_output']) if row.get('price_output') else 0,
+                'max_price_output': float(row['max_price_output']) if row.get('max_price_output') else 0,
+                'price_input': float(row['price_input']) if row.get('price_input') else 0,
+                'price_cached_read': float(row['price_cached_read']) if row.get('price_cached_read') else 0,
+                'price_cached_write': float(row['price_cached_write']) if row.get('price_cached_write') else 0,
+                'context_threshold': row.get('context_threshold', '-'),
+                'peak_hours': row.get('peak_hours', '-'),
+                'retention': int(row['retention']) if row.get('retention') else 0,
+            }
+    return models
+
 
 def read_json(path: Path):
     if not path.exists():
@@ -98,10 +126,8 @@ def generate_mapping(
     opencode_models: Dict[str, dict],
     arena_data: List[dict],
 ) -> Tuple[Dict[str, dict], List[dict]]:
-    """Generate mapping with proximity formula + asymmetric penalty + upgrade bonus.
+    """Generate mapping with proximity formula + asymmetric penalty + upgrade bonus."""
     
-    Returns (assignments, fixed_models_data).
-    """
     # Build Arena lookup
     arena_lookup = {}
     for entry in arena_data:
@@ -134,7 +160,7 @@ def generate_mapping(
                     best = (rank, score, effort, context, norm_name)
         return best
 
-    # Build fixed_models_data for ALL models (scored + cheap)
+    # Build fixed_models_data for ALL models
     fixed_models_data = []
     for series in CLAUDE_MODELS + GPT_MODELS + CHEAP_MODELS:
         result = find_best_arena_for_series(series)
@@ -156,7 +182,7 @@ def generate_mapping(
                 "effort": "-",
             })
 
-    # Greedy weighted mapping for scored models only
+    # Greedy weighted mapping for scored models
     max_quota_all = max(m["rp5h"] for m in opencode_models.values()) if opencode_models else 1
     max_usage_all = max(m.get("usage_quota", 0) for m in opencode_models.values()) or 1
     highest_quota_model = max(opencode_models.keys(), key=lambda m: opencode_models[m]["rp5h"])
@@ -185,12 +211,10 @@ def generate_mapping(
             cand_score = info["arena_score"]
             proximity = 1.0 - abs(cand_score - src_score) / max_score_diff
 
-            # Penalty: only when candidate is worse (downgrade)
             penalty = 0.0
             if cand_score < src_score:
                 penalty = PENALTY_K * (src_score - cand_score) / max_score_diff
 
-            # Upgrade bonus: when candidate is better
             upgrade = 0.0
             if cand_score > src_score:
                 upgrade = UPGRADE_BONUS
@@ -222,20 +246,18 @@ def generate_mapping(
                 "target_effort": best_info.get("arena_effort") or "-",
             }
 
-    # Cheap models: route to free models first, fallback to highest RP5H
+    # Cheap models: route to free models first
     free_models = sorted(
         [mid for mid in opencode_models if "free" in mid],
         key=lambda m: opencode_models[m]["rp5h"],
         reverse=True
     )
     
-    # Assign free models to cheap models (one-to-one if possible)
     cheap_routing = {}
     for i, cheap_model in enumerate(CHEAP_MODELS):
         if i < len(free_models):
             cheap_routing[cheap_model] = free_models[i]
         else:
-            # Fallback to highest RP5H model
             cheap_routing[cheap_model] = highest_quota_model
 
     for fm in fixed_models_data:
@@ -268,7 +290,6 @@ def generate_csv_output(
     output = io.StringIO()
     writer = csv.writer(output)
     
-    # Header
     writer.writerow([
         "request_model",
         "target_model",
@@ -282,7 +303,6 @@ def generate_csv_output(
         "usage_quota",
     ])
     
-    # Data rows
     for series in CLAUDE_MODELS + GPT_MODELS + CHEAP_MODELS:
         if series not in assignments:
             continue
@@ -291,8 +311,8 @@ def generate_csv_output(
         target_info = opencode_models.get(target_id, {})
         
         protocol = target_info.get("protocol", "unknown")
-        price_out = target_info.get("price_out", 0)
-        retention = target_info.get("retention", "unknown")
+        price_out = target_info.get("price_output", 0)
+        retention = target_info.get("retention", 0)
         rp5h = target_info.get("rp5h", 0)
         effort = a.get("target_effort", "-")
         usage_quota = a.get("target_usage_quota", 0)
@@ -331,14 +351,15 @@ def main():
 
     script_dir = Path(__file__).parent
     skill_dir = script_dir.parent
+    repo_root = skill_dir.parent
     refs = skill_dir / "references"
 
-    opencode_path = refs / "opencode-list.json"
+    models_csv_path = repo_root / "models.csv"
     leaderboard_path = refs / "leaderboard.json"
 
-    if not opencode_path.exists():
-        print(f"Missing: {opencode_path}", file=sys.stderr)
-        print("Run fetch_data.py first", file=sys.stderr)
+    if not models_csv_path.exists():
+        print(f"Missing: {models_csv_path}", file=sys.stderr)
+        print("Check GitHub Actions workflow status", file=sys.stderr)
         sys.exit(1)
 
     if not leaderboard_path.exists():
@@ -346,11 +367,11 @@ def main():
         print("Run fetch_data.py first", file=sys.stderr)
         sys.exit(1)
 
-    opencode_models = read_json(opencode_path)
+    opencode_models = read_csv(models_csv_path)
     arena_data = read_json(leaderboard_path)
 
     if not opencode_models:
-        print("Error: opencode-list.json is empty", file=sys.stderr)
+        print("Error: models.csv is empty", file=sys.stderr)
         sys.exit(1)
 
     if not arena_data:

@@ -1,0 +1,11 @@
+request_model,target_model,protocol,src_score,target_score,RP5H,price_out,retention,effort,usage_quota
+claude-opus-5,kimi-k3,completions,1690.6,1673.7,110,$15.0,0,max,15.0
+claude-fable-5,glm-5.2,completions,1626.3,1582.1,880,$4.4,0,max,60.0
+claude-sonnet-5,muse-spark-1.2-contributor,responses,1538.6,1533.7,45300,$0.2,0,-,60.0
+gpt-5.6-sol,glm-5.2,completions,1618.7,1582.1,880,$4.4,0,max,60.0
+gpt-5.6-terra,muse-spark-1.2-contributor,responses,1519.9,1533.7,45300,$0.2,0,-,60.0
+gpt-5.6-luna,muse-spark-1.2-contributor,responses,1517.6,1533.7,45300,$0.2,0,-,60.0
+gpt-5.5,muse-spark-1.2-contributor,responses,1508.3,1533.7,45300,$0.2,0,-,60.0
+gpt-5.4,muse-spark-1.2-contributor,responses,1462.9,1533.7,45300,$0.2,0,-,60.0
+claude-haiku,ox-alpha-free,completions,1327.4,-,0,$0,0,-,0
+gpt-5.4-mini,muse-spark-1.2-contributor,responses,1397.1,-,45300,$0.2,0,-,60.0
