@@ -28,10 +28,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          sparse-checkout: |
-            .opencode-commit-hash
-          sparse-checkout-cone-mode: false
 
       - uses: actions/setup-python@v5
         with:
