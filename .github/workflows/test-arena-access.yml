@@ -1,0 +1,32 @@
+name: Test Arena Access
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Test lmarena.ai access
+        run: |
+          echo "Testing access to lmarena.ai..."
+          HTTP_CODE=$(curl -sL -o /dev/null -w "%{http_code}" --max-time 30 "https://lmarena.ai/leaderboard/code/webdev")
+          echo "HTTP status: $HTTP_CODE"
+          
+          if [[ "$HTTP_CODE" == "200" ]]; then
+            echo "✓ Can access lmarena.ai"
+            # Try to fetch actual data
+            curl -sL --max-time 30 "https://lmarena.ai/leaderboard/code/webdev" > /tmp/arena.html
+            if grep -q "entries" /tmp/arena.html; then
+              echo "✓ Got valid arena data"
+              exit 0
+            else
+              echo "✗ Got response but no valid data"
+              exit 1
+            fi
+          else
+            echo "✗ Cannot access lmarena.ai (HTTP $HTTP_CODE)"
+            exit 1
+          fi
