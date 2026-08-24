@@ -1,46 +1,27 @@
-# watch-opencode.yml
-#
-# Monitors the opencode go.mdx source file via Atom feed.
-# When a change is detected, re-parses the .mdx and updates models.csv.
-#
-# Schedule: every 15 minutes (Atom feed is lightweight)
-# Manual trigger: workflow_dispatch with optional force flag
-
 name: Watch OpenCode
 
 on:
   schedule:
-    - cron: '0 */4 * * *'    # 每 4 小时整点（00:00, 04:00, 08:00...）
+    - cron: '0 */4 * * *'  # 每 4 小时
   workflow_dispatch:
-    inputs:
-      force:
-        description: 'Force update regardless of change detection'
-        type: boolean
-        default: false
-
-permissions:
-  contents: write
 
 jobs:
   watch:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
-
     steps:
       - uses: actions/checkout@v4
-
+      
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-
-      - name: Fetch Atom feed and extract latest commit hash
-        id: atom
+      
+      - name: Check Atom feed for new commits
+        id: check
         run: |
           ATOM_URL="https://github.com/anomalyco/opencode/commits/dev/packages/web/src/content/docs/go.mdx.atom"
-          FEED=$(curl -sL --max-time 30 "$ATOM_URL")
           
-          # Extract first commit hash from the feed entry ID
-          # Format: tag:github.com,2008:Grit::Commit/<hash>
+          # Fetch Atom feed and extract latest commit hash
+          FEED=$(curl -sL --max-time 30 "$ATOM_URL")
           LATEST_HASH=$(echo "$FEED" | grep -oP 'Grit::Commit/\K[a-f0-9]+' | head -1)
           
           if [[ -z "$LATEST_HASH" ]]; then
@@ -48,67 +29,64 @@ jobs:
             exit 1
           fi
           
-          echo "hash=$LATEST_HASH" >> "$GITHUB_OUTPUT"
           echo "Latest commit: $LATEST_HASH"
-
-      - name: Read stored hash
-        id: stored
-        run: |
+          
+          # Read stored hash
           HASH_FILE=".opencode-commit-hash"
           if [[ -f "$HASH_FILE" ]]; then
-            echo "hash=$(cat "$HASH_FILE")" >> "$GITHUB_OUTPUT"
-            echo "Stored: $(cat "$HASH_FILE")"
+            STORED_HASH=$(cat "$HASH_FILE")
+            echo "Stored hash: $STORED_HASH"
           else
-            echo "hash=" >> "$GITHUB_OUTPUT"
+            STORED_HASH=""
             echo "No stored hash (first run)"
           fi
-
-      - name: Check if update needed
-        id: check
-        run: |
-          FORCE="${{ inputs.force || 'false' }}"
-          REMOTE="${{ steps.atom.outputs.hash }}"
-          STORED="${{ steps.stored.outputs.hash }}"
-
-          if [[ "$FORCE" == "true" ]]; then
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-            echo "reason=force" >> "$GITHUB_OUTPUT"
-          elif [[ -z "$STORED" ]]; then
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-            echo "reason=first-run" >> "$GITHUB_OUTPUT"
-          elif [[ "$REMOTE" != "$STORED" ]]; then
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-            echo "reason=new-commit" >> "$GITHUB_OUTPUT"
+          
+          # Compare
+          if [[ "$LATEST_HASH" == "$STORED_HASH" ]]; then
+            echo "No new commits detected"
+            echo "has_changes=false" >> $GITHUB_OUTPUT
           else
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "reason=no-change" >> "$GITHUB_OUTPUT"
+            echo "New commits detected"
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "$LATEST_HASH" > "$HASH_FILE"
           fi
-
-      - name: Fetch .mdx and parse
-        if: steps.check.outputs.changed == 'true'
+      
+      - name: Fetch and parse go.mdx
+        id: parse
+        if: steps.check.outputs.has_changes == 'true'
         run: |
-          MDX_URL="https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/web/src/content/docs/go.mdx"
-          curl -sL --max-time 30 "$MDX_URL" -o /tmp/go.mdx
+          curl -sL "https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/web/src/content/docs/go.mdx" -o go.mdx
+          python3 scripts/parse_opencode_mdx.py go.mdx --output models.csv
           
-          if [[ ! -s /tmp/go.mdx ]]; then
-            echo "ERROR: Failed to fetch .mdx file"
-            exit 1
+          # Check if weighted columns changed
+          if [[ -f .weighted-columns-changed ]]; then
+            echo "weighted_changed=true" >> $GITHUB_OUTPUT
+            rm .weighted-columns-changed
+          else
+            echo "weighted_changed=false" >> $GITHUB_OUTPUT
           fi
-          
-          python3 scripts/parse_opencode_mdx.py /tmp/go.mdx --output models.csv
-
-      - name: Update stored hash and commit
-        if: steps.check.outputs.changed == 'true'
+      
+      - name: Fetch arena data and merge
+        if: steps.check.outputs.has_changes == 'true'
         run: |
-          echo "${{ steps.atom.outputs.hash }}" > .opencode-commit-hash
-          
+          python3 scripts/watch_arena.py
+      
+      - name: Commit and push
+        if: steps.check.outputs.has_changes == 'true'
+        run: |
           git config user.name "github-actions[bot]"
           git config user.email "40985853+github-actions[bot]@users.noreply.github.com"
-          git add models.csv .opencode-commit-hash
-          
+          git add models.csv go.mdx .opencode-commit-hash
           if git diff --staged --quiet; then
-            echo "No changes to models.csv (hash changed but content identical)"
+            echo "No changes to commit"
           else
-            git commit -m "data: update models.csv (${{ steps.check.outputs.reason }})"
+            git commit -m "data: update models.csv $(date +%y%m%d)"
             git push
           fi
+      
+      - name: Trigger compute-mapping if weighted columns changed
+        if: steps.check.outputs.has_changes == 'true' && steps.parse.outputs.weighted_changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run compute-mapping.yml

@@ -358,7 +358,7 @@ def generate_csv(models: Dict[str, dict]) -> str:
     
     # Column order: weighted columns first, then metadata
     writer.writerow([
-        'model_id', 'name', 'protocol',
+        'model_id', 'protocol',
         # Weighted columns (participate in scoring)
         'rp5h', 'usage_quota', 'price_output', 'max_price_output',
         # Other pricing
@@ -369,11 +369,10 @@ def generate_csv(models: Dict[str, dict]) -> str:
         'retention',
     ])
     
-    sorted_models = sorted(models.values(), key=lambda m: m.get('model_id', m.get('name', '')))
+    sorted_models = sorted(models.values(), key=lambda m: m.get('model_id', ''))
     for model in sorted_models:
         writer.writerow([
             model.get('model_id', ''),
-            model.get('name', ''),
             model.get('protocol', ''),
             # Weighted
             model.get('rp5h', ''),
@@ -396,7 +395,38 @@ def generate_csv(models: Dict[str, dict]) -> str:
     return output.getvalue()
 
 
+def check_weighted_columns_changed(old_csv: str, new_csv: str) -> bool:
+    """Check if weighted columns (rp5h, usage_quota, price_output, max_price_output) changed."""
+    import csv
+    import io
+    
+    WEIGHTED_COLS = ['rp5h', 'usage_quota', 'price_output', 'max_price_output']
+    
+    def extract_weighted(csv_text: str) -> dict:
+        reader = csv.DictReader(io.StringIO(csv_text))
+        result = {}
+        for row in reader:
+            model_id = row.get('model_id', '')
+            if model_id:
+                result[model_id] = {col: row.get(col, '') for col in WEIGHTED_COLS}
+        return result
+    
+    old_weighted = extract_weighted(old_csv)
+    new_weighted = extract_weighted(new_csv)
+    
+    # Check if any model's weighted columns changed
+    if set(old_weighted.keys()) != set(new_weighted.keys()):
+        return True  # Models added/removed
+    
+    for model_id in old_weighted:
+        if old_weighted[model_id] != new_weighted.get(model_id, {}):
+            return True
+    
+    return False
+
+
 def main():
+    from pathlib import Path
     import argparse
     parser = argparse.ArgumentParser(description='Parse opencode go.mdx')
     parser.add_argument('input', nargs='?', help='Input .mdx file (default: stdin)')
@@ -415,10 +445,23 @@ def main():
         sys.exit(1)
 
     csv_content = generate_csv(models)
+    
+    # Check if weighted columns changed (for triggering compute-mapping)
+    weighted_changed = False
+    if args.output and Path(args.output).exists():
+        old_csv = Path(args.output).read_text()
+        weighted_changed = check_weighted_columns_changed(old_csv, csv_content)
+    
     if args.output:
         with open(args.output, 'w', encoding='utf-8') as f:
             f.write(csv_content)
         print(f'Written: {args.output} ({len(models)} models)', file=sys.stderr)
+        
+        # Write flag file if weighted columns changed
+        if weighted_changed:
+            flag_file = Path(args.output).parent / '.weighted-columns-changed'
+            flag_file.write_text('true')
+            print(f'Weighted columns changed, created flag: {flag_file}', file=sys.stderr)
     else:
         print(csv_content)
         print(f'Parsed {len(models)} models', file=sys.stderr)

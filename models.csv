@@ -1,24 +1,32 @@
-model_id,name,protocol,rp5h,rpw,rpm,usage_quota,price_input,price_output,price_cached_read,price_cached_write,retention,retention_note,model_training
-deepseek-v4-flash,DeepSeek V4 Flash,completions,7600,18900,37800,30.0,0.22,0.66,0.007,,0,See footnote,Not used
-deepseek-v4-flash-vision-exp,DeepSeek V4 Flash Vision Exp,completions,3800,9450,18900,15.0,0.22,0.66,0.007,,0,See footnote,Not used
-deepseek-v4-pro,DeepSeek V4 Pro,completions,1050,2600,5200,15.0,0.66,1.98,0.022,,0,See footnote,Not used
-glm-5.1,GLM-5.1,completions,880,2150,4300,60.0,1.4,4.4,0.26,,0,,Not used
-glm-5.2,GLM-5.2,completions,880,2150,4300,60.0,1.4,4.4,0.26,,0,,Not used
-glm-5.3,GLM-5.3,completions,220,540,1080,15.0,1.4,4.4,0.26,,0,,Not used
-gpt-5.6-luna,GPT 5.6 Luna,responses,2050,5100,10250,15.0,0.2,1.2,0.02,0.25,30,,Not used
-grok-4.5,Grok 4.5,responses,120,300,600,15.0,2.0,6.0,0.3,,30,,Not used
-hy3,Hy3,completions,4300,10750,21500,60.0,0.14,0.58,0.035,,0,,Not used
-kimi-k2.6,Kimi K2.6,completions,1150,2880,5750,60.0,0.95,4.0,0.16,,0,,Not used
-kimi-k2.7-code,Kimi K2.7 Code,completions,1350,3380,6750,60.0,0.95,4.0,0.19,,0,,Not used
-kimi-k3,Kimi K3,completions,110,250,490,15.0,3.0,15.0,0.3,,0,,Not used
-mimo-v2.5,MiMo-V2.5,completions,30100,75200,150400,60.0,0.14,0.28,0.0028,,0,,Not used
-mimo-v2.5-pro,MiMo-V2.5-Pro,completions,3250,8150,16300,15.0,0.435,0.87,0.003625,,0,,Not used
-minimax-m2.5,MiniMax M2.5,messages,,,,60.0,0.3,1.2,0.06,0.375,,,
-minimax-m2.7,MiniMax M2.7,messages,3400,8500,17000,60.0,0.3,1.2,0.06,0.375,0,,Not used
-minimax-m3,MiniMax M3,messages,3200,8000,16000,60.0,0.3,1.2,0.06,,0,,Not used
-muse-spark-1.2-contributor,Muse Spark 1.2 Contributor,responses,45300,113300,226600,60.0,0.1,0.2,0.002,,0,Not ZDR,Yes
-ox-alpha-free,Ox Alpha Free,completions,,,,,,,,,0,,Not used
-qwen3.6-plus,Qwen3.6 Plus,messages,3300,8200,16300,60.0,0.5,3.0,0.05,0.625,0,,Not used
-qwen3.7-max,Qwen3.7 Max,messages,340,840,1690,60.0,2.5,7.5,0.5,3.125,0,,Not used
-qwen3.7-plus,Qwen3.7 Plus,messages,4300,10800,21600,60.0,0.4,1.6,0.04,0.5,0,,Not used
-qwen3.8-max,Qwen3.8 Max,messages,160,400,810,15.0,2.0,6.0,0.25,2.5,0,,Not used
+model_id,provider,protocol,arena_score,arena_rank,rp5h,usage_quota,price_output,max_price_output,rpw,rpm,price_input,price_cached_read,price_cached_write,context_threshold,peak_hours,retention,arena_context,organization,effort,mapping
+claude-opus-5,Anthropic,,1690.64,1,,,,,,,,,,-,-,,1000000,Anthropic,max,
+kimi-k3,opencode,completions,1673.7,2,110,15.0,15.0,15.0,250,490,3.0,0.3,,-,-,0,1048576,Moonshot,max,
+qwen3.8-max,opencode,messages,1668.94,3,160,15.0,6.0,6.0,400,810,2.0,0.25,2.5,-,-,0,1000000,Alibaba,-,
+claude-fable-5,Anthropic,,1626.26,6,,,,,,,,,,-,-,,1000000,Anthropic,-,
+gpt-5.6-sol,OpenAI,,1618.71,7,,,,,,,,,,-,-,,1050000,OpenAI,xhigh,
+glm-5.3,opencode,completions,1598.6,8,220,15.0,4.4,4.4,540,1080,1.4,0.26,,-,-,0,1048576,Z.ai,max,
+glm-5.2,opencode,completions,1582.09,11,880,60.0,4.4,4.4,2150,4300,1.4,0.26,,-,-,0,1000000,Z.ai,max,
+deepseek-v4-pro,opencode,completions,1581.64,12,1050,15.0,1.98,3.96,2600,5200,0.66,0.022,,-,01:00-04:00 and 06:00-10:00 UTC,0,-,DeepSeek,high,
+deepseek-v4-flash,opencode,completions,1579.1,13,7600,30.0,0.66,1.32,18900,37800,0.22,0.007,,-,01:00-04:00 and 06:00-10:00 UTC,0,1048576,DeepSeek,high,
+grok-4.5,opencode,responses,1556.36,17,120,15.0,6.0,6.0,300,600,2.0,0.3,,-,-,30,500000,SpaceXAI,-,
+claude-sonnet-5,Anthropic,,1538.58,22,,,,,,,,,,-,-,,1000000,Anthropic,high,
+muse-spark-1.2-contributor,opencode,responses,1533.68,24,45300,60.0,0.2,0.2,113300,226600,0.1,0.002,,-,-,999,-,Meta,-,
+gpt-5.6-terra,OpenAI,,1519.87,27,,,,,,,,,,-,-,,1000000,OpenAI,xhigh,
+hy3,opencode,completions,1518.13,28,4300,60.0,0.58,0.58,10750,21500,0.14,0.035,,-,-,0,262144,Tencent,-,
+gpt-5.6-luna,opencode,responses,1517.6,29,2050,15.0,1.2,1.8,5100,10250,0.2,0.02,0.25,272K,-,30,1000000,OpenAI,xhigh,
+qwen3.7-max,opencode,messages,1516.65,30,340,60.0,7.5,7.5,840,1690,2.5,0.5,3.125,-,-,0,1000000,Alibaba,-,
+glm-5.1,opencode,completions,1508.93,31,880,60.0,4.4,4.4,2150,4300,1.4,0.26,,-,-,0,202752,Z.ai,-,
+kimi-k2.6,opencode,completions,1508.71,32,1150,60.0,4.0,4.0,2880,5750,0.95,0.16,,-,-,0,262144,Moonshot,-,
+gpt-5.5,OpenAI,,1508.35,33,,,,,,,,,,-,-,,-,OpenAI,xhigh,
+minimax-m3,opencode,messages,1487.64,37,3200,60.0,1.2,1.2,8000,16000,0.3,0.06,,-,-,0,-,MiniMax,-,
+mimo-v2.5-pro,opencode,completions,1475.65,40,3250,15.0,0.87,0.87,8150,16300,0.435,0.003625,,-,-,0,1050000,Xiaomi,-,
+kimi-k2.7-code,opencode,completions,1472.65,41,1350,60.0,4.0,4.0,3380,6750,0.95,0.19,,-,-,0,262144,Moonshot,-,
+gpt-5.4,OpenAI,,1462.9,44,,,,,,,,,,-,-,,1050000,OpenAI,high,
+qwen3.6-plus,opencode,messages,1459.74,45,3300,60.0,3.0,6.0,8200,16300,0.5,0.05,0.625,256K,-,0,1000000,Alibaba,-,
+qwen3.7-plus,opencode,messages,1459.74,45,4300,60.0,1.6,4.8,10800,21600,0.4,0.04,0.5,256K,-,0,1000000,Alibaba,-,
+mimo-v2.5,opencode,completions,1437.8,53,30100,60.0,0.28,0.28,75200,150400,0.14,0.0028,,-,-,0,1050000,Xiaomi,-,
+minimax-m2.7,opencode,messages,1398.14,67,3400,60.0,1.2,1.2,8500,17000,0.3,0.06,0.375,-,-,0,204800,MiniMax,-,
+gpt-5.4-mini,OpenAI,,1397.08,68,,,,,,,,,,-,-,,400000,OpenAI,high,
+claude-haiku,Anthropic,,1327.41,94,,,,,,,,,,-,-,,200000,Anthropic,-,
+ox-alpha-free,opencode,completions,0,0,45300,60.0,0.0,0.0,,,0.0,0.0,0.0,-,-,0,-,Unknown,-,
+deepseek-v4-flash-vision-exp,opencode,completions,,,3800,15.0,0.66,1.32,9450,18900,0.22,0.007,,-,01:00-04:00 and 06:00-10:00 UTC,0,-,,-,

@@ -4,95 +4,76 @@ Monitor [OpenCode Go](https://opencode.ai/docs/go/) model changes and compute op
 
 ## What this does
 
-Two GitHub Actions workflows automate the pipeline:
+三个 GitHub Actions workflows，两个脚本各自维护 models.csv 的不同列：
 
-1. **watch-opencode.yml** (every 15 min): Polls the [opencode go.mdx Atom feed](https://github.com/anomalyco/opencode/commits/dev/packages/web/src/content/docs/go.mdx.atom). When the source document changes, fetches the updated `.mdx` file, parses four markdown tables (usage limits, pricing, endpoints, privacy), and updates `models.csv`.
+1. **parse_opencode_mdx.py**：维护 opencode 模型的基础数据列（定价、配额等）
+2. **watch_arena.py**：维护 arena 相关列（评分、排名、组织等）
+3. **compute_mapping.py**：维护 mapping 列（request 模型 → opencode 模型映射）
 
-2. **compute-mapping.yml** (every 4 hours or on models.csv change): Fetches arena leaderboard data from lmarena.ai, combines with `models.csv`, computes optimal mappings using proximity-based scoring, and outputs `data/mapping-{YYMMDD}.csv`.
+## Workflows
 
-## Output: models.csv
+1. **watch-opencode.yml** (every 4 hours): 检查 Atom feed → 解析 go.mdx → 更新基础数据 → 获取 arena 数据
+2. **watch-arena.yml** (daily UTC 23:00 = UTC+8 07:00): 获取 arena 数据并合并
+3. **compute-mapping.yml** (triggered or manual): 计算最优映射
 
-### Weighted columns (participate in scoring)
+## Arena Data Fallback Strategies
+
+当 opencode 模型没有直接匹配的 arena 数据时：
+
+1. **Direct match**: 精确匹配
+2. **Remove -contributor suffix**: muse-spark-1.2-contributor → muse-spark-1.2
+3. **Version downgrade**: qwen3.7-plus → qwen3.6-plus
+4. **Prefix match**: claude-haiku → claude-haiku-*
+5. **Free model default**: arena_score=0
+
+## models.csv Structure
+
+31 rows (22 opencode + 9 request), sorted by arena_score descending.
+
+### Column Order
+
+加权列靠前：
 
 | Column | Description |
 |--------|-------------|
-| rp5h | Requests per 5 hours |
-| usage_quota | Dollar usage quota |
-| price_output | Output price per 1M tokens (cheapest variant) |
-| max_price_output | Highest output price per 1M tokens (most expensive variant) |
+| model_id | 模型标识符 |
+| provider | "opencode" 或 arena organization |
+| protocol | completions / messages / responses |
+| arena_score | Arena 评分 |
+| arena_rank | Arena 排名 |
+| rp5h | 每 5 小时请求数 |
+| usage_quota | 美元配额 |
+| price_output | 输出价格（最便宜变体） |
+| max_price_output | 最高输出价格 |
+| rpw, rpm | 每周/月请求数 |
+| price_input, price_cached_read, price_cached_write | 其他价格 |
+| context_threshold | 上下文长度阈值 |
+| peak_hours | 高峰时段 |
+| retention | 数据保留天数 |
+| arena_context, organization, effort | Arena 元数据 |
+| mapping | 目标 opencode 模型（仅 request 模型） |
 
-### Other columns
+### Row Types
 
-| Column | Description |
-|--------|-------------|
-| model_id | Standardized model identifier (e.g. `kimi-k3`) |
-| name | Display name |
-| protocol | API protocol: `completions` / `messages` / `responses` |
-| rpw | Requests per week |
-| rpm | Requests per month |
-| price_input | Input price per 1M tokens |
-| price_cached_read | Cached read price per 1M tokens |
-| price_cached_write | Cached write price per 1M tokens |
-| context_threshold | Context length threshold for pricing variants (e.g. `272K`, `256K`, `-`) |
-| peak_hours | Peak hours for time-based pricing (e.g. `01:00-04:00 and 06:00-10:00 UTC`, `-`) |
-| retention | Data retention in days (`0` = ZDR, `999` = Not ZDR) |
+- **Opencode models (22)**: provider="opencode", 有定价数据, mapping 为空
+- **Request models (9)**: provider=arena org, 无定价数据, mapping 指向目标
 
-### Pricing variants
+**注意**: gpt-5.6-luna 由 opencode 提供，只作为 opencode 模型。
 
-Some models have different pricing based on context length or time of day:
-
-- **Context length variants**: GPT 5.6 Luna (≤272K vs >272K), Qwen3.7 Plus (≤256K vs >256K), Qwen3.6 Plus (≤256K vs >256K)
-- **Time-based variants**: DeepSeek V4 Pro/Flash/Flash Vision Exp (Off-Peak vs Peak)
-
-The CSV keeps the cheapest variant as `price_output` and records the most expensive as `max_price_output`.
-
-### Free models
-
-Models with `free` in their model_id (e.g. `ox-alpha-free`) get special treatment:
-- `rp5h` = max of all other models
-- `usage_quota` = max of all other models
-- All prices = 0
-
-This logic is in `fix_free_model()` and is called only when free models are detected. Users can manually update the CSV later with actual measured values.
-
-## Project structure
-
-```
-.
-├── scripts/
-│   ├── parse_opencode_mdx.py       # go.mdx → models.csv
-│   ├── fetch_data.py               # Arena leaderboard → data/leaderboard.json
-│   └── compute_mapping.py          # models.csv + leaderboard → data/mapping-*.csv
-├── data/                           # Runtime data (auto-updated)
-│   ├── leaderboard.json            # Arena leaderboard data
-│   ├── leaderboard.hash            # Hash for change detection
-│   ├── mapping-*.csv               # Computed mappings
-│   └── formula.md                  # Scoring formula documentation
-├── models.csv                      # OpenCode model data (auto-updated)
-├── go.mdx                          # Reference copy of source document
-├── .github/workflows/
-│   ├── watch-opencode.yml          # Every 15 min
-│   └── compute-mapping.yml         # Every 4 hours
-├── models-mapping/                 # Skill: documentation only
-│   └── SKILL.md
-└── axonhub-config/                 # Skill: apply mappings (server only)
-    └── SKILL.md
-```
-
-## Local usage
+## Local Usage
 
 ```bash
-# Parse .mdx → models.csv
+# Parse .mdx → models.csv (基础数据)
 python3 scripts/parse_opencode_mdx.py go.mdx --output models.csv
 
-# Fetch arena data
-python3 scripts/fetch_data.py
+# Fetch arena data (arena 列)
+python3 scripts/watch_arena.py
 
-# Compute mapping
+# Compute mapping (mapping 列)
 python3 scripts/compute_mapping.py --output data/mapping-$(date +%y%m%d).csv
 ```
 
-## Related skills
+## Related Skills
 
-- **models-mapping**: Documentation for the mapping pipeline. Scripts moved to root `scripts/`.
-- **axonhub-config**: Applies model mappings to AxonHub channels/associations. Runs on server.
+- **models-mapping**: 映射管道文档
+- **axonhub-config**: 应用映射到 AxonHub（服务器端）
