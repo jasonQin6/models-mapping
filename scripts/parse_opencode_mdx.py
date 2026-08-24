@@ -358,7 +358,7 @@ def generate_csv(models: Dict[str, dict]) -> str:
     
     # Column order: weighted columns first, then metadata
     writer.writerow([
-        'model_id', 'protocol',
+        'model_id', 'mapping', 'provider', 'protocol',
         # Weighted columns (participate in scoring)
         'rp5h', 'usage_quota', 'price_output', 'max_price_output',
         # Other pricing
@@ -373,6 +373,8 @@ def generate_csv(models: Dict[str, dict]) -> str:
     for model in sorted_models:
         writer.writerow([
             model.get('model_id', ''),
+            '',  # mapping (empty for opencode models)
+            'opencode',  # provider
             model.get('protocol', ''),
             # Weighted
             model.get('rp5h', ''),
