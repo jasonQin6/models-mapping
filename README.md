@@ -2,7 +2,7 @@
 
 Monitor [OpenCode Go](https://opencode.ai/docs/go/) model changes and compute optimal claude/gpt → opencode model mappings using arena leaderboard data.
 
-## What this does
+## Architecture
 
 三个脚本各自维护 models.csv 的不同列：
 
@@ -10,21 +10,13 @@ Monitor [OpenCode Go](https://opencode.ai/docs/go/) model changes and compute op
 2. **watch_arena.py**：维护 arena 相关列（评分、排名、组织等）
 3. **compute_mapping.py**：维护 mapping 列（request 模型 → opencode 模型映射）
 
+**Fallback handler**：当脚本无法填充某些列（存在空值）时，使用 `models-mapping` skill 指导 agent 介入。
+
 ## Workflows
 
 1. **watch-opencode.yml** (every 4 hours): 检查 Atom feed → 解析 go.mdx → 获取 arena 数据 → 计算映射
 2. **watch-arena.yml** (daily UTC 23:00 = UTC+8 07:00): 获取 arena 数据
 3. **compute-mapping.yml** (triggered by watch-opencode): 计算映射
-
-## Arena Data Fallback Strategies
-
-当模型没有直接匹配的 arena 数据时：
-
-1. **Direct match**: 精确匹配
-2. **Remove -contributor suffix**: muse-spark-1.2-contributor → muse-spark-1.2
-3. **Version downgrade**: qwen3.7-plus → qwen3.6-plus
-4. **Prefix match**: claude-haiku → claude-haiku-*
-5. **Free model default**: arena_score=0
 
 ## models.csv Structure
 
@@ -69,9 +61,20 @@ python3 scripts/watch_arena.py
 
 # Compute mapping (mapping 列)
 python3 scripts/compute_mapping.py
+
+# Check for empty values (trigger fallback handler)
+python3 -c "
+import csv
+with open('models.csv') as f:
+    reader = csv.DictReader(f)
+    for row in reader:
+        empty_cols = [k for k in ['arena_score', 'rp5h', 'usage_quota', 'price_output'] if not row.get(k)]
+        if empty_cols:
+            print(f\"{row['model_id']}: {', '.join(empty_cols)}\")
+"
 ```
 
 ## Related Skills
 
-- **models-mapping**: 映射管道文档
+- **models-mapping**: Fallback handler for data gaps（当 models.csv 存在空值时使用）
 - **axonhub-config**: 应用映射到 AxonHub（服务器端）

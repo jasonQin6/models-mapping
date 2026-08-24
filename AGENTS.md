@@ -16,7 +16,7 @@
 │   ├── watch-opencode.yml          # Every 4 hours: parse go.mdx → watch_arena
 │   ├── watch-arena.yml             # Daily UTC 23:00 (UTC+8 07:00): watch_arena
 │   └── compute-mapping.yml         # Triggered by watch-opencode: compute_mapping
-├── models-mapping/                 # Skill: documentation only
+├── models-mapping/                 # Skill: fallback handler for data gaps
 │   └── SKILL.md
 └── axonhub-config/                 # Skill: apply mappings (server only)
 ```
@@ -36,10 +36,24 @@
 
 对所有已存在的模型（opencode + request）更新 arena 数据。
 
+内置 fallback 策略：
+1. Direct match
+2. Remove -contributor suffix
+3. Version downgrade
+4. Prefix match with wildcard
+5. Free model default
+
 ### compute_mapping.py
 维护 models.csv 的 mapping 列：
 - 为 Claude/GPT request 模型计算最优 opencode 映射
 - 使用 proximity-based scoring formula
+
+## Fallback Handler
+
+当脚本无法填充某些列（存在空值）时，使用 `models-mapping` skill 指导 agent 介入：
+- arena_score 空：应用版本降级、去除后缀等策略
+- rp5h/usage_quota 空：使用同类模型中位数
+- price_output 空：从 go.mdx 获取或标记待人工确认
 
 ## Workflow
 
@@ -52,16 +66,6 @@
 
 3. **compute-mapping.yml** (triggered by watch-opencode):
    - compute_mapping.py
-
-## Arena Data Fallback Strategies
-
-当模型没有直接匹配的 arena 数据时，按以下顺序尝试：
-
-1. **Direct match**: 精确匹配 model_id
-2. **Remove -contributor suffix**: muse-spark-1.2-contributor → muse-spark-1.2
-3. **Version downgrade**: qwen3.7-plus → qwen3.6-plus
-4. **Prefix match with wildcard**: claude-haiku → claude-haiku-*
-5. **Free model default**: arena_score=0（适用于 model_id 包含 "free" 的模型）
 
 ## models.csv Structure
 
@@ -104,6 +108,17 @@ python3 scripts/watch_arena.py
 
 # Compute mapping (mapping 列)
 python3 scripts/compute_mapping.py
+
+# Check for empty values (trigger fallback handler)
+python3 -c "
+import csv
+with open('models.csv') as f:
+    reader = csv.DictReader(f)
+    for row in reader:
+        empty_cols = [k for k in ['arena_score', 'rp5h', 'usage_quota', 'price_output'] if not row.get(k)]
+        if empty_cols:
+            print(f\"{row['model_id']}: {', '.join(empty_cols)}\")
+"
 
 # Apply mapping to AxonHub (always dry-run first)
 python3 axonhub-config/scripts/apply_mapping.py --axonhub-url <URL> --token <JWT> --dry-run
