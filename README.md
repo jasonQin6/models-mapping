@@ -4,7 +4,7 @@ Monitor [OpenCode Go](https://opencode.ai/docs/go/) model changes and compute op
 
 ## What this does
 
-三个 GitHub Actions workflows，两个脚本各自维护 models.csv 的不同列：
+三个脚本各自维护 models.csv 的不同列：
 
 1. **parse_opencode_mdx.py**：维护 opencode 模型的基础数据列（定价、配额等）
 2. **watch_arena.py**：维护 arena 相关列（评分、排名、组织等）
@@ -12,13 +12,13 @@ Monitor [OpenCode Go](https://opencode.ai/docs/go/) model changes and compute op
 
 ## Workflows
 
-1. **watch-opencode.yml** (every 4 hours): 检查 Atom feed → 解析 go.mdx → 更新基础数据 → 获取 arena 数据
-2. **watch-arena.yml** (daily UTC 23:00 = UTC+8 07:00): 获取 arena 数据并合并
-3. **compute-mapping.yml** (triggered or manual): 计算最优映射
+1. **watch-opencode.yml** (every 4 hours): 检查 Atom feed → 解析 go.mdx → 获取 arena 数据 → 计算映射
+2. **watch-arena.yml** (daily UTC 23:00 = UTC+8 07:00): 获取 arena 数据
+3. **compute-mapping.yml** (triggered by watch-opencode): 计算映射
 
 ## Arena Data Fallback Strategies
 
-当 opencode 模型没有直接匹配的 arena 数据时：
+当模型没有直接匹配的 arena 数据时：
 
 1. **Direct match**: 精确匹配
 2. **Remove -contributor suffix**: muse-spark-1.2-contributor → muse-spark-1.2
@@ -58,8 +58,6 @@ Monitor [OpenCode Go](https://opencode.ai/docs/go/) model changes and compute op
 - **Opencode models (22)**: provider="opencode", 有定价数据, mapping 为空
 - **Request models (9)**: provider=arena org, 无定价数据, mapping 指向目标
 
-**注意**: gpt-5.6-luna 由 opencode 提供，只作为 opencode 模型。
-
 ## Local Usage
 
 ```bash
@@ -70,7 +68,7 @@ python3 scripts/parse_opencode_mdx.py go.mdx --output models.csv
 python3 scripts/watch_arena.py
 
 # Compute mapping (mapping 列)
-python3 scripts/compute_mapping.py --output data/mapping-$(date +%y%m%d).csv
+python3 scripts/compute_mapping.py
 ```
 
 ## Related Skills

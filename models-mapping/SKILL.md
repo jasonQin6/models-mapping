@@ -9,7 +9,7 @@ description: Compute claude/gpt → opencode model mappings using arena data.
 
 ## Architecture
 
-两个脚本各自维护 models.csv 的不同列：
+三个脚本各自维护 models.csv 的不同列：
 
 - **parse_opencode_mdx.py**: 基础数据列（定价、配额）
 - **watch_arena.py**: arena 列（评分、排名、组织）
@@ -17,9 +17,9 @@ description: Compute claude/gpt → opencode model mappings using arena data.
 
 ## Workflows
 
-1. **watch-opencode.yml** (every 4 hours): 解析 go.mdx → 获取 arena 数据
+1. **watch-opencode.yml** (every 4 hours): 解析 go.mdx → 获取 arena 数据 → 计算映射
 2. **watch-arena.yml** (daily UTC 23:00): 获取 arena 数据
-3. **compute-mapping.yml** (triggered/manual): 计算映射
+3. **compute-mapping.yml** (triggered): 计算映射
 
 ## Arena Data Fallback
 
@@ -42,7 +42,7 @@ description: Compute claude/gpt → opencode model mappings using arena data.
 python3 scripts/watch_arena.py
 
 # 计算映射
-python3 scripts/compute_mapping.py --stdout
+python3 scripts/compute_mapping.py
 ```
 
 ## Scoring Formula

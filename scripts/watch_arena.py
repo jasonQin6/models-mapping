@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Arena Leaderboard Watcher
-Fetches arena leaderboard data and merges into models.csv.
+Fetches arena leaderboard data and updates arena_* columns in models.csv.
 
 This script maintains arena-related columns in models.csv:
 - arena_score, arena_rank, arena_context
@@ -24,23 +24,6 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 ARENA_URL = "https://lmarena.ai/leaderboard/code/webdev"
-
-# Request models (claude/gpt) - only those NOT provided by opencode
-CLAUDE_MODELS = [
-    "claude-opus-5",
-    "claude-fable-5",
-    "claude-sonnet-5",
-]
-
-GPT_MODELS = [
-    "gpt-5.6-sol",
-    "gpt-5.6-terra",
-    # gpt-5.6-luna is provided by opencode, so excluded
-    "gpt-5.5",
-    "gpt-5.4",
-]
-
-CHEAP_MODELS = ["claude-haiku", "gpt-5.4-mini"]
 
 
 def fetch_url(url: str, headers: Optional[Dict[str, str]] = None) -> str:
@@ -198,8 +181,8 @@ def get_arena_data_with_fallback(model_id: str, arena_lookup: Dict[dict], is_fre
     return None
 
 
-def merge_arena_fields(row: dict, arena_data: Optional[dict]) -> dict:
-    """Merge arena fields into a row."""
+def update_arena_fields(row: dict, arena_data: Optional[dict]) -> dict:
+    """Update arena fields in a row."""
     if arena_data:
         row['arena_rank'] = arena_data['rank']
         row['arena_score'] = arena_data['rating']
@@ -216,30 +199,6 @@ def merge_arena_fields(row: dict, arena_data: Optional[dict]) -> dict:
     return row
 
 
-def create_request_row(model_id: str, arena_data: Optional[dict]) -> dict:
-    """Create a request model row (claude/gpt)."""
-    row = {
-        'model_id': model_id,
-        'protocol': '',
-        'rp5h': '',
-        'usage_quota': '',
-        'price_output': '',
-        'max_price_output': '',
-        'rpw': '',
-        'rpm': '',
-        'price_input': '',
-        'price_cached_read': '',
-        'price_cached_write': '',
-        'context_threshold': '-',
-        'peak_hours': '-',
-        'retention': '',
-        'provider': arena_data.get('organization', '') if arena_data else '',
-        'mapping': '',
-    }
-    
-    return merge_arena_fields(row, arena_data)
-
-
 def main():
     script_dir = Path(__file__).parent
     repo_root = script_dir.parent
@@ -247,9 +206,9 @@ def main():
     models_csv_path = repo_root / 'models.csv'
     
     # Read existing models.csv
-    opencode_rows = read_csv(models_csv_path)
+    rows = read_csv(models_csv_path)
     
-    if not opencode_rows:
+    if not rows:
         print('Error: models.csv is empty', file=sys.stderr)
         sys.exit(1)
     
@@ -261,32 +220,16 @@ def main():
     # Build arena lookup
     arena_lookup = build_arena_lookup(arena_data)
     
-    # Get list of opencode model_ids
-    opencode_model_ids = {row['model_id'] for row in opencode_rows}
-    
-    # Merge arena data into opencode rows
-    all_rows = []
-    for row in opencode_rows:
+    # Update arena fields for all existing models
+    updated_count = 0
+    for row in rows:
         model_id = row['model_id']
         is_free = 'free' in model_id.lower()
         arena_entry = get_arena_data_with_fallback(model_id, arena_lookup, is_free)
         
-        # Set provider to "opencode" for all opencode models
-        row['provider'] = 'opencode'
-        
-        # Merge arena fields
-        row = merge_arena_fields(row, arena_entry)
-        row['mapping'] = ''  # Opencode models don't have mapping
-        all_rows.append(row)
-    
-    # Add request models (claude/gpt) - only those NOT in opencode
-    request_models = CLAUDE_MODELS + GPT_MODELS + CHEAP_MODELS
-    for model_id in request_models:
-        if model_id in opencode_model_ids:
-            continue
-        arena_entry = get_arena_data_with_fallback(model_id, arena_lookup)
-        row = create_request_row(model_id, arena_entry)
-        all_rows.append(row)
+        # Update arena fields
+        row = update_arena_fields(row, arena_entry)
+        updated_count += 1
     
     # Sort by arena_score descending
     def sort_key(row):
@@ -298,27 +241,17 @@ def main():
         except (ValueError, TypeError):
             return -1
     
-    all_rows.sort(key=sort_key, reverse=True)
+    rows.sort(key=sort_key, reverse=True)
     
-    # Write output
-    fieldnames = [
-        'model_id', 'provider', 'protocol',
-        'arena_score', 'arena_rank', 'rp5h', 'usage_quota', 'price_output', 'max_price_output',
-        'rpw', 'rpm', 'price_input', 'price_cached_read', 'price_cached_write',
-        'context_threshold', 'peak_hours',
-        'retention',
-        'arena_context', 'organization', 'effort',
-        'mapping',
-    ]
+    # Write output - preserve existing fieldnames
+    fieldnames = list(rows[0].keys())
     
     with open(models_csv_path, 'w', encoding='utf-8', newline='') as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
-        writer.writerows(all_rows)
+        writer.writerows(rows)
     
-    opencode_count = len(opencode_rows)
-    request_count = len(all_rows) - opencode_count
-    print(f'Merged {opencode_count} opencode models + {request_count} request models', file=sys.stderr)
+    print(f'Updated arena data for {updated_count} models', file=sys.stderr)
     print(f'Written: {models_csv_path}', file=sys.stderr)
 
 
