@@ -7,37 +7,21 @@ Reads:
   - models.csv (root): contains opencode models + request models with arena data
 
 Updates:
-  - mapping column for Claude/GPT models
+  - mapping column for request models (provider != "opencode")
+
+Logic:
+  - Group request models by series (claude-*, gpt-*)
+  - For each series, the model with lowest arena_score is the "cheap" model
+  - Cheap models route to free opencode models or highest quota
+  - Other models use proximity-based scoring
 """
 
 import csv
 import math
+import re
 import sys
 from pathlib import Path
-from typing import List, Optional
-
-# ---------------------------------------------------------------------------
-# Constants — Request models that need mapping
-# ---------------------------------------------------------------------------
-
-CLAUDE_MODELS = [
-    "claude-opus-5",
-    "claude-fable-5",
-    "claude-sonnet-5",
-]
-
-GPT_MODELS = [
-    "gpt-5.6-sol",
-    "gpt-5.6-terra",
-    "gpt-5.6-luna",
-    "gpt-5.5",
-    "gpt-5.4",
-]
-
-CHEAP_MODELS = ["claude-haiku", "gpt-5.4-mini"]
-CHEAP_MODELS_SET = set(CHEAP_MODELS)
-
-REQUEST_MODELS = CLAUDE_MODELS + GPT_MODELS + CHEAP_MODELS
+from typing import Dict, List, Optional
 
 # ---------------------------------------------------------------------------
 # Constants — Proximity formula weights
@@ -80,6 +64,47 @@ def safe_int(value: str, default: int = 0) -> int:
         return int(value)
     except ValueError:
         return default
+
+
+# ---------------------------------------------------------------------------
+# Series detection
+# ---------------------------------------------------------------------------
+
+def extract_series(model_id: str) -> str:
+    """Extract series name from model_id.
+    
+    Examples:
+        claude-opus-5 -> claude
+        gpt-5.6-sol -> gpt
+        gpt-5.4-mini -> gpt
+    """
+    # Match patterns like claude-*, gpt-*
+    match = re.match(r'^(claude|gpt)', model_id.lower())
+    if match:
+        return match.group(1)
+    return ''
+
+
+def group_by_series(request_models: List[dict]) -> Dict[str, List[dict]]:
+    """Group request models by series."""
+    groups = {}
+    for model in request_models:
+        series = extract_series(model['model_id'])
+        if series:
+            if series not in groups:
+                groups[series] = []
+            groups[series].append(model)
+    return groups
+
+
+def find_cheap_model(models: List[dict]) -> Optional[str]:
+    """Find the model with lowest arena_score in a series."""
+    if not models:
+        return None
+    
+    # Sort by arena_score ascending
+    sorted_models = sorted(models, key=lambda m: safe_float(m.get('arena_score', '')))
+    return sorted_models[0]['model_id']
 
 
 # ---------------------------------------------------------------------------
@@ -170,16 +195,36 @@ def main():
     
     # Separate opencode models and request models
     opencode_models = [r for r in rows if r.get('provider') == 'opencode']
-    request_rows = [r for r in rows if r['model_id'] in REQUEST_MODELS]
+    request_models = [r for r in rows if r.get('provider') != 'opencode']
     
     if not opencode_models:
         print("Error: No opencode models found", file=sys.stderr)
         sys.exit(1)
     
+    if not request_models:
+        print("Warning: No request models found", file=sys.stderr)
+        sys.exit(0)
+    
+    # Group request models by series
+    series_groups = group_by_series(request_models)
+    
+    # Find cheap model for each series
+    cheap_models = {}
+    for series, models in series_groups.items():
+        cheap = find_cheap_model(models)
+        if cheap:
+            cheap_models[series] = cheap
+            print(f"Series '{series}': cheap model = {cheap}", file=sys.stderr)
+    
+    # Find free opencode models
+    free_models = [m for m in opencode_models if 'free' in m['model_id'].lower()]
+    highest_quota_model = max(opencode_models, key=lambda m: safe_int(m.get('rp5h', '')))
+    
     # Compute mapping for each request model
     mapping_count = 0
-    for row in request_rows:
+    for row in request_models:
         model_id = row['model_id']
+        series = extract_series(model_id)
         arena_score_str = row.get('arena_score', '')
         
         if not arena_score_str or arena_score_str == '':
@@ -192,17 +237,16 @@ def main():
             print(f"Warning: {model_id} has invalid arena_score: {arena_score_str}", file=sys.stderr)
             continue
         
-        # For cheap models, route to free models or highest quota
-        if model_id in CHEAP_MODELS_SET:
-            free_models = [m for m in opencode_models if 'free' in m['model_id'].lower()]
+        # Check if this is the cheap model for its series
+        is_cheap = (series in cheap_models and cheap_models[series] == model_id)
+        
+        if is_cheap:
+            # Route cheap models to free models or highest quota
             if free_models:
-                # Pick the free model with highest rp5h
                 best_free = max(free_models, key=lambda m: safe_int(m.get('rp5h', '')))
                 row['mapping'] = best_free['model_id']
             else:
-                # Fallback to highest rp5h
-                best = max(opencode_models, key=lambda m: safe_int(m.get('rp5h', '')))
-                row['mapping'] = best['model_id']
+                row['mapping'] = highest_quota_model['model_id']
         else:
             # Compute mapping using proximity formula
             target = compute_mapping_for_request_model(model_id, arena_score, opencode_models)
@@ -225,9 +269,12 @@ def main():
     print(f"Written: {models_csv_path}", file=sys.stderr)
     
     # Print summary
-    for row in request_rows:
+    for row in request_models:
         if row.get('mapping'):
-            print(f"  {row['model_id']:25s} -> {row['mapping']}", file=sys.stderr)
+            series = extract_series(row['model_id'])
+            is_cheap = (series in cheap_models and cheap_models[series] == row['model_id'])
+            marker = " (cheap)" if is_cheap else ""
+            print(f"  {row['model_id']:25s} -> {row['mapping']}{marker}", file=sys.stderr)
 
 
 if __name__ == "__main__":

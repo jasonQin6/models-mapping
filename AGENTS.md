@@ -45,8 +45,11 @@
 
 ### compute_mapping.py
 维护 models.csv 的 mapping 列：
-- 为 Claude/GPT request 模型计算最优 opencode 映射
-- 使用 proximity-based scoring formula
+- 从 CSV 读取所有 request 模型（provider != "opencode"）
+- 按系列分组（claude-*, gpt-*）
+- 每个系列中 arena_score 最低的模型作为 cheap 模型
+- Cheap 模型路由到 free opencode 模型或最高配额模型
+- 其他模型使用 proximity-based scoring formula
 
 ## Fallback Handler
 
