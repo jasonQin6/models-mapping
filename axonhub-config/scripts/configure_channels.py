@@ -6,40 +6,28 @@ Tags format: quotaXXXX (where XXXX is the per-5h request quota)
 Weight range: 0-10 (10 = highest priority)
 
 Usage:
-    python3 scripts/configure_channels.py --axonhub-url <URL> --token <JWT>
-    python3 scripts/configure_channels.py --axonhub-url <URL> --token <JWT> --dry-run
+    AXONHUB_JWT=<JWT> python3 scripts/configure_channels.py --axonhub-url <URL>
+    AXONHUB_JWT=<JWT> python3 scripts/configure_channels.py --axonhub-url <URL> --dry-run
 """
 
 import argparse
+import os
 import sys
 
-from common import fetch_graphql, CHANNELS
+from common import fetch_connection, fetch_graphql, CHANNELS
 
 
 def fetch_channels(axonhub_url, token):
     """Fetch all channels with current config."""
-    query = """
-    query {
-      channels(first: 20) {
-        edges {
-          node {
-            id
-            name
-            type
-            orderingWeight
-            tags
-            supportedModels
-          }
-        }
-      }
-    }
-    """
-    response = fetch_graphql(axonhub_url, token, query)
-    edges = response.get("data", {}).get("channels", {}).get("edges", [])
+    nodes = fetch_connection(
+        axonhub_url,
+        token,
+        "channels",
+        "id name type orderingWeight tags supportedModels",
+    )
 
     channels = {}
-    for e in edges:
-        node = e["node"]
+    for node in nodes:
         ch_id = int(node["id"].split("/")[-1])
         channels[ch_id] = {
             "name": node["name"],
@@ -86,11 +74,13 @@ def main():
     parser = argparse.ArgumentParser(description='Configure AxonHub channel tags and weights')
     parser.add_argument('--axonhub-url', type=str, default='https://axon.jasonqin.site',
                         help='AxonHub URL')
-    parser.add_argument('--token', type=str, required=True,
+    parser.add_argument('--token', type=str, default=os.environ.get('AXONHUB_JWT'),
                         help='JWT token')
     parser.add_argument('--dry-run', action='store_true',
                         help='Show what would be configured without making changes')
     args = parser.parse_args()
+    if not args.token:
+        parser.error('provide --token or set AXONHUB_JWT')
 
     print("=" * 80)
     print("AxonHub Channel Configuration")

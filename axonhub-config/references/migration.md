@@ -18,6 +18,10 @@ curl -s -X POST <SOURCE>/admin/graphql \
 # Skip if "already exists" error
 ```
 
-## Import associations (legacy)
+## Associations
 
-Previously done via `import_associations.py` + `models.json`. Now handled by `apply_mapping.py` reading CSV from models-mapping skill.
+Channel associations are operational state and should be reconciled through
+`configure_models.py` after inspecting its dry-run. Fixed Claude/GPT request
+mapping is a separate, user-confirmed operation owned by the
+[`models-mapping`](../../models-mapping/SKILL.md) skill; it is not part of a
+general instance migration.

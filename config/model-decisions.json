@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "scope": {
+    "channels": ["opencode-go", "op-responses", "op-anthropic"],
+    "templates": ["stable", "claude", "gpt"]
+  },
+  "models": [
+    {
+      "provider": "opencode-go",
+      "model_id": "minimax-m2.5",
+      "action": "exclude",
+      "reason": "Missing mapping-critical RP5H"
+    }
+  ],
+  "mapping_overrides": []
+}

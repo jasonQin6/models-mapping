@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Parse opencode go.mdx from GitHub and output models.csv.
+Parse the OpenCode Go markdown source into model records.
 
 Extracts data from four markdown tables:
 1. Usage limits (rp5h, rpw, rpm)
@@ -18,20 +18,10 @@ Free models (model_id contains "free") get special treatment:
 This logic is in fix_free_model(), called only when free models are detected.
 """
 
-import csv
-import io
 import re
-import sys
 from typing import Dict, List, Optional, Tuple
 
-
-def normalize_name(name: str) -> str:
-    """Normalize model name for matching across tables."""
-    name = re.sub(r'\s*\([^)]+\)', '', name)
-    name = re.sub(r'\s*\(.*$', '', name)
-    name = name.strip().lower().replace(' ', '-')
-    name = re.sub(r'-+', '-', name)
-    return name
+from name_matching import normalize
 
 
 def extract_variant_condition(name: str) -> Tuple[str, Optional[str], Optional[str]]:
@@ -48,7 +38,7 @@ def extract_variant_condition(name: str) -> Tuple[str, Optional[str], Optional[s
     condition = match.group(1).strip()
     
     # Context length variants
-    context_match = re.search(r'[≤<>=]\s*(\d+K?)', condition, re.IGNORECASE)
+    context_match = re.search(r'[≤<>=]\s*((\d+)K?)', condition, re.IGNORECASE)
     if context_match and 'token' in condition.lower():
         threshold = context_match.group(1).upper()
         if not threshold.endswith('K'):
@@ -188,9 +178,13 @@ def fix_free_model(model: dict, all_models: Dict[str, dict]) -> dict:
         if usage is not None and usage > max_usage:
             max_usage = usage
     
-    # Apply fixes
-    model['rp5h'] = max_rp5h
-    model['usage_quota'] = max_usage
+    # Apply fixes only to missing values.  A free model may acquire an
+    # explicit limit in the upstream document in the future; keep that value
+    # instead of silently replacing it with a derived one.
+    if model.get('rp5h') in (None, ''):
+        model['rp5h'] = max_rp5h
+    if model.get('usage_quota') in (None, ''):
+        model['usage_quota'] = max_usage
     model['price_input'] = 0.0
     model['price_output'] = 0.0
     model['max_price_output'] = 0.0
@@ -200,7 +194,7 @@ def fix_free_model(model: dict, all_models: Dict[str, dict]) -> dict:
     return model
 
 
-def parse_mdx(content: str) -> Dict[str, dict]:
+def parse_mdx(content: str, include_incomplete: bool = False) -> Dict[str, dict]:
     models = {}
     peak_hours = extract_peak_hours(content)
 
@@ -214,7 +208,7 @@ def parse_mdx(content: str) -> Dict[str, dict]:
             rows = parse_table_lines(tables[0])
             for row in rows:
                 raw_name = row.get('Model', '').strip()
-                key = normalize_name(raw_name)
+                key = normalize(raw_name)
                 if not key:
                     continue
                 models[key] = {
@@ -232,7 +226,7 @@ def parse_mdx(content: str) -> Dict[str, dict]:
             for row in rows:
                 raw_name = row.get('Model', '').strip()
                 base_name, context_thresh, peak_type = extract_variant_condition(raw_name)
-                key = normalize_name(base_name)
+                key = normalize(base_name)
                 
                 if not key:
                     continue
@@ -296,7 +290,7 @@ def parse_mdx(content: str) -> Dict[str, dict]:
             rows = parse_table_lines(tables[0])
             for row in rows:
                 raw_name = row.get('Model', '').strip()
-                key = normalize_name(raw_name)
+                key = normalize(raw_name)
                 if not key:
                     continue
                 model_id = row.get('Model ID', '').strip()
@@ -324,7 +318,7 @@ def parse_mdx(content: str) -> Dict[str, dict]:
             rows = parse_table_lines(tables[0])
             for row in rows:
                 raw_name = row.get('Model', '').strip()
-                key = normalize_name(raw_name)
+                key = normalize(raw_name)
                 if not key:
                     continue
                 retention_days = parse_retention(row.get('Data retention', '0 days'))
@@ -340,134 +334,19 @@ def parse_mdx(content: str) -> Dict[str, dict]:
         for key in free_models:
             models[key] = fix_free_model(models[key], models)
 
-    # 5. Filter out incomplete models (missing rp5h or usage_quota)
-    # But keep free models (they were just fixed)
+    # 5. Historically this parser emitted only models with complete quota
+    # data.  The JSON source pipeline must retain every model listed in the
+    # document so that the sync skill can report missing fields, therefore it
+    # can opt out of this legacy filter with include_incomplete=True.
+    if include_incomplete:
+        return models
+
+    # Filter out incomplete models (missing rp5h or usage_quota), but keep free
+    # models (they were just fixed).
     complete_models = {}
     for key, model in models.items():
         if 'free' in key.lower():
             complete_models[key] = model
         elif model.get('rp5h') is not None and model.get('usage_quota') is not None:
             complete_models[key] = model
-    
     return complete_models
-
-
-def generate_csv(models: Dict[str, dict]) -> str:
-    output = io.StringIO()
-    writer = csv.writer(output)
-    
-    # Column order: weighted columns first, then metadata
-    writer.writerow([
-        'model_id', 'mapping', 'provider', 'protocol',
-        # Weighted columns (participate in scoring)
-        'rp5h', 'usage_quota', 'price_output', 'max_price_output',
-        # Other pricing
-        'rpw', 'rpm', 'price_input', 'price_cached_read', 'price_cached_write',
-        # Variant conditions
-        'context_threshold', 'peak_hours',
-        # Privacy
-        'retention',
-    ])
-    
-    sorted_models = sorted(models.values(), key=lambda m: m.get('model_id', ''))
-    for model in sorted_models:
-        writer.writerow([
-            model.get('model_id', ''),
-            '',  # mapping (empty for opencode models)
-            'opencode',  # provider
-            model.get('protocol', ''),
-            # Weighted
-            model.get('rp5h', ''),
-            model.get('usage_quota', ''),
-            model.get('price_output', ''),
-            model.get('max_price_output', ''),
-            # Other
-            model.get('rpw', ''),
-            model.get('rpm', ''),
-            model.get('price_input', ''),
-            model.get('price_cached_read', ''),
-            model.get('price_cached_write', ''),
-            # Variants
-            model.get('context_threshold', '-'),
-            model.get('peak_hours', '-'),
-            # Privacy
-            model.get('retention', ''),
-        ])
-    
-    return output.getvalue()
-
-
-def check_weighted_columns_changed(old_csv: str, new_csv: str) -> bool:
-    """Check if weighted columns (rp5h, usage_quota, price_output, max_price_output) changed."""
-    import csv
-    import io
-    
-    WEIGHTED_COLS = ['rp5h', 'usage_quota', 'price_output', 'max_price_output']
-    
-    def extract_weighted(csv_text: str) -> dict:
-        reader = csv.DictReader(io.StringIO(csv_text))
-        result = {}
-        for row in reader:
-            model_id = row.get('model_id', '')
-            if model_id:
-                result[model_id] = {col: row.get(col, '') for col in WEIGHTED_COLS}
-        return result
-    
-    old_weighted = extract_weighted(old_csv)
-    new_weighted = extract_weighted(new_csv)
-    
-    # Check if any model's weighted columns changed
-    if set(old_weighted.keys()) != set(new_weighted.keys()):
-        return True  # Models added/removed
-    
-    for model_id in old_weighted:
-        if old_weighted[model_id] != new_weighted.get(model_id, {}):
-            return True
-    
-    return False
-
-
-def main():
-    from pathlib import Path
-    import argparse
-    parser = argparse.ArgumentParser(description='Parse opencode go.mdx')
-    parser.add_argument('input', nargs='?', help='Input .mdx file (default: stdin)')
-    parser.add_argument('--output', '-o', help='Output CSV file')
-    args = parser.parse_args()
-
-    if args.input:
-        with open(args.input, 'r', encoding='utf-8') as f:
-            content = f.read()
-    else:
-        content = sys.stdin.read()
-
-    models = parse_mdx(content)
-    if not models:
-        print('Error: No models parsed', file=sys.stderr)
-        sys.exit(1)
-
-    csv_content = generate_csv(models)
-    
-    # Check if weighted columns changed (for triggering compute-mapping)
-    weighted_changed = False
-    if args.output and Path(args.output).exists():
-        old_csv = Path(args.output).read_text()
-        weighted_changed = check_weighted_columns_changed(old_csv, csv_content)
-    
-    if args.output:
-        with open(args.output, 'w', encoding='utf-8') as f:
-            f.write(csv_content)
-        print(f'Written: {args.output} ({len(models)} models)', file=sys.stderr)
-        
-        # Write flag file if weighted columns changed
-        if weighted_changed:
-            flag_file = Path(args.output).parent / '.weighted-columns-changed'
-            flag_file.write_text('true')
-            print(f'Weighted columns changed, created flag: {flag_file}', file=sys.stderr)
-    else:
-        print(csv_content)
-        print(f'Parsed {len(models)} models', file=sys.stderr)
-
-
-if __name__ == '__main__':
-    main()

@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "models": [
+    {"model_id": "claude-opus-5", "enabled": true},
+    {"model_id": "claude-fable-5", "enabled": true},
+    {"model_id": "claude-sonnet-5", "enabled": true},
+    {"model_id": "claude-haiku-4.5", "arena_model_id": "claude-haiku-4-5", "enabled": true},
+    {"model_id": "gpt-5.6-sol", "enabled": true},
+    {"model_id": "gpt-5.6-terra", "enabled": true},
+    {"model_id": "gpt-5.5", "enabled": true},
+    {"model_id": "gpt-5.4", "enabled": true},
+    {"model_id": "gpt-5.4-mini", "enabled": true}
+  ]
+}

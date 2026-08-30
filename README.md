@@ -1,80 +1,57 @@
 # models-mapping
 
-Monitor [OpenCode Go](https://opencode.ai/docs/go/) model changes and compute optimal claude/gpt → opencode model mappings using arena leaderboard data.
+维护 OpenCode provider 模型目录，并为固定的 Claude/GPT 下游请求模型生成可审核的一对一映射建议。目录同步与映射写入分开：GitHub Actions 只采集和计算，服务器上的 skill 才能更新 AxonHub。
 
-## Architecture
+## 数据边界
 
-三个脚本各自维护 models.csv 的不同列：
+| 文件 | 所有者 | 内容 |
+|---|---|---|
+| `data/models.json` | `opencode-axonhub-sync` | 服务器执行 `opencode models <provider> --refresh --verbose` 得到的 provider 模型快照 |
+| `data/go.json` | `watch-go` | `go.mdx` 补充的 rp5h、usage quota、价格和限制字段 |
+| `data/arena.json` | `watch-arena` | Arena 评分、排名、effort 及模型名称匹配证据 |
+| `config/request-models.json` | 项目维护者 | 预先配置的固定 Claude/GPT request model 集合 |
+| `config/model-decisions.json` | 项目维护者 | 三渠道范围、交集内 exclude/supplement 和 mapping override |
+| `models.csv` | `build-mapping` | 由三个快照确定性生成的审核工作区，不手工编辑 |
 
-1. **parse_opencode_mdx.py**：维护 opencode 模型的基础数据列（定价、配额等）
-2. **watch_arena.py**：维护 arena 相关列（评分、排名、组织等）
-3. **compute_mapping.py**：维护 mapping 列（request 模型 → opencode 模型映射）
+`models.csv` 只包含以下列：
 
-**Fallback handler**：当脚本无法填充某些列（存在空值）时，使用 `models-mapping` skill 指导 agent 介入。
-
-## Workflows
-
-1. **watch-opencode.yml** (every 4 hours): 检查 Atom feed → 解析 go.mdx → 获取 arena 数据 → 计算映射
-2. **watch-arena.yml** (daily UTC 23:00 = UTC+8 07:00): 获取 arena 数据
-3. **compute-mapping.yml** (triggered by watch-opencode): 计算映射
-
-## models.csv Structure
-
-31 rows (22 opencode + 9 request), sorted by arena_score descending.
-
-### Column Order
-
-加权列靠前：
-
-| Column | Description |
-|--------|-------------|
-| model_id | 模型标识符 |
-| provider | "opencode" 或 arena organization |
-| protocol | completions / messages / responses |
-| arena_score | Arena 评分 |
-| arena_rank | Arena 排名 |
-| rp5h | 每 5 小时请求数 |
-| usage_quota | 美元配额 |
-| price_output | 输出价格（最便宜变体） |
-| max_price_output | 最高输出价格 |
-| rpw, rpm | 每周/月请求数 |
-| price_input, price_cached_read, price_cached_write | 其他价格 |
-| context_threshold | 上下文长度阈值 |
-| peak_hours | 高峰时段 |
-| retention | 数据保留天数 |
-| arena_context, organization, effort | Arena 元数据 |
-| mapping | 目标 opencode 模型（仅 request 模型） |
-
-### Row Types
-
-- **Opencode models (22)**: provider="opencode", 有定价数据, mapping 为空
-- **Request models (9)**: provider=arena org, 无定价数据, mapping 指向目标
-
-## Local Usage
-
-```bash
-# Parse .mdx → models.csv (基础数据)
-python3 scripts/parse_opencode_mdx.py go.mdx --output models.csv
-
-# Fetch arena data (arena 列)
-python3 scripts/watch_arena.py
-
-# Compute mapping (mapping 列)
-python3 scripts/compute_mapping.py
-
-# Check for empty values (trigger fallback handler)
-python3 -c "
-import csv
-with open('models.csv') as f:
-    reader = csv.DictReader(f)
-    for row in reader:
-        empty_cols = [k for k in ['arena_score', 'rp5h', 'usage_quota', 'price_output'] if not row.get(k)]
-        if empty_cols:
-            print(f\"{row['model_id']}: {', '.join(empty_cols)}\")
-"
+```text
+model_id,role,arena_score,rp5h,mapping
 ```
 
-## Related Skills
+其中 `role` 为 `candidate` 或 `request`；只有 request 行填写 `mapping`。模型卡和 remark 所需的其他字段留在源 JSON 中，由同步 skill 写入 AxonHub。
 
-- **models-mapping**: Fallback handler for data gaps（当 models.csv 存在空值时使用）
-- **axonhub-config**: 应用映射到 AxonHub（服务器端）
+## 流程
+
+```text
+watch-go ───────→ data/go.json ─┐
+watch-arena ────→ data/arena.json ─┼→ build-mapping → models.csv
+服务器 sync ────→ data/models.json ┘                         │
+                                                             ▼
+                                      models-mapping 审核 → 用户确认
+                                                             │
+                                                             ▼
+                                      AxonHub type=model associations
+                                      + stable/claude/gpt templates
+```
+
+两个采集 workflow 分别写入自己的 JSON；服务器 sync 提交第三份快照，只有 mapping builder 写 `models.csv`，以避免并行采集互相覆盖。workflow 不连接 AxonHub，也不持有 AxonHub 凭据。
+
+## Skills
+
+- `opencode-axonhub-sync`：以 cache/go 交集为目录，只维护三个 OpenCode channels、模型卡、remark 和 candidate 的 managed `channel_model` association；外部 channels 只读。
+- `models-mapping`：审核 canonical mapping，确认后同步 request `type=model` associations 与 `stable`/`claude`/`gpt` templates，同时保留维护集合外的人工 mappings。
+- `axonhub-config`：服务器端通用 channel 与非固定模型的运维。它不负责 request→candidate mapping 或 API-key profile template。
+
+## 映射规则
+
+普通 request model 使用 Arena 分数、RP5H 对数归一化和与 request 的接近度计算候选；价格和 usage quota 不参与本阶段 target selection。每个 Claude/GPT series 中 Arena 最低的 request model 是 baseline，沿用最高 RP5H 的 free candidate（没有 free 时选最高 RP5H candidate）这一特殊规则。本阶段暂不生成有序 fallback。
+
+完整字段与评分约定见 [`data/formula.md`](data/formula.md)，术语见 [`CONTEXT.md`](CONTEXT.md)，架构取舍见 [`docs/adr/0005-three-source-mapping-and-confirmed-axonhub-writes.md`](docs/adr/0005-three-source-mapping-and-confirmed-axonhub-writes.md)。
+
+## 安全边界
+
+- Actions 只读取公开上游并提交 JSON 快照/生成 CSV；不得将 JWT、API key、SQLite secret 或 SSH 私钥写入仓库或日志。
+- 服务器 sync 优先使用 `AXONHUB_JWT`；本机后备 JWT 只在服务器本地生成，secret 不打印、不复制、不持久化。
+- AxonHub 写入前必须先 dry-run；mapping skill 必须展示完整审核表并等待用户明确确认。
+- catalog 与 mapping 使用独立确认计划；mapping 只改已确认 request associations 和三个 managed templates，失败时报告逐项结果，不回滚无关配置。

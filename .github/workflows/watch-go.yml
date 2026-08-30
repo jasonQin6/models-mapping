@@ -1,0 +1,57 @@
+name: Watch OpenCode Go
+
+on:
+  schedule:
+    - cron: '0 */4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: model-data-writes
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Fetch source document
+        id: source
+        env:
+          GO_COMMIT_API_URL: https://api.github.com/repos/anomalyco/opencode/commits?path=packages/web/src/content/docs/go.mdx&sha=dev&per_page=1
+        run: |
+          set -euo pipefail
+          latest_hash="$(curl -fsSL --max-time 30 "$GO_COMMIT_API_URL" | python3 -c 'import json, sys; print(json.load(sys.stdin)[0]["sha"])')"
+          curl -fsSL --max-time 30 \
+            "https://raw.githubusercontent.com/anomalyco/opencode/$latest_hash/packages/web/src/content/docs/go.mdx" \
+            -o "$RUNNER_TEMP/go.mdx"
+          echo "commit=$latest_hash" >> "$GITHUB_OUTPUT"
+
+      - name: Build go.json
+        env:
+          GO_MDX_URL: https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/web/src/content/docs/go.mdx
+        run: |
+          python3 scripts/watch_go.py "$RUNNER_TEMP/go.mdx" \
+            --url "$GO_MDX_URL" \
+            --source-commit "${{ steps.source.outputs.commit }}" \
+            --output data/go.json
+
+      - name: Commit and push go snapshot
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "40985853+github-actions[bot]@users.noreply.github.com"
+          git add data/go.json
+          if git diff --cached --quiet; then
+            echo "No go snapshot changes"
+          else
+            git commit -m "data: update OpenCode Go snapshot"
+            git pull --rebase origin "$GITHUB_REF_NAME"
+            git push
+          fi

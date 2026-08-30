@@ -1,83 +1,102 @@
 ---
 name: models-mapping
-description: Fallback handler for models.csv data gaps. Use when arena_score, rp5h, usage_quota, or price_output columns contain empty values.
+description: Review and apply the canonical one-to-one Claude/GPT mapping to AxonHub request-model associations and the managed stable, claude, and gpt profile templates. Use after the deterministic mapping workspace is rebuilt.
 ---
 
-# models-mapping
+# Models Mapping
 
-处理 models.csv 中的数据缺失问题。当自动化脚本无法填充某些列时，agent 介入判断。
+Maintain one canonical target for each fixed Claude/GPT request model. Apply it
+to request `type=model` associations and the managed `stable`, `claude`, `gpt`
+templates. Catalog/model-card/channel synchronization belongs to
+`opencode-axonhub-sync`.
 
-## 触发条件
+## Rebuild and validate
 
-运行以下检查，如果输出非空，则需要介入：
+From the repository root, reproduce the generated workspace and report:
 
 ```bash
-python3 -c "
-import csv
-with open('models.csv') as f:
-    reader = csv.DictReader(f)
-    for row in reader:
-        empty_cols = [k for k in ['arena_score', 'rp5h', 'usage_quota', 'price_output'] if not row.get(k)]
-        if empty_cols:
-            print(f\"{row['model_id']}: {', '.join(empty_cols)}\")
-"
+review_dir="$(mktemp -d)"
+python3 scripts/build_mapping.py \
+  --model-decisions config/model-decisions.json \
+  --output "$review_dir/models.csv" \
+  --report-output "$review_dir/report.json" \
+  --fail-on-errors
+cmp models.csv "$review_dir/models.csv"
 ```
 
-## 处理流程
+The CSV must have exactly
+`model_id,role,arena_score,rp5h,mapping`. Every enabled fixed request model must
+appear once with a non-empty target that names an eligible candidate. Missing
+request Arena evidence, unresolved decisions, unknown targets, or source/schema
+drift are blocking.
 
-1. **识别空值列**：运行上述检查，列出所有空值
-2. **判断原因**：
-   - arena_score 空：arena 排行榜无此模型
-   - rp5h/usage_quota 空：opencode 文档未提供
-   - price_output 空：opencode 文档未提供
-3. **应用规则**：根据下方规则填写
-4. **验证**：重新运行检查，确认无空值
+## Preview
 
-## Fallback 规则
+Generate a read-only AxonHub plan:
 
-### arena_score 空值
+```bash
+python3 axonhub-config/scripts/apply_mapping.py \
+  --mapping-file models.csv \
+  --request-models config/request-models.json \
+  --model-decisions config/model-decisions.json \
+  --axonhub-url "$AXONHUB_URL" \
+  --plan-output /tmp/models-mapping-plan.json \
+  --dry-run
+```
 
-**策略**：寻找相似模型的 arena 数据
+Show the user:
 
-1. **版本降级**：qwen3.7-plus → qwen3.6-plus（降低小版本号）
-2. **去除后缀**：muse-spark-1.2-contributor → muse-spark-1.2
-3. **前缀匹配**：claude-haiku → claude-haiku-*（选择评分最高的变体）
-4. **Free 模型**：arena_score = 0
+- each changed request model's current and proposed target;
+- association/template changed/no-op counts;
+- per-template added/changed/removed counts;
+- total linked profiles affected;
+- warnings and blocking errors;
+- the plan hash.
 
-**判断依据**：
-- 版本降级：适用于有明确版本号的模型（qwen3.7 → qwen3.6）
-- 去除后缀：适用于 contributor/preview 等变体
-- 前缀匹配：适用于同一系列的不同 effort 级别
+Keep the terminal summary compact. Full before/after mappings, linked-profile
+counts, state fingerprints, and stable-only manual mappings stay in the plan
+JSON. Any blocking error prevents apply.
 
-### rp5h/usage_quota 空值
+## Template merge contract
 
-**策略**：使用同类模型的中位数
+- `claude` replaces mappings for maintained Claude request IDs and preserves
+  mappings whose request IDs are outside the fixed set.
+- `gpt` does the same for maintained GPT IDs. Create it with
+  default/default/any when absent.
+- `stable` contains the complete post-merge `claude ∪ gpt` mapping.
+- Preserve stable-only manual mappings and report them as warnings; never
+  silently delete them.
+- Existing template fields other than `modelMappings` are preserved.
+- `free`, `ali-coding`, and every other template are outside this skill.
+- Manual mappings may target models outside the three managed OpenCode
+  channels; preserve them without catalog validation.
 
-1. 找出相同 provider 的模型
-2. 计算 rp5h 和 usage_quota 的中位数
-3. 填写中位数值
+## Association contract
 
-**例外**：
-- Free 模型：rp5h = max(其他模型), usage_quota = max(其他模型)
-- 新模型：如果无同类参考，标记为待人工确认
+Each maintained request model must already exist and be enabled. Its association
+set becomes exactly one enabled priority-0 `type=model` rule pointing at the
+canonical target. This global rule scans all enabled channels exposing the
+target, so client and channel API protocols may differ. Preserve non-association
+settings; clear legacy request `channel_model` rules. Candidate associations are
+owned by catalog sync.
 
-### price_output 空值
+## Apply and verify
 
-**策略**：从 opencode 文档获取
+Only after the user explicitly confirms the displayed plan hash:
 
-1. 检查 go.mdx 是否有此模型的定价信息
-2. 如果文档未提供，标记为待人工确认
+```bash
+python3 axonhub-config/scripts/apply_mapping.py \
+  --plan-input /tmp/models-mapping-plan.json \
+  --request-models config/request-models.json \
+  --model-decisions config/model-decisions.json \
+  --axonhub-url "$AXONHUB_URL" \
+  --apply
+```
 
-**注意**：price_output 是加权计算的关键字段，缺失会导致映射结果不准确。
+Apply re-reads all request models and managed templates. Any changed settings,
+template profile, target status, identity, or plan hash makes the plan stale.
+After mutation, verify every request association and all three template
+profiles. Report partial failures without guessing retries or modifying
+unrelated objects.
 
-## 完成标准
-
-- 所有模型的 arena_score, rp5h, usage_quota, price_output 列非空
-- 填写的值符合上述规则
-- 重新运行检查脚本，输出为空
-
-## 参考
-
-- 评分公式：`data/formula.md`
-- 自动化脚本：`scripts/watch_arena.py`（已实现 fallback 策略 1-4）
-- 数据源：`go.mdx`（opencode 官方文档）
+Mapping confirmation never authorizes the separate catalog sync plan.

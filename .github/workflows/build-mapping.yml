@@ -1,0 +1,62 @@
+name: Build Mapping
+
+on:
+  push:
+    paths:
+      - data/models.json
+      - data/go.json
+      - data/arena.json
+      - config/request-models.json
+      - config/model-decisions.json
+  workflow_run:
+    workflows:
+      - Watch OpenCode Go
+      - Watch Arena
+    types:
+      - completed
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: model-data-writes
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: >-
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build mapping workspace
+        run: |
+          python3 scripts/build_mapping.py \
+            --models data/models.json \
+            --go data/go.json \
+            --arena data/arena.json \
+            --request-models config/request-models.json \
+            --model-decisions config/model-decisions.json \
+            --output models.csv \
+            --fail-on-errors
+
+      - name: Commit and push mapping workspace
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "40985853+github-actions[bot]@users.noreply.github.com"
+          git add models.csv
+          if git diff --cached --quiet; then
+            echo "No mapping changes"
+          else
+            git commit -m "data: rebuild model mapping"
+            git push
+          fi

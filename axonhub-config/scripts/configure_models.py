@@ -15,8 +15,11 @@ Priority scoring:
 """
 
 import argparse
+import json
+import os
+from pathlib import Path
 
-from common import fetch_graphql, CHANNELS, ALI_TOKEN_NIGHT_MODELS
+from common import fetch_connection, fetch_graphql, CHANNELS, ALI_TOKEN_NIGHT_MODELS
 
 
 def calculate_channel_priority(channel_id, model_id):
@@ -79,11 +82,25 @@ def main():
     parser = argparse.ArgumentParser(description='Configure model associations based on channel quota')
     parser.add_argument('--axonhub-url', type=str, default='https://axon.jasonqin.site',
                         help='AxonHub URL')
-    parser.add_argument('--token', type=str, required=True,
+    parser.add_argument('--token', type=str, default=os.environ.get('AXONHUB_JWT'),
                         help='JWT token')
     parser.add_argument('--dry-run', action='store_true',
                         help='Show what would be configured without making changes')
+    parser.add_argument(
+        '--request-models',
+        type=Path,
+        default=Path(__file__).resolve().parents[2] / 'config' / 'request-models.json',
+        help='fixed request models to leave untouched',
+    )
     args = parser.parse_args()
+    if not args.token:
+        parser.error('provide --token or set AXONHUB_JWT')
+    request_payload = json.loads(args.request_models.read_text(encoding='utf-8'))
+    fixed_request_ids = {
+        item['model_id']
+        for item in request_payload.get('models', [])
+        if item.get('enabled', True)
+    }
 
     print("=" * 70)
     print("Model Association Configuration")
@@ -98,27 +115,15 @@ def main():
 
     # Fetch all channels with supported models
     print("Fetching channels...")
-    channels_query = """
-    query {
-      channels(first: 20) {
-        edges {
-          node {
-            id
-            name
-            type
-            supportedModels
-          }
-        }
-      }
-    }
-    """
-
-    response = fetch_graphql(args.axonhub_url, args.token, channels_query)
-    edges = response.get("data", {}).get("channels", {}).get("edges", [])
+    channel_nodes = fetch_connection(
+        args.axonhub_url,
+        args.token,
+        'channels',
+        'id name type supportedModels',
+    )
 
     channel_models_map = {}
-    for e in edges:
-        node = e["node"]
+    for node in channel_nodes:
         ch_id = int(node["id"].split("/")[-1])
         channel_models_map[ch_id] = set(node.get("supportedModels", []))
 
@@ -131,24 +136,14 @@ def main():
 
     # Fetch all models
     print("Fetching models...")
-    models_query = """
-    query {
-      models(first: 50) {
-        edges {
-          node {
-            id
-            modelID
-            name
-          }
-        }
-      }
-    }
-    """
+    model_nodes = fetch_connection(
+        args.axonhub_url,
+        args.token,
+        'models',
+        'id modelID name settings { disableDeveloperSettingsInheritance loadBalancerStrategy traceStickyMode }',
+    )
 
-    response = fetch_graphql(args.axonhub_url, args.token, models_query)
-    edges = response.get("data", {}).get("models", {}).get("edges", [])
-
-    print(f"Found {len(edges)} models")
+    print(f"Found {len(model_nodes)} models")
     print()
 
     mutation = """
@@ -173,13 +168,12 @@ def main():
     updated_count = 0
     skipped_count = 0
 
-    for e in edges:
-        node = e["node"]
+    for node in model_nodes:
         model_id = node["modelID"]
         internal_id = node["id"]
 
-        # Skip Claude and GPT (handled by apply_mapping.py)
-        if model_id.startswith("claude") or model_id.startswith("gpt"):
+        # Fixed Claude/GPT request mappings are handled by models-mapping.
+        if model_id in fixed_request_ids:
             continue
 
         channels = get_model_channels(model_id, channel_models_map)
@@ -214,7 +208,16 @@ def main():
                 "id": internal_id,
                 "input": {
                     "settings": {
-                        "associations": associations
+                        "disableDeveloperSettingsInheritance": (
+                            node.get("settings") or {}
+                        ).get("disableDeveloperSettingsInheritance", False),
+                        "associations": associations,
+                        "loadBalancerStrategy": (node.get("settings") or {}).get(
+                            "loadBalancerStrategy", "default"
+                        ),
+                        "traceStickyMode": (node.get("settings") or {}).get(
+                            "traceStickyMode", "default"
+                        ),
                     }
                 }
             })

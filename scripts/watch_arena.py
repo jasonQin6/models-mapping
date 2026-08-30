@@ -1,259 +1,276 @@
 #!/usr/bin/env python3
-"""
-Arena Leaderboard Watcher
-Fetches arena leaderboard data and updates arena_* columns in models.csv.
+"""Fetch and normalize the Arena WebDev leaderboard.
 
-This script maintains arena-related columns in models.csv:
-- arena_score, arena_rank, arena_context
-- organization, effort
+This watcher owns only ``data/arena.json``.  Joining Arena names to OpenCode
+model IDs belongs to ``build_mapping.py``; keeping that join out of this
+script means an Arena refresh cannot partially rewrite the mapping workspace.
 
-Fallback strategies (in order):
-  1. Direct match
-  2. Remove "-contributor" suffix (e.g., muse-spark-1.2-contributor → muse-spark-1.2)
-  3. Version downgrade (e.g., qwen3.7-plus → qwen3.6-plus)
-  4. Prefix match with wildcard (e.g., claude-haiku → claude-haiku-*)
-  5. Free model default (arena_score=0)
+The parser keeps the historical matching helpers exported from this module
+for callers that use them directly.  The generated JSON is keyed by the
+normalized Arena model ID and includes the source metadata required for audit.
 """
 
-import csv
+from __future__ import annotations
+
+import argparse
 import json
+import math
+import os
 import re
-import subprocess
 import sys
+import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional, Tuple
+from urllib.request import Request, urlopen
+
+from name_matching import find_best_match, normalize_arena_name
+
 
 ARENA_URL = "https://lmarena.ai/leaderboard/code/webdev"
+SCHEMA_VERSION = 1
 
 
-def fetch_url(url: str, headers: Optional[Dict[str, str]] = None) -> str:
-    cmd = ["curl", "-sL", "--max-time", "30", url]
-    if headers:
-        for k, v in headers.items():
-            cmd.extend(["-H", f"{k}: {v}"])
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-    if result.returncode != 0:
-        raise RuntimeError(f"curl failed: {result.stderr}")
-    return result.stdout
+def fetch_url(url: str, timeout: int = 30) -> str:
+    """Fetch text over HTTP with the standard library."""
+
+    request = Request(url, headers={"User-Agent": "models-mapping/watch-arena"})
+    with urlopen(request, timeout=timeout) as response:
+        return response.read().decode("utf-8")
 
 
-def fetch_arena_leaderboard(top_n: int = 100) -> List[dict]:
-    html = fetch_url(ARENA_URL)
+def _find_entries_array(html: str) -> list[Any]:
+    """Extract the first ``entries`` JSON array from a page.
 
-    idx = html.find('entries\\":[')
-    if idx < 0:
-        raise ValueError("Could not find entries data in Arena page")
+    Next.js currently serializes the payload inside escaped script strings,
+    while a normal JSON response uses an unescaped key.  Support both forms
+    and let JSONDecoder handle nested objects and brackets in string values.
+    """
 
-    start = html.find('[', idx)
-    depth = 0
-    end = start
-    for i in range(start, min(start + 500000, len(html))):
-        if html[i] == '[':
-            depth += 1
-        elif html[i] == ']':
-            depth -= 1
-            if depth == 0:
-                end = i + 1
-                break
+    markers = (r'entries\":', '"entries":', "entries:")
+    for marker in markers:
+        index = html.find(marker)
+        if index < 0:
+            continue
+        start = html.find("[", index + len(marker))
+        if start < 0:
+            continue
+        candidate = html[start:]
+        # The escaped form is a JSON array represented inside a JSON string.
+        if marker == r'entries\":':
+            candidate = candidate.replace('\\"', '"').replace('\\\\', '\\')
+        try:
+            value, _ = json.JSONDecoder().raw_decode(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, list):
+            return value
+    raise ValueError("Could not find entries data in Arena page")
 
-    json_str = html[start:end]
-    json_str = json_str.replace('\\"', '"').replace('\\\\', '\\')
-    entries = json.loads(json_str)
 
-    result = []
-    for entry in entries[:top_n]:
-        model_name = entry.get("modelDisplayName", "")
-        rank = entry.get("rank", 0)
-        rating = entry.get("rating", 0)
-        context = entry.get("contextLength")
-        org = entry.get("modelOrganization", "")
+def _as_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
 
-        normalized = re.sub(r'\s*\([^)]+\)\s*$', '', model_name).strip()
-        normalized = re.sub(r'-\d{8}$', '', normalized)
-        normalized = re.sub(r'-\d+k$', '', normalized)
 
-        effort = None
-        for eff in {"max", "xhigh", "ultra", "high", "medium", "low"}:
-            suffix = f"-{eff}"
-            if normalized.lower().endswith(suffix) and not normalized.lower().startswith("qwen"):
-                normalized = normalized[:-len(suffix)]
-                effort = eff
-                break
+def _as_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
 
-        normalized = normalized.lower().replace(" ", "-")
 
-        result.append({
-            "model_id": normalized,
-            "effort": effort,
-            "rank": rank,
-            "rating": round(rating, 2),
-            "context": context if context else "-",
-            "organization": org,
-        })
-
+def _required_float(value: Any, field: str) -> float:
+    try:
+        result = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Arena entry has invalid {field}: {value!r}") from exc
+    if not math.isfinite(result):
+        raise ValueError(f"Arena entry has non-finite {field}: {value!r}")
     return result
 
 
-def read_csv(path: Path) -> List[dict]:
-    """Read models.csv and return list of rows."""
-    if not path.exists():
-        return []
-    with open(path, 'r', encoding='utf-8') as f:
-        return list(csv.DictReader(f))
+def parse_arena_html(html: str, top_n: int = 0) -> List[dict]:
+    """Parse leaderboard entries into normalized records.
+
+    Each record contains the legacy keys used by ``name_matching`` as well as
+    stable field names used by the JSON snapshot.
+    """
+
+    entries = _find_entries_array(html)
+    result: List[dict] = []
+    selected_entries = entries if top_n <= 0 else entries[:top_n]
+    for entry in selected_entries:
+        if not isinstance(entry, Mapping):
+            continue
+        model_name = str(entry.get("modelDisplayName", entry.get("model_id", "")))
+        normalized, effort = normalize_arena_name(model_name)
+        if not normalized:
+            continue
+        rating = round(
+            _required_float(entry.get("rating", entry.get("arena_score")), "rating"),
+            2,
+        )
+        rank = _as_int(entry.get("rank", entry.get("arena_rank", 0)))
+        context = entry.get("contextLength", entry.get("arena_context"))
+        organization = entry.get("modelOrganization", entry.get("organization", ""))
+        result.append(
+            {
+                "model_id": normalized,
+                "effort": effort,
+                "rank": rank,
+                "rating": rating,
+                "context": context if context is not None else "-",
+                "organization": str(organization or ""),
+            }
+        )
+    return result
 
 
 def build_arena_lookup(arena_data: List[dict]) -> Dict[str, dict]:
-    """Build arena lookup by model_id, keeping highest rating per model."""
-    lookup = {}
+    """Build a normalized lookup, keeping the highest rating per model."""
+
+    lookup: Dict[str, dict] = {}
     for entry in arena_data:
-        model_id = entry['model_id']
-        if model_id not in lookup or entry['rating'] > lookup[model_id]['rating']:
+        model_id = entry.get("model_id")
+        if not model_id:
+            continue
+        if model_id not in lookup or entry.get("rating", 0) > lookup[model_id].get("rating", 0):
             lookup[model_id] = entry
     return lookup
 
 
-def try_remove_contributor(model_id: str) -> Optional[str]:
-    """Try to remove -contributor suffix."""
-    if model_id.endswith('-contributor'):
-        return model_id[:-len('-contributor')]
-    return None
+def get_confidence(match_type: str) -> str:
+    """Return the user-facing confidence for an Arena fallback."""
+
+    if match_type == "direct_match":
+        return "high"
+    if match_type in ("contributor_suffix", "version_downgrade"):
+        return "medium"
+    if match_type in ("prefix_match", "free_default"):
+        return "low"
+    return "none"
 
 
-def try_version_downgrade(model_id: str) -> Optional[str]:
-    """Try to downgrade version number (e.g., qwen3.7-plus → qwen3.6-plus)."""
-    match = re.match(r'^(.+?)(\d+)\.(\d+)(.*)$', model_id)
-    if match:
-        prefix = match.group(1)
-        major = int(match.group(2))
-        minor = int(match.group(3))
-        suffix = match.group(4)
-        
-        if minor > 0:
-            return f"{prefix}{major}.{minor - 1}{suffix}"
-    
-    return None
+def _snapshot_entry(entry: Mapping[str, Any]) -> dict:
+    """Convert a parsed entry to the schema field names."""
+
+    return {
+        "arena_score": round(_as_float(entry.get("rating", entry.get("arena_score", 0))), 2),
+        "arena_rank": _as_int(entry.get("rank", entry.get("arena_rank", 0))),
+        "arena_context": entry.get("context", entry.get("arena_context", "-")),
+        "organization": entry.get("organization", ""),
+        "effort": entry.get("effort"),
+    }
 
 
-def try_prefix_match(model_id: str, arena_lookup: Dict[dict]) -> Optional[dict]:
-    """Try to match by prefix (e.g., claude-haiku → claude-haiku-*)."""
-    candidates = []
-    for arena_id, entry in arena_lookup.items():
-        if arena_id.startswith(f"{model_id}-"):
-            candidates.append(entry)
-    
-    if candidates:
-        return max(candidates, key=lambda e: e['rating'])
-    
-    return None
+def build_arena_snapshot(
+    entries: List[Mapping[str, Any]],
+    *,
+    source_url: str = ARENA_URL,
+    fetched_at: Optional[str] = None,
+) -> dict:
+    """Build a schema-versioned ``arena.json`` object."""
+
+    models: Dict[str, dict] = {}
+    for entry in entries:
+        model_id = str(entry.get("model_id", "")).strip()
+        if not model_id:
+            continue
+        current = _snapshot_entry(entry)
+        previous = models.get(model_id)
+        if previous is None or current["arena_score"] > previous["arena_score"]:
+            models[model_id] = current
+
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "source": {
+            "url": source_url,
+            "fetched_at": fetched_at or datetime.now(timezone.utc).isoformat(),
+        },
+        "models": dict(sorted(models.items())),
+    }
 
 
-def get_arena_data_with_fallback(model_id: str, arena_lookup: Dict[dict], is_free: bool = False) -> Optional[dict]:
-    """Get arena data for model_id with fallback strategies."""
-    # Strategy 1: Direct match
-    if model_id in arena_lookup:
-        return arena_lookup[model_id]
-    
-    # Strategy 2: Remove -contributor suffix
-    alt_id = try_remove_contributor(model_id)
-    if alt_id and alt_id in arena_lookup:
-        return arena_lookup[alt_id]
-    
-    # Strategy 3: Version downgrade
-    alt_id = try_version_downgrade(model_id)
-    if alt_id and alt_id in arena_lookup:
-        return arena_lookup[alt_id]
-    
-    # Strategy 4: Prefix match with wildcard
-    match = try_prefix_match(model_id, arena_lookup)
-    if match:
-        return match
-    
-    # Strategy 5: Free model default
-    if is_free:
-        return {
-            'rank': 0,
-            'rating': 0,
-            'context': '-',
-            'organization': 'Unknown',
-            'effort': None,
-        }
-    
-    return None
+def write_json_atomic(path: Path, payload: Mapping[str, Any]) -> None:
+    """Write JSON atomically in the destination directory."""
 
-
-def update_arena_fields(row: dict, arena_data: Optional[dict]) -> dict:
-    """Update arena fields in a row."""
-    if arena_data:
-        row['arena_rank'] = arena_data['rank']
-        row['arena_score'] = arena_data['rating']
-        row['arena_context'] = arena_data.get('context', '-')
-        row['organization'] = arena_data.get('organization', '')
-        row['effort'] = arena_data.get('effort') or '-'
-    else:
-        row['arena_rank'] = ''
-        row['arena_score'] = ''
-        row['arena_context'] = '-'
-        row['organization'] = ''
-        row['effort'] = '-'
-    
-    return row
-
-
-def main():
-    script_dir = Path(__file__).parent
-    repo_root = script_dir.parent
-    
-    models_csv_path = repo_root / 'models.csv'
-    
-    # Read existing models.csv
-    rows = read_csv(models_csv_path)
-    
-    if not rows:
-        print('Error: models.csv is empty', file=sys.stderr)
-        sys.exit(1)
-    
-    # Fetch arena data
-    print("Fetching Arena WebDev leaderboard...", file=sys.stderr)
-    arena_data = fetch_arena_leaderboard(100)
-    print(f"Found {len(arena_data)} entries", file=sys.stderr)
-    
-    # Build arena lookup
-    arena_lookup = build_arena_lookup(arena_data)
-    
-    # Update arena fields for all existing models
-    updated_count = 0
-    for row in rows:
-        model_id = row['model_id']
-        is_free = 'free' in model_id.lower()
-        arena_entry = get_arena_data_with_fallback(model_id, arena_lookup, is_free)
-        
-        # Update arena fields
-        row = update_arena_fields(row, arena_entry)
-        updated_count += 1
-    
-    # Sort by arena_score descending
-    def sort_key(row):
-        score = row.get('arena_score', '')
-        if score == '' or score is None:
-            return -1
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, ensure_ascii=False, indent=2)
+            handle.write("\n")
+        os.replace(temporary, path)
+    except Exception:
         try:
-            return float(score)
-        except (ValueError, TypeError):
-            return -1
-    
-    rows.sort(key=sort_key, reverse=True)
-    
-    # Write output - preserve existing fieldnames
-    fieldnames = list(rows[0].keys())
-    
-    with open(models_csv_path, 'w', encoding='utf-8', newline='') as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(rows)
-    
-    print(f'Updated arena data for {updated_count} models', file=sys.stderr)
-    print(f'Written: {models_csv_path}', file=sys.stderr)
+            os.unlink(temporary)
+        except OSError:
+            pass
+        raise
+
+
+def preserve_timestamp_when_unchanged(path: Path, snapshot: dict) -> dict:
+    """Keep the daily snapshot byte-stable when leaderboard data is unchanged."""
+
+    if not path.exists():
+        return snapshot
+    try:
+        existing = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return snapshot
+    old_source = existing.get("source", {}) if isinstance(existing, Mapping) else {}
+    new_source = snapshot.get("source", {})
+    if (
+        existing.get("schema_version") == snapshot.get("schema_version")
+        and existing.get("models") == snapshot.get("models")
+        and old_source.get("url") == new_source.get("url")
+        and old_source.get("fetched_at")
+    ):
+        new_source["fetched_at"] = old_source["fetched_at"]
+    return snapshot
+
+
+def main(argv: Optional[list[str]] = None) -> int:
+    parser = argparse.ArgumentParser(description="Fetch and write Arena JSON")
+    parser.add_argument(
+        "--input",
+        type=Path,
+        help="Local HTML fixture; omit to fetch Arena",
+    )
+    parser.add_argument("--url", default=ARENA_URL, help="Arena leaderboard URL")
+    parser.add_argument(
+        "--top-n",
+        type=int,
+        default=0,
+        help="Number of entries to keep; 0 keeps the complete leaderboard",
+    )
+    parser.add_argument(
+        "--output",
+        "-o",
+        type=Path,
+        default=Path("data/arena.json"),
+        help="Output JSON path (default: data/arena.json)",
+    )
+    args = parser.parse_args(argv)
+
+    try:
+        html = args.input.read_text(encoding="utf-8") if args.input else fetch_url(args.url)
+        entries = parse_arena_html(html, top_n=args.top_n)
+        if not entries:
+            raise ValueError("no leaderboard entries found")
+        snapshot = build_arena_snapshot(entries, source_url=args.url)
+        snapshot = preserve_timestamp_when_unchanged(args.output, snapshot)
+        write_json_atomic(args.output, snapshot)
+    except (OSError, ValueError) as exc:
+        print(f"watch-arena: {exc}", file=sys.stderr)
+        return 1
+
+    print(f"watch-arena: wrote {len(snapshot['models'])} models to {args.output}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
