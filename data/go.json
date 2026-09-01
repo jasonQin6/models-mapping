@@ -2,8 +2,8 @@
   "schema_version": 1,
   "source": {
     "url": "https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/web/src/content/docs/go.mdx",
-    "commit": "1ead9e3d7f02661176fd46d7bcac7f6b7be3b52d",
-    "fetched_at": "2026-09-01T04:49:12.849621+00:00"
+    "commit": "ebece6efd7b11401cf1e7390b5a22991b6608cc4",
+    "fetched_at": "2026-09-01T13:25:27.867653+00:00"
   },
   "models": {
     "grok-4.6": {
@@ -317,10 +317,10 @@
       "name": "Qwen3.7 Max",
       "protocol": "messages",
       "endpoint": "`https://opencode.ai/zen/go/v1/messages`",
-      "rp5h": 340,
-      "rpw": 840,
-      "rpm": 1690,
-      "usage_quota": 60.0,
+      "rp5h": 170,
+      "rpw": 420,
+      "rpm": 840,
+      "usage_quota": 30.0,
       "price_input": 2.5,
       "price_output": 7.5,
       "max_price_output": 7.5,
