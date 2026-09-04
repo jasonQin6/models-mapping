@@ -2,8 +2,8 @@
   "schema_version": 1,
   "source": {
     "url": "https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/web/src/content/docs/go.mdx",
-    "commit": "8b9f89e7e8011dfe5b1350c92a6311e39b39d723",
-    "fetched_at": "2026-09-04T12:39:48.649186+00:00"
+    "commit": "20a77438762cba25f428871dcc17ac18337a4099",
+    "fetched_at": "2026-09-04T18:56:36.828382+00:00"
   },
   "models": {
     "grok-4.6": {
