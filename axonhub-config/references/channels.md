@@ -3,8 +3,8 @@
 Configure channel tags (quota) and ordering weights.
 
 ```bash
-AXONHUB_JWT=<JWT> python3 scripts/configure_channels.py --axonhub-url <URL> --dry-run
-AXONHUB_JWT=<JWT> python3 scripts/configure_channels.py --axonhub-url <URL>
+AXONHUB_JWT=<JWT> python3 axonhub-config/scripts/configure_channels.py --axonhub-url <URL> --dry-run
+AXONHUB_JWT=<JWT> python3 axonhub-config/scripts/configure_channels.py --axonhub-url <URL>
 ```
 
 **Tag format:** `quotaXXXX` where XXXX is the per-5h request quota
@@ -12,7 +12,7 @@ AXONHUB_JWT=<JWT> python3 scripts/configure_channels.py --axonhub-url <URL>
 
 ## Channel table
 
-Source of truth: `scripts/common.py` → `CHANNELS`
+Source of truth: `axonhub-config/scripts/common.py` → `CHANNELS`
 
 | ID | Name | Weight | Tag | Quota | Billing |
 |----|------|--------|-----|-------|---------|

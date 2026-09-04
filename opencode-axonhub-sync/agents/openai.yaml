@@ -1,8 +1,0 @@
-interface:
-  display_name: "OpenCode AxonHub Sync"
-  short_description: "Sync OpenCode models into AxonHub safely"
-  default_prompt: "Use $opencode-axonhub-sync to plan and verify an OpenCode provider catalog sync."
-
-policy:
-  allow_implicit_invocation: true
-

@@ -7,8 +7,8 @@ the one-to-one request mapping written by `models-mapping` as a `type=model`
 association.
 
 ```bash
-AXONHUB_JWT=<JWT> python3 scripts/configure_models.py --axonhub-url <URL> --dry-run
-AXONHUB_JWT=<JWT> python3 scripts/configure_models.py --axonhub-url <URL>
+AXONHUB_JWT=<JWT> python3 axonhub-config/scripts/configure_models.py --axonhub-url <URL> --dry-run
+AXONHUB_JWT=<JWT> python3 axonhub-config/scripts/configure_models.py --axonhub-url <URL>
 ```
 
 ## Priority logic

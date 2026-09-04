@@ -16,7 +16,7 @@ From the repository root, reproduce the generated workspace and report:
 
 ```bash
 review_dir="$(mktemp -d)"
-python3 scripts/build_mapping.py \
+python3 models-mapping/scripts/build_mapping.py \
   --model-decisions config/model-decisions.json \
   --output "$review_dir/models.csv" \
   --report-output "$review_dir/report.json" \

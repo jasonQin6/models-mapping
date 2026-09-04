@@ -1,65 +1,34 @@
 # Repository Guidelines
 
-用中文回复用户。
+用中文回复用户。本仓约束分置四处，各有唯一职责；本文件常驻，其余按需披露。
 
-## Architecture
+系统分四层：采集（watch-pipeline）→ 变换（models-mapping）→ 确认（用户）→ 写入（axonhub-admin）。每层只做自己的事；归属细节见 `README.md`。
 
-This repository separates source collection from confirmed AxonHub writes:
+## 何时读什么
 
-- `scripts/watch_go.py` owns `data/go.json`.
-- `scripts/watch_arena.py` owns `data/arena.json`.
-- `opencode-axonhub-sync` owns the normalized provider snapshot in
-  `data/models.json` and AxonHub catalog reconciliation.
-- `scripts/build_mapping.py` is the only writer of `models.csv`.
-- `models-mapping` reviews the generated mapping and, after explicit user
-  confirmation, applies one `type=model` association per fixed request model.
-- `axonhub-config` retains generic channel administration.
+- 术语、映射判断、门禁分级 → [`CONTEXT.md`](CONTEXT.md)
+- 数据归属、流程、skills 分工、产物表 → [`README.md`](README.md)
+- 凭据、workflow 安全、AxonHub 写入、事件响应 → [`SECURITY.md`](SECURITY.md)
+- 改变拥有或写入边界 → [`docs/adr/`](docs/adr)（当前 0005、0006），再改本文
 
-Read `CONTEXT.md` for canonical terminology and
-`docs/adr/0005-three-source-mapping-and-confirmed-axonhub-writes.md` before
-changing an ownership boundary.
-
-## Generated Contracts
-
-- `data/models.json`, `data/go.json`, and `data/arena.json` use
-  `schema_version: 1` envelopes.
-- `config/request-models.json` is the maintained fixed request-model set.
-- `config/model-decisions.json` owns managed scope and reviewed human decisions.
-- `models.csv` is generated and has exactly:
-  `model_id,role,arena_score,rp5h,mapping`.
-
-Do not hand-edit `models.csv` or make a source watcher write another source's
-artifact.
-
-## Commands
+## 命令
 
 ```bash
-python3 scripts/watch_go.py --output data/go.json
-python3 scripts/watch_arena.py --output data/arena.json
-python3 scripts/build_mapping.py --model-decisions config/model-decisions.json --fail-on-errors
+python3 models-mapping/scripts/build_mapping.py --model-decisions config/model-decisions.json --fail-on-errors
 python3 -m pytest -q
-python3 -m pytest -q axonhub-config/tests opencode-axonhub-sync/tests
 ```
 
-Validate changed skills with:
+采集脚本由 `watch-pipeline` skill 维护并经 watch-pipeline.yml 执行；本地运行 watch_* 仅作调试，产物仍归对应渠道。skill 校验见各自 `SKILL.md`。
 
-```bash
-python3 /Users/jason/.codex/skills/.system/skill-creator/scripts/quick_validate.py models-mapping
-python3 /Users/jason/.codex/skills/.system/skill-creator/scripts/quick_validate.py opencode-axonhub-sync
-```
+## 约束
 
-## Coding and Safety
+- Python 3.12+，只用标准库；公开函数带类型注解。
+- 保持 `all_models.json` 与 `opencode-go-models.json` 的源标识符精确一致；仅 Arena 允许使用文档化的 fallback 链。
+- 外部抓取只发生在 watch-pipeline；models-mapping 只消费仓库内快照做变换；AxonHub 写入只由 axonhub-admin 执行。
+- 保留无关的脏工作区改动；不手工编辑生成物。
+- 凭据与写入门禁以 `SECURITY.md` 为准；门禁分级以 `CONTEXT.md` 为准。
 
-- Python 3.12+, standard library only, type hints on public signatures.
-- Preserve source IDs exactly between `models.json` and `go.json`; Arena alone
-  may use the documented fallback chain.
-- Cache/go one-sided models are excluded. Missing mapping-critical RP5H is
-  decision-required; invalid schemas/protocols/scope or request evidence are blocking.
-- Run AxonHub mutations only from a reviewed plan after explicit confirmation.
-- Never print or commit JWTs, API keys, SQLite secrets, or token-bearing plans.
-- Preserve unrelated dirty-worktree changes.
-
-## Project Metadata
+## 项目元数据
 
 - Issues: `docs/agents/issue-tracker.md`
 - Triage labels: `docs/agents/triage-labels.md`
