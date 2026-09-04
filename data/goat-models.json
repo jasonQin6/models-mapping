@@ -1,0 +1,2700 @@
+{
+  "commandcode-goat": {
+    "id": "commandcode-goat",
+    "name": "Command Code GOAT",
+    "api": "https://api.commandcode.ai",
+    "npm": "@ai-sdk/openai-compatible",
+    "env": [
+      "COMMANDCODE_API_KEY"
+    ],
+    "doc": "https://commandcode.ai/docs/plans/goat",
+    "models": {
+      "deepseek-v4-flash": {
+        "id": "deepseek-v4-flash",
+        "name": "DeepSeek V4 Flash (latest)",
+        "description": "Fast DeepSeek V4 lane for economical reasoning, coding, and long-context work",
+        "family": "deepseek-flash",
+        "attachment": false,
+        "reasoning": true,
+        "tool_call": true,
+        "structured_output": true,
+        "temperature": true,
+        "knowledge": "2025-05",
+        "release_date": "2026-04-24",
+        "last_updated": "2026-04-24",
+        "modalities": {
+          "input": [
+            "text"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": true,
+        "limit": {
+          "context": 1000000,
+          "output": 384000
+        },
+        "weights": [
+          {
+            "label": "Hugging Face",
+            "url": "https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash"
+          }
+        ],
+        "benchmarks": [
+          {
+            "name": "SWE-Bench Verified",
+            "score": 79,
+            "metric": "resolved",
+            "source": "https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash"
+          }
+        ],
+        "cost": {
+          "input": 0.22,
+          "output": 0.66,
+          "cache_read": 0.007
+        },
+        "extra": {
+          "rp5h": 18200,
+          "retention": null,
+          "intelligence": "52",
+          "note": "官方评分",
+          "tok_s": 129
+        }
+      },
+      "deepseek-v4-flash-vision-exp": {
+        "id": "deepseek-v4-flash-vision-exp",
+        "name": "DeepSeek V4 Flash Vision (exp)",
+        "description": "Experimental multimodal DeepSeek V4 Flash model for image understanding, coding, and agentic work",
+        "family": "deepseek-flash",
+        "attachment": true,
+        "reasoning": true,
+        "tool_call": true,
+        "structured_output": true,
+        "temperature": true,
+        "release_date": "2026-08-21",
+        "last_updated": "2026-08-21",
+        "modalities": {
+          "input": [
+            "text",
+            "image"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": false,
+        "limit": {
+          "context": 1000000,
+          "output": 384000
+        },
+        "cost": {
+          "input": 0.22,
+          "output": 0.66,
+          "cache_read": 0.007
+        },
+        "extra": {
+          "rp5h": 6080,
+          "retention": null,
+          "intelligence": "52*",
+          "note": "继承自 DeepSeek V4 Flash (latest)（not yet scored）",
+          "tok_s": null
+        }
+      },
+      "deepseek-v4-pro": {
+        "id": "deepseek-v4-pro",
+        "name": "DeepSeek V4 Pro (latest)",
+        "description": "Open MoE flagship with million-token context for coding and long agent runs",
+        "family": "deepseek-thinking",
+        "attachment": false,
+        "reasoning": true,
+        "tool_call": true,
+        "structured_output": true,
+        "temperature": true,
+        "knowledge": "2025-05",
+        "release_date": "2026-04-24",
+        "last_updated": "2026-04-24",
+        "modalities": {
+          "input": [
+            "text"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": true,
+        "limit": {
+          "context": 1000000,
+          "output": 384000
+        },
+        "weights": [
+          {
+            "label": "Hugging Face",
+            "url": "https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro"
+          }
+        ],
+        "benchmarks": [
+          {
+            "name": "SWE-Bench Verified",
+            "score": 80.6,
+            "metric": "resolved",
+            "source": "https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro"
+          },
+          {
+            "name": "Artificial Analysis Coding Agent Index",
+            "score": 50.1,
+            "metric": "average pass@1",
+            "harness": "Claude Code",
+            "variant": "high",
+            "source": "https://artificialanalysis.ai/agents/coding-agents"
+          },
+          {
+            "name": "SWE-Atlas Codebase QnA",
+            "score": 67.8,
+            "metric": "pass@1",
+            "harness": "Claude Code",
+            "variant": "high",
+            "source": "https://artificialanalysis.ai/agents/coding-agents"
+          },
+          {
+            "name": "SWE-Bench Pro",
+            "score": 18,
+            "metric": "pass@1",
+            "harness": "Claude Code",
+            "variant": "high",
+            "dataset": "hard-aa",
+            "source": "https://artificialanalysis.ai/agents/coding-agents"
+          },
+          {
+            "name": "Terminal-Bench",
+            "score": 64.7,
+            "metric": "pass@1",
+            "harness": "Claude Code",
+            "variant": "high",
+            "version": "2.1",
+            "source": "https://artificialanalysis.ai/agents/coding-agents"
+          }
+        ],
+        "cost": {
+          "input": 0.66,
+          "output": 1.98,
+          "cache_read": 0.022
+        },
+        "extra": {
+          "rp5h": 1980,
+          "retention": null,
+          "intelligence": "53.2",
+          "note": "官方评分",
+          "tok_s": 61
+        }
+      },
+      "gemini-3.7-flash": {
+        "id": "gemini-3.7-flash",
+        "name": "Gemini 3.7 Flash",
+        "description": "High-efficiency Gemini model for agentic workflows, coding, and multimodal reasoning",
+        "family": "gemini-flash",
+        "attachment": true,
+        "reasoning": true,
+        "tool_call": true,
+        "structured_output": true,
+        "temperature": true,
+        "knowledge": "2026-03",
+        "release_date": "2026-08-13",
+        "last_updated": "2026-08-13",
+        "modalities": {
+          "input": [
+            "text",
+            "image",
+            "video",
+            "audio",
+            "pdf"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": false,
+        "limit": {
+          "context": 1048576,
+          "output": 65536
+        },
+        "benchmarks": [
+          {
+            "name": "FrontierCode",
+            "score": 43.6,
+            "metric": "score",
+            "version": "1.1 Main",
+            "source": "https://deepmind.google/models/model-cards/gemini-3-7-flash/",
+            "date": "2026-08-13"
+          },
+          {
+            "name": "DeepSWE",
+            "score": 65.3,
+            "metric": "resolve rate",
+            "version": "1.1",
+            "source": "https://deepmind.google/models/model-cards/gemini-3-7-flash/",
+            "date": "2026-08-13"
+          },
+          {
+            "name": "Terminal-Bench",
+            "score": 85.8,
+            "metric": "accuracy",
+            "version": "2.1",
+            "source": "https://deepmind.google/models/model-cards/gemini-3-7-flash/",
+            "date": "2026-08-13"
+          },
+          {
+            "name": "AutomationBench",
+            "score": 30.4,
+            "metric": "accuracy",
+            "dataset": "private set",
+            "source": "https://deepmind.google/models/model-cards/gemini-3-7-flash/",
+            "date": "2026-08-13"
+          },
+          {
+            "name": "GDP.pdf",
+            "score": 34,
+            "metric": "accuracy",
+            "source": "https://deepmind.google/models/model-cards/gemini-3-7-flash/",
+            "date": "2026-08-13"
+          },
+          {
+            "name": "GDM-MRCR",
+            "score": 97,
+            "metric": "accuracy",
+            "variant": "128k average, 8-needle",
+            "version": "v2",
+            "source": "https://deepmind.google/models/model-cards/gemini-3-7-flash/",
+            "date": "2026-08-13"
+          }
+        ],
+        "cost": {
+          "input": 1.5,
+          "output": 7.5,
+          "cache_read": 0.15,
+          "cache_write": 0.08334
+        },
+        "extra": {
+          "rp5h": 784,
+          "retention": 40.0,
+          "intelligence": "56.0",
+          "note": "官方评分",
+          "tok_s": 366
+        }
+      },
+      "gemini-3.8-flash": {
+        "id": "gemini-3.8-flash",
+        "name": "Gemini 3.8 Flash",
+        "description": "Google's most intelligent Flash model, engineered for long-horizon software engineering, autonomous agents, and complex enterprise workflows",
+        "family": "gemini-flash",
+        "attachment": true,
+        "reasoning": true,
+        "tool_call": true,
+        "structured_output": true,
+        "temperature": true,
+        "release_date": "2026-09-02",
+        "last_updated": "2026-09-02",
+        "modalities": {
+          "input": [
+            "text",
+            "image",
+            "video",
+            "audio",
+            "pdf"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": false,
+        "limit": {
+          "context": 1048576,
+          "output": 65536
+        },
+        "cost": {
+          "input": 1.5,
+          "output": 7.5,
+          "cache_read": 0.15
+        },
+        "extra": {
+          "rp5h": 784,
+          "retention": 40.0,
+          "intelligence": "56.0*",
+          "note": "继承自 Gemini 3.7 Flash（not yet scored）",
+          "tok_s": null
+        }
+      },
+      "glm-5": {
+        "id": "glm-5",
+        "name": "GLM-5",
+        "description": "General GLM flagship for coding, analysis, and tool-heavy engineering workflows",
+        "family": "glm",
+        "attachment": false,
+        "reasoning": true,
+        "tool_call": true,
+        "temperature": true,
+        "release_date": "2026-02-12",
+        "last_updated": "2026-02-12",
+        "modalities": {
+          "input": [
+            "text"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": true,
+        "limit": {
+          "context": 204800,
+          "output": 131072
+        },
+        "weights": [
+          {
+            "label": "Hugging Face",
+            "url": "https://huggingface.co/zai-org/GLM-5"
+          }
+        ],
+        "benchmarks": [
+          {
+            "name": "SWE-Bench Verified",
+            "score": 72.8,
+            "metric": "resolved",
+            "source": "https://www.swebench.com/"
+          },
+          {
+            "name": "SWE-Atlas Codebase QnA",
+            "score": 20.5,
+            "metric": "score",
+            "harness": "Mini-SWE-Agent",
+            "source": "https://labs.scale.com/leaderboard/sweatlas-qna"
+          },
+          {
+            "name": "SWE-Atlas Refactoring",
+            "score": 24.24,
+            "metric": "score",
+            "harness": "Mini-SWE-Agent",
+            "source": "https://labs.scale.com/leaderboard/sweatlas-refactoring"
+          },
+          {
+            "name": "SWE-Atlas Test Writing",
+            "score": 28.74,
+            "metric": "score",
+            "harness": "Mini-SWE-Agent",
+            "source": "https://labs.scale.com/leaderboard/sweatlas-tw"
+          }
+        ],
+        "cost": {
+          "input": 1.0,
+          "output": 3.2,
+          "cache_read": 0.2
+        },
+        "extra": {
+          "rp5h": null,
+          "retention": null,
+          "intelligence": "40.6",
+          "note": "官方评分",
+          "tok_s": null
+        }
+      },
+      "glm-5.1": {
+        "id": "glm-5.1",
+        "name": "GLM-5.1",
+        "description": "Strong GLM coding model for agentic engineering, terminals, and repository generation",
+        "family": "glm",
+        "attachment": false,
+        "reasoning": true,
+        "tool_call": true,
+        "structured_output": true,
+        "temperature": true,
+        "release_date": "2026-04-07",
+        "last_updated": "2026-04-07",
+        "modalities": {
+          "input": [
+            "text"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": true,
+        "limit": {
+          "context": 200000,
+          "output": 131072
+        },
+        "weights": [
+          {
+            "label": "Hugging Face",
+            "url": "https://huggingface.co/zai-org/GLM-5.1"
+          }
+        ],
+        "benchmarks": [
+          {
+            "name": "Artificial Analysis Coding Agent Index",
+            "score": 52.7,
+            "metric": "average pass@1",
+            "harness": "Claude Code",
+            "source": "https://artificialanalysis.ai/agents/coding-agents"
+          },
+          {
+            "name": "SWE-Atlas Codebase QnA",
+            "score": 73.2,
+            "metric": "pass@1",
+            "harness": "Claude Code",
+            "source": "https://artificialanalysis.ai/agents/coding-agents"
+          },
+          {
+            "name": "SWE-Bench Pro",
+            "score": 19.8,
+            "metric": "pass@1",
+            "harness": "Claude Code",
+            "dataset": "hard-aa",
+            "source": "https://artificialanalysis.ai/agents/coding-agents"
+          },
+          {
+            "name": "Terminal-Bench",
+            "score": 65.1,
+            "metric": "pass@1",
+            "harness": "Claude Code",
+            "version": "2.1",
+            "source": "https://artificialanalysis.ai/agents/coding-agents"
+          }
+        ],
+        "cost": {
+          "input": 1.4,
+          "output": 4.4,
+          "cache_read": 0.26
+        },
+        "extra": {
+          "rp5h": null,
+          "retention": null,
+          "intelligence": "41.0",
+          "note": "官方评分",
+          "tok_s": null
+        }
+      },
+      "glm-5.2": {
+        "id": "glm-5.2",
+        "name": "GLM-5.2",
+        "description": "Open flagship GLM for long-horizon coding agents and million-token context work",
+        "family": "glm",
+        "attachment": false,
+        "reasoning": true,
+        "tool_call": true,
+        "structured_output": true,
+        "temperature": true,
+        "release_date": "2026-06-13",
+        "last_updated": "2026-06-13",
+        "modalities": {
+          "input": [
+            "text"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": true,
+        "limit": {
+          "context": 1000000,
+          "output": 131072
+        },
+        "weights": [
+          {
+            "label": "Hugging Face",
+            "url": "https://huggingface.co/zai-org/GLM-5.2"
+          }
+        ],
+        "benchmarks": [
+          {
+            "name": "SWE-Bench Pro",
+            "score": 62.1,
+            "metric": "resolve rate",
+            "source": "https://z.ai/blog/glm-5.2",
+            "date": "2026-06-16"
+          },
+          {
+            "name": "Terminal-Bench",
+            "score": 82.7,
+            "metric": "success rate",
+            "harness": "Claude Code",
+            "version": "2.1",
+            "source": "https://z.ai/blog/glm-5.2",
+            "date": "2026-06-16"
+          },
+          {
+            "name": "FrontierSWE",
+            "score": 74.4,
+            "metric": "dominance",
+            "source": "https://z.ai/blog/glm-5.2",
+            "date": "2026-06-16"
+          },
+          {
+            "name": "Humanity's Last Exam",
+            "score": 40.5,
+            "metric": "accuracy",
+            "dataset": "text-only subset",
+            "source": "https://z.ai/blog/glm-5.2",
+            "date": "2026-06-16"
+          },
+          {
+            "name": "Humanity's Last Exam",
+            "score": 54.7,
+            "metric": "accuracy",
+            "variant": "with tools",
+            "dataset": "text-only subset",
+            "source": "https://z.ai/blog/glm-5.2",
+            "date": "2026-06-16"
+          },
+          {
+            "name": "CritPt",
+            "score": 20.9,
+            "metric": "accuracy",
+            "source": "https://z.ai/blog/glm-5.2",
+            "date": "2026-06-16"
+          },
+          {
+            "name": "AIME",
+            "score": 99.2,
+            "metric": "accuracy",
+            "version": "2026",
+            "source": "https://z.ai/blog/glm-5.2",
+            "date": "2026-06-16"
+          },
+          {
+            "name": "HMMT",
+            "score": 94.4,
+            "metric": "accuracy",
+            "version": "November 2025",
+            "source": "https://z.ai/blog/glm-5.2",
+            "date": "2026-06-16"
+          },
+          {
+            "name": "HMMT",
+            "score": 92.5,
+            "metric": "accuracy",
+            "version": "February 2026",
+            "source": "https://z.ai/blog/glm-5.2",
+            "date": "2026-06-16"
+          },
+          {
+            "name": "IMOAnswerBench",
+            "score": 91,
+            "metric": "accuracy",
+            "source": "https://z.ai/blog/glm-5.2",
+            "date": "2026-06-16"
+          },
+          {
+            "name": "GPQA Diamond",
+            "score": 91.2,
+            "metric": "accuracy",
+            "source": "https://z.ai/blog/glm-5.2",
+            "date": "2026-06-16"
+          },
+          {
+            "name": "NL2Repo",
+            "score": 48.9,
+            "metric": "resolve rate",
+            "source": "https://z.ai/blog/glm-5.2",
+            "date": "2026-06-16"
+          },
+          {
+            "name": "DeepSWE",
+            "score": 46.2,
+            "metric": "resolve rate",
+            "source": "https://z.ai/blog/glm-5.2",
+            "date": "2026-06-16"
+          },
+          {
+            "name": "Program Bench",
+            "score": 63.7,
+            "metric": "score",
+            "source": "https://z.ai/blog/glm-5.2",
+            "date": "2026-06-16"
+          },
+          {
+            "name": "Terminal-Bench",
+            "score": 81,
+            "metric": "success rate",
+            "harness": "Terminus 2",
+            "version": "2.1",
+            "source": "https://z.ai/blog/glm-5.2",
+            "date": "2026-06-16"
+          },
+          {
+            "name": "PostTrainBench",
+            "score": 34.3,
+            "metric": "score",
+            "source": "https://z.ai/blog/glm-5.2",
+            "date": "2026-06-16"
+          },
+          {
+            "name": "SWE Marathon",
+            "score": 13,
+            "metric": "resolve rate",
+            "source": "https://z.ai/blog/glm-5.2",
+            "date": "2026-06-16"
+          },
+          {
+            "name": "MCP Atlas",
+            "score": 76.8,
+            "metric": "score",
+            "dataset": "public subset",
+            "source": "https://z.ai/blog/glm-5.2",
+            "date": "2026-06-16"
+          },
+          {
+            "name": "Tool-Decathlon",
+            "score": 48.2,
+            "metric": "score",
+            "source": "https://z.ai/blog/glm-5.2",
+            "date": "2026-06-16"
+          }
+        ],
+        "cost": {
+          "input": 1.4,
+          "output": 4.4,
+          "cache_read": 0.26
+        },
+        "extra": {
+          "rp5h": 947,
+          "retention": 70.0,
+          "intelligence": "52.6",
+          "note": "官方评分",
+          "tok_s": 69
+        }
+      },
+      "glm-5.3": {
+        "id": "glm-5.3",
+        "name": "GLM-5.3",
+        "description": "Flagship GLM model for long-horizon coding, agents, and complex project delivery",
+        "family": "glm",
+        "attachment": false,
+        "reasoning": true,
+        "tool_call": true,
+        "structured_output": true,
+        "temperature": true,
+        "release_date": "2026-08-14",
+        "last_updated": "2026-08-14",
+        "modalities": {
+          "input": [
+            "text"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": true,
+        "limit": {
+          "context": 1000000,
+          "output": 131072
+        },
+        "cost": {
+          "input": 1.4,
+          "output": 4.4,
+          "cache_read": 0.26
+        },
+        "extra": {
+          "rp5h": 271,
+          "retention": 20.0,
+          "intelligence": "59.5",
+          "note": "官方评分",
+          "tok_s": 81
+        }
+      },
+      "glm-5.3-flash": {
+        "id": "glm-5.3-flash",
+        "name": "GLM-5.3 Flash",
+        "description": "Native multimodal GLM model for efficient coding and long-horizon agent tasks",
+        "family": "glm",
+        "attachment": true,
+        "reasoning": true,
+        "tool_call": true,
+        "structured_output": true,
+        "temperature": true,
+        "release_date": "2026-08-26",
+        "last_updated": "2026-08-26",
+        "modalities": {
+          "input": [
+            "text",
+            "image",
+            "video",
+            "pdf"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": false,
+        "limit": {
+          "context": 1000000,
+          "output": 131072
+        },
+        "cost": {
+          "input": 0.15,
+          "output": 0.5,
+          "cache_read": 0.03
+        },
+        "extra": {
+          "rp5h": 4720,
+          "retention": 40.0,
+          "intelligence": "57.5",
+          "note": "官方评分",
+          "tok_s": 42
+        }
+      },
+      "gpt-5.6-luna": {
+        "id": "gpt-5.6-luna",
+        "name": "GPT-5.6 Luna",
+        "description": "Cost-efficient GPT-5.6 model for fast, high-volume workloads",
+        "family": "gpt-luna",
+        "attachment": true,
+        "reasoning": true,
+        "tool_call": true,
+        "structured_output": true,
+        "temperature": false,
+        "knowledge": "2026-02-16",
+        "release_date": "2026-07-09",
+        "last_updated": "2026-07-09",
+        "modalities": {
+          "input": [
+            "text",
+            "image",
+            "pdf"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": false,
+        "limit": {
+          "context": 1050000,
+          "input": 922000,
+          "output": 128000
+        },
+        "benchmarks": [
+          {
+            "name": "SWE-Bench Pro",
+            "score": 62.7,
+            "metric": "resolve rate",
+            "source": "https://openai.com/index/gpt-5-6/",
+            "date": "2026-07-09"
+          },
+          {
+            "name": "Terminal-Bench",
+            "score": 84.7,
+            "metric": "success rate",
+            "version": "2.1",
+            "source": "https://openai.com/index/gpt-5-6/",
+            "date": "2026-07-09"
+          },
+          {
+            "name": "DeepSWE",
+            "score": 67.2,
+            "metric": "resolve rate",
+            "version": "1.1",
+            "source": "https://openai.com/index/gpt-5-6/",
+            "date": "2026-07-09"
+          },
+          {
+            "name": "GPQA Diamond",
+            "score": 92.3,
+            "metric": "accuracy",
+            "source": "https://openai.com/index/gpt-5-6/",
+            "date": "2026-07-09"
+          },
+          {
+            "name": "FrontierMath",
+            "score": 78.6,
+            "metric": "accuracy",
+            "dataset": "Tier 1-3",
+            "version": "v2",
+            "source": "https://openai.com/index/gpt-5-6/",
+            "date": "2026-07-09"
+          },
+          {
+            "name": "BrowseComp",
+            "score": 83.3,
+            "metric": "accuracy",
+            "source": "https://openai.com/index/gpt-5-6/",
+            "date": "2026-07-09"
+          },
+          {
+            "name": "OSWorld",
+            "score": 45.6,
+            "metric": "success rate",
+            "version": "2.0",
+            "source": "https://openai.com/index/gpt-5-6/",
+            "date": "2026-07-09"
+          },
+          {
+            "name": "MMMU Pro",
+            "score": 78.4,
+            "metric": "accuracy",
+            "variant": "no tools",
+            "source": "https://openai.com/index/gpt-5-6/",
+            "date": "2026-07-09"
+          },
+          {
+            "name": "Agents' Last Exam",
+            "score": 50.3,
+            "source": "https://openai.com/index/gpt-5-6/",
+            "date": "2026-07-09"
+          },
+          {
+            "name": "Toolathlon",
+            "score": 53.4,
+            "metric": "success rate",
+            "source": "https://openai.com/index/gpt-5-6/",
+            "date": "2026-07-09"
+          },
+          {
+            "name": "Artificial Analysis Intelligence Index",
+            "score": 51.2,
+            "metric": "index score",
+            "variant": "max",
+            "version": "4.1",
+            "source": "https://artificialanalysis.ai/articles/gpt-5-6-has-landed",
+            "date": "2026-07-09"
+          },
+          {
+            "name": "Artificial Analysis Coding Agent Index",
+            "score": 74.6,
+            "metric": "index score",
+            "harness": "Codex",
+            "variant": "max",
+            "version": "1.1",
+            "source": "https://artificialanalysis.ai/articles/gpt-5-6-has-landed",
+            "date": "2026-07-09"
+          }
+        ],
+        "cost": {
+          "input": 0.2,
+          "output": 1.2,
+          "cache_read": 0.02,
+          "cache_write": 0.25
+        },
+        "extra": {
+          "rp5h": 2960,
+          "retention": null,
+          "intelligence": "52.3",
+          "note": "官方评分",
+          "tok_s": 124
+        }
+      },
+      "gpt-5.6-sol": {
+        "id": "gpt-5.6-sol",
+        "name": "GPT-5.6 Sol",
+        "description": "Frontier GPT-5.6 model for complex professional work, coding, and agentic workflows",
+        "family": "gpt-sol",
+        "attachment": true,
+        "reasoning": true,
+        "tool_call": true,
+        "structured_output": true,
+        "temperature": false,
+        "knowledge": "2026-02-16",
+        "release_date": "2026-07-09",
+        "last_updated": "2026-07-09",
+        "modalities": {
+          "input": [
+            "text",
+            "image",
+            "pdf"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": false,
+        "limit": {
+          "context": 1050000,
+          "input": 922000,
+          "output": 128000
+        },
+        "benchmarks": [
+          {
+            "name": "SWE-Bench Pro",
+            "score": 64.6,
+            "metric": "resolve rate",
+            "source": "https://openai.com/index/gpt-5-6/",
+            "date": "2026-07-09"
+          },
+          {
+            "name": "Terminal-Bench",
+            "score": 88.8,
+            "metric": "success rate",
+            "version": "2.1",
+            "source": "https://openai.com/index/gpt-5-6/",
+            "date": "2026-07-09"
+          },
+          {
+            "name": "DeepSWE",
+            "score": 72.7,
+            "metric": "resolve rate",
+            "version": "1.1",
+            "source": "https://openai.com/index/gpt-5-6/",
+            "date": "2026-07-09"
+          },
+          {
+            "name": "GPQA Diamond",
+            "score": 94.6,
+            "metric": "accuracy",
+            "source": "https://openai.com/index/gpt-5-6/",
+            "date": "2026-07-09"
+          },
+          {
+            "name": "FrontierMath",
+            "score": 89,
+            "metric": "accuracy",
+            "dataset": "Tier 1-3",
+            "version": "v2",
+            "source": "https://openai.com/index/gpt-5-6/",
+            "date": "2026-07-09"
+          },
+          {
+            "name": "BrowseComp",
+            "score": 90.4,
+            "metric": "accuracy",
+            "source": "https://openai.com/index/gpt-5-6/",
+            "date": "2026-07-09"
+          },
+          {
+            "name": "OSWorld",
+            "score": 62.6,
+            "metric": "success rate",
+            "version": "2.0",
+            "source": "https://openai.com/index/gpt-5-6/",
+            "date": "2026-07-09"
+          },
+          {
+            "name": "MMMU Pro",
+            "score": 83,
+            "metric": "accuracy",
+            "variant": "no tools",
+            "source": "https://openai.com/index/gpt-5-6/",
+            "date": "2026-07-09"
+          },
+          {
+            "name": "Agents' Last Exam",
+            "score": 52.7,
+            "source": "https://openai.com/index/gpt-5-6/",
+            "date": "2026-07-09"
+          },
+          {
+            "name": "Toolathlon",
+            "score": 58,
+            "metric": "success rate",
+            "source": "https://openai.com/index/gpt-5-6/",
+            "date": "2026-07-09"
+          },
+          {
+            "name": "Artificial Analysis Intelligence Index",
+            "score": 58.9,
+            "metric": "index score",
+            "variant": "max",
+            "version": "4.1",
+            "source": "https://artificialanalysis.ai/articles/gpt-5-6-has-landed",
+            "date": "2026-07-09"
+          },
+          {
+            "name": "Artificial Analysis Coding Agent Index",
+            "score": 80,
+            "metric": "index score",
+            "harness": "Codex",
+            "variant": "max",
+            "version": "1.1",
+            "source": "https://artificialanalysis.ai/articles/gpt-5-6-has-landed",
+            "date": "2026-07-09"
+          }
+        ],
+        "cost": {
+          "input": 5.0,
+          "output": 30.0,
+          "cache_read": 0.5,
+          "cache_write": 6.25
+        },
+        "extra": {
+          "rp5h": 414,
+          "retention": null,
+          "intelligence": "60.9",
+          "note": "官方评分",
+          "tok_s": 70
+        }
+      },
+      "grok-4.5": {
+        "id": "grok-4.5",
+        "name": "Grok 4.5",
+        "description": "xAI's Grok model for chat, coding, agentic tools, and lower hallucination risk",
+        "family": "grok",
+        "attachment": true,
+        "reasoning": true,
+        "tool_call": true,
+        "structured_output": true,
+        "temperature": true,
+        "release_date": "2026-07-08",
+        "last_updated": "2026-07-08",
+        "modalities": {
+          "input": [
+            "text",
+            "image"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": false,
+        "limit": {
+          "context": 500000,
+          "output": 500000
+        },
+        "benchmarks": [
+          {
+            "name": "SWE-Bench Pro",
+            "score": 64.7,
+            "metric": "resolve rate",
+            "source": "https://x.ai/news/grok-4-5",
+            "date": "2026-07-08"
+          },
+          {
+            "name": "SWE-Bench Multilingual",
+            "score": 78,
+            "metric": "resolve rate",
+            "source": "https://x.ai/news/grok-4-5",
+            "date": "2026-07-08"
+          },
+          {
+            "name": "Terminal-Bench",
+            "score": 83.3,
+            "metric": "success rate",
+            "version": "2.1",
+            "source": "https://x.ai/news/grok-4-5",
+            "date": "2026-07-08"
+          },
+          {
+            "name": "DeepSWE",
+            "score": 62,
+            "metric": "resolve rate",
+            "version": "1.0",
+            "source": "https://x.ai/news/grok-4-5",
+            "date": "2026-07-08"
+          },
+          {
+            "name": "DeepSWE",
+            "score": 53,
+            "metric": "resolve rate",
+            "harness": "mini-swe-agent",
+            "version": "1.1",
+            "source": "https://x.ai/news/grok-4-5",
+            "date": "2026-07-08"
+          },
+          {
+            "name": "SWE Marathon",
+            "score": 29,
+            "metric": "pass@1",
+            "source": "https://x.ai/news/grok-4-5",
+            "date": "2026-07-08"
+          }
+        ],
+        "cost": {
+          "input": 2.0,
+          "output": 6.0,
+          "cache_read": 0.5
+        },
+        "extra": {
+          "rp5h": 144,
+          "retention": 20.0,
+          "intelligence": "55.8",
+          "note": "官方评分",
+          "tok_s": 49
+        }
+      },
+      "grok-4.6": {
+        "id": "grok-4.6",
+        "name": "Grok 4.6",
+        "description": "xAI's frontier model for long-running agents, coding, knowledge work, and visual projects",
+        "family": "grok",
+        "attachment": true,
+        "reasoning": true,
+        "tool_call": true,
+        "structured_output": true,
+        "temperature": true,
+        "knowledge": "2026-02-01",
+        "release_date": "2026-08-12",
+        "last_updated": "2026-08-12",
+        "modalities": {
+          "input": [
+            "text",
+            "image"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": false,
+        "limit": {
+          "context": 500000,
+          "output": 500000
+        },
+        "cost": {
+          "input": 2.0,
+          "output": 6.0,
+          "cache_read": 0.5
+        },
+        "extra": {
+          "rp5h": 144,
+          "retention": null,
+          "intelligence": "60.9",
+          "note": "官方评分",
+          "tok_s": 61
+        }
+      },
+      "hy4-preview": {
+        "id": "hy4-preview",
+        "name": "Tencent Hy4 Preview",
+        "description": "A next-generation productivity model with significantly enhanced Agent and complex task execution capabilities.",
+        "family": "Hy",
+        "attachment": false,
+        "reasoning": true,
+        "tool_call": true,
+        "temperature": true,
+        "release_date": "2026-08-28",
+        "last_updated": "2026-08-28",
+        "modalities": {
+          "input": [
+            "text"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": true,
+        "limit": {
+          "context": 1024000,
+          "output": 64000
+        },
+        "cost": {
+          "input": 0.834,
+          "output": 2.501,
+          "cache_read": 0.042
+        },
+        "extra": {
+          "rp5h": 1220,
+          "retention": 20.0,
+          "intelligence": "50",
+          "note": "无前代分数，默认赋 50",
+          "tok_s": null
+        }
+      },
+      "inkling": {
+        "id": "inkling",
+        "name": "Inkling",
+        "description": "Multimodal MoE reasoning model (975B total, 41B active) for text, image, and audio",
+        "family": "ling",
+        "attachment": true,
+        "reasoning": true,
+        "tool_call": true,
+        "temperature": true,
+        "release_date": "2026-07-15",
+        "last_updated": "2026-07-15",
+        "modalities": {
+          "input": [
+            "text",
+            "image",
+            "audio"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": true,
+        "limit": {
+          "context": 1048576,
+          "output": 1048576
+        },
+        "license": "Apache-2.0",
+        "weights": [
+          {
+            "label": "Hugging Face",
+            "url": "https://huggingface.co/thinkingmachines/Inkling"
+          }
+        ],
+        "cost": {
+          "input": 1.0,
+          "output": 4.05,
+          "cache_read": 0.17
+        },
+        "extra": {
+          "rp5h": 396,
+          "retention": 20.0,
+          "intelligence": "42.3",
+          "note": "官方评分",
+          "tok_s": 51
+        }
+      },
+      "inkling-small": {
+        "id": "inkling-small",
+        "name": "Inkling Small",
+        "description": "Multimodal MoE reasoning model (276B total, 12B active) for text, image, and audio",
+        "family": "ling",
+        "attachment": true,
+        "reasoning": true,
+        "tool_call": true,
+        "temperature": true,
+        "release_date": "2026-07-30",
+        "last_updated": "2026-07-30",
+        "modalities": {
+          "input": [
+            "text",
+            "image",
+            "audio"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": true,
+        "limit": {
+          "context": 1048576,
+          "output": 1048576
+        },
+        "license": "Apache-2.0",
+        "weights": [
+          {
+            "label": "Hugging Face",
+            "url": "https://huggingface.co/thinkingmachines/Inkling-Small"
+          }
+        ],
+        "cost": {
+          "input": 0.5,
+          "output": 1.2,
+          "cache_read": 0.1
+        },
+        "extra": {
+          "rp5h": 709,
+          "retention": 20.0,
+          "intelligence": "41.2",
+          "note": "官方评分",
+          "tok_s": 116
+        }
+      },
+      "kimi-k2.5": {
+        "id": "kimi-k2.5",
+        "name": "Kimi K2.5",
+        "description": "Earlier Kimi frontier model for long-context agents, coding, and multimodal work",
+        "family": "kimi-k2",
+        "attachment": true,
+        "reasoning": true,
+        "tool_call": true,
+        "structured_output": true,
+        "temperature": false,
+        "knowledge": "2025-01",
+        "release_date": "2026-01",
+        "last_updated": "2026-01",
+        "modalities": {
+          "input": [
+            "text",
+            "image",
+            "video"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": true,
+        "limit": {
+          "context": 262144,
+          "output": 262144
+        },
+        "weights": [
+          {
+            "label": "Hugging Face",
+            "url": "https://huggingface.co/moonshotai/Kimi-K2.5"
+          }
+        ],
+        "benchmarks": [
+          {
+            "name": "SWE-Bench Verified",
+            "score": 70.8,
+            "metric": "resolved",
+            "source": "https://www.swebench.com/"
+          },
+          {
+            "name": "SWE-Atlas Codebase QnA",
+            "score": 13.1,
+            "metric": "score",
+            "harness": "Mini-SWE-Agent",
+            "source": "https://labs.scale.com/leaderboard/sweatlas-qna"
+          },
+          {
+            "name": "SWE-Atlas Refactoring",
+            "score": 20.95,
+            "metric": "score",
+            "harness": "Mini-SWE-Agent",
+            "source": "https://labs.scale.com/leaderboard/sweatlas-refactoring"
+          },
+          {
+            "name": "SWE-Atlas Test Writing",
+            "score": 25.77,
+            "metric": "score",
+            "harness": "Mini-SWE-Agent",
+            "source": "https://labs.scale.com/leaderboard/sweatlas-tw"
+          }
+        ],
+        "cost": {
+          "input": 0.6,
+          "output": 3.0,
+          "cache_read": 0.1
+        },
+        "extra": {
+          "rp5h": null,
+          "retention": null,
+          "intelligence": "36.0",
+          "note": "官方评分",
+          "tok_s": null
+        }
+      },
+      "kimi-k2.6": {
+        "id": "kimi-k2.6",
+        "name": "Kimi K2.6",
+        "description": "Multimodal Kimi workhorse for agent loops, coding tasks, and visual context",
+        "family": "kimi-k2",
+        "attachment": true,
+        "reasoning": true,
+        "tool_call": true,
+        "structured_output": true,
+        "temperature": true,
+        "knowledge": "2025-01",
+        "release_date": "2026-04-21",
+        "last_updated": "2026-04-21",
+        "modalities": {
+          "input": [
+            "text",
+            "image",
+            "video"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": true,
+        "limit": {
+          "context": 262144,
+          "output": 262144
+        },
+        "weights": [
+          {
+            "label": "Hugging Face",
+            "url": "https://huggingface.co/moonshotai/Kimi-K2.6"
+          }
+        ],
+        "benchmarks": [
+          {
+            "name": "SWE-Bench Verified",
+            "score": 80.2,
+            "metric": "resolved",
+            "source": "https://huggingface.co/moonshotai/Kimi-K2.6"
+          },
+          {
+            "name": "Artificial Analysis Coding Agent Index",
+            "score": 50.5,
+            "metric": "average pass@1",
+            "harness": "Claude Code",
+            "source": "https://artificialanalysis.ai/agents/coding-agents"
+          },
+          {
+            "name": "SWE-Atlas Codebase QnA",
+            "score": 59.8,
+            "metric": "pass@1",
+            "harness": "Claude Code",
+            "source": "https://artificialanalysis.ai/agents/coding-agents"
+          },
+          {
+            "name": "SWE-Bench Pro",
+            "score": 27.3,
+            "metric": "pass@1",
+            "harness": "Claude Code",
+            "dataset": "hard-aa",
+            "source": "https://artificialanalysis.ai/agents/coding-agents"
+          },
+          {
+            "name": "Terminal-Bench",
+            "score": 64.3,
+            "metric": "pass@1",
+            "harness": "Claude Code",
+            "version": "2.1",
+            "source": "https://artificialanalysis.ai/agents/coding-agents"
+          }
+        ],
+        "cost": {
+          "input": 0.95,
+          "output": 4.0,
+          "cache_read": 0.16
+        },
+        "extra": {
+          "rp5h": null,
+          "retention": null,
+          "intelligence": "45.1",
+          "note": "官方评分",
+          "tok_s": null
+        }
+      },
+      "kimi-k2.7-code": {
+        "id": "kimi-k2.7-code",
+        "name": "Kimi K2.7 Code",
+        "description": "Coding-focused Kimi model, stronger on long-horizon repo work with less overthinking",
+        "family": "kimi-k2",
+        "attachment": true,
+        "reasoning": true,
+        "tool_call": true,
+        "structured_output": true,
+        "temperature": false,
+        "knowledge": "2025-01",
+        "release_date": "2026-06-12",
+        "last_updated": "2026-06-12",
+        "modalities": {
+          "input": [
+            "text",
+            "image",
+            "video"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": true,
+        "limit": {
+          "context": 262144,
+          "output": 262144
+        },
+        "weights": [
+          {
+            "label": "Hugging Face",
+            "url": "https://huggingface.co/moonshotai/Kimi-K2.7-Code"
+          }
+        ],
+        "benchmarks": [
+          {
+            "name": "Kimi Code Bench",
+            "score": 62,
+            "harness": "Kimi Code CLI",
+            "version": "v2",
+            "source": "https://huggingface.co/moonshotai/Kimi-K2.7-Code",
+            "date": "2026-06-12"
+          },
+          {
+            "name": "Program Bench",
+            "score": 53.6,
+            "harness": "Kimi Code CLI",
+            "source": "https://huggingface.co/moonshotai/Kimi-K2.7-Code",
+            "date": "2026-06-12"
+          },
+          {
+            "name": "MLS Bench Lite",
+            "score": 35.1,
+            "harness": "Kimi Code CLI",
+            "source": "https://huggingface.co/moonshotai/Kimi-K2.7-Code",
+            "date": "2026-06-12"
+          },
+          {
+            "name": "MCP Atlas",
+            "score": 76,
+            "metric": "success rate",
+            "harness": "Kimi Code CLI",
+            "source": "https://huggingface.co/moonshotai/Kimi-K2.7-Code",
+            "date": "2026-06-12"
+          },
+          {
+            "name": "MCP Mark Verified",
+            "score": 81.1,
+            "metric": "success rate",
+            "harness": "Kimi Code CLI",
+            "source": "https://huggingface.co/moonshotai/Kimi-K2.7-Code",
+            "date": "2026-06-12"
+          },
+          {
+            "name": "Kimi Claw 24/7 Bench",
+            "score": 46.9,
+            "harness": "Kimi Code CLI",
+            "source": "https://huggingface.co/moonshotai/Kimi-K2.7-Code",
+            "date": "2026-06-12"
+          }
+        ],
+        "cost": {
+          "input": 0.95,
+          "output": 4.0,
+          "cache_read": 0.19
+        },
+        "extra": {
+          "rp5h": 1080,
+          "retention": 60.0,
+          "intelligence": "43.0",
+          "note": "官方评分",
+          "tok_s": 40
+        }
+      },
+      "kimi-k2.7-code-highspeed": {
+        "id": "kimi-k2.7-code-highspeed",
+        "name": "Kimi K2.7 Code HighSpeed",
+        "description": "Lower-latency Kimi Code variant for interactive edits and coding-agent loops",
+        "family": "kimi-k2",
+        "attachment": true,
+        "reasoning": true,
+        "tool_call": true,
+        "structured_output": true,
+        "temperature": false,
+        "knowledge": "2025-01",
+        "release_date": "2026-06-12",
+        "last_updated": "2026-06-12",
+        "modalities": {
+          "input": [
+            "text",
+            "image",
+            "video"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": true,
+        "limit": {
+          "context": 262144,
+          "output": 262144
+        },
+        "weights": [
+          {
+            "label": "Hugging Face",
+            "url": "https://huggingface.co/moonshotai/Kimi-K2.7-Code"
+          }
+        ],
+        "cost": {
+          "input": 1.9,
+          "output": 8.0,
+          "cache_read": 0.38
+        },
+        "extra": {
+          "rp5h": 181,
+          "retention": 20.0,
+          "intelligence": "43.0*",
+          "note": "继承自 Kimi K2.7 Code（not yet scored）",
+          "tok_s": null
+        }
+      },
+      "kimi-k3": {
+        "id": "kimi-k3",
+        "name": "Kimi K3",
+        "description": "Multimodal Kimi model with 1M context and toggleable max-effort thinking for long-horizon agent work",
+        "family": "kimi-k3",
+        "attachment": true,
+        "reasoning": true,
+        "tool_call": true,
+        "structured_output": true,
+        "temperature": false,
+        "release_date": "2026-07-16",
+        "last_updated": "2026-07-16",
+        "modalities": {
+          "input": [
+            "text",
+            "image",
+            "video"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": true,
+        "limit": {
+          "context": 1048576,
+          "output": 131072
+        },
+        "benchmarks": [
+          {
+            "name": "DeepSWE",
+            "score": 67.5,
+            "metric": "resolve rate",
+            "harness": "Kimi Code",
+            "variant": "max effort",
+            "version": "1.1",
+            "source": "https://www.kimi.com/blog/kimi-k3",
+            "date": "2026-07-16"
+          },
+          {
+            "name": "Terminal-Bench",
+            "score": 88.3,
+            "metric": "accuracy",
+            "harness": "Kimi Code",
+            "variant": "max effort",
+            "version": "2.1",
+            "source": "https://www.kimi.com/blog/kimi-k3",
+            "date": "2026-07-16"
+          },
+          {
+            "name": "FrontierSWE",
+            "score": 81.2,
+            "metric": "dominance score",
+            "harness": "Kimi Code",
+            "variant": "max effort",
+            "source": "https://www.kimi.com/blog/kimi-k3",
+            "date": "2026-07-16"
+          },
+          {
+            "name": "Program Bench",
+            "score": 77.8,
+            "metric": "score",
+            "harness": "Kimi Code",
+            "variant": "max effort",
+            "source": "https://www.kimi.com/blog/kimi-k3",
+            "date": "2026-07-16"
+          },
+          {
+            "name": "SWE Marathon",
+            "score": 42,
+            "metric": "resolve rate",
+            "harness": "Claude Code",
+            "variant": "max effort",
+            "version": "1.1",
+            "source": "https://www.kimi.com/blog/kimi-k3",
+            "date": "2026-07-16"
+          },
+          {
+            "name": "GDPval-AA",
+            "score": 1668,
+            "metric": "Elo",
+            "variant": "max effort",
+            "version": "v2",
+            "source": "https://www.kimi.com/blog/kimi-k3",
+            "date": "2026-07-16"
+          },
+          {
+            "name": "AA-Briefcase",
+            "score": 1548,
+            "metric": "Elo",
+            "variant": "max effort",
+            "source": "https://www.kimi.com/blog/kimi-k3",
+            "date": "2026-07-16"
+          },
+          {
+            "name": "AutomationBench",
+            "score": 30.8,
+            "metric": "success rate",
+            "variant": "max effort",
+            "dataset": "600-task public subset",
+            "source": "https://www.kimi.com/blog/kimi-k3",
+            "date": "2026-07-16"
+          },
+          {
+            "name": "JobBench",
+            "score": 52.9,
+            "metric": "score",
+            "variant": "max effort",
+            "source": "https://www.kimi.com/blog/kimi-k3",
+            "date": "2026-07-16"
+          },
+          {
+            "name": "SpreadsheetBench",
+            "score": 34.8,
+            "metric": "score",
+            "harness": "Claude Code",
+            "variant": "max effort",
+            "version": "2",
+            "source": "https://www.kimi.com/blog/kimi-k3",
+            "date": "2026-07-16"
+          },
+          {
+            "name": "BrowseComp",
+            "score": 91.2,
+            "metric": "accuracy",
+            "variant": "max effort, context compaction",
+            "source": "https://www.kimi.com/blog/kimi-k3",
+            "date": "2026-07-16"
+          },
+          {
+            "name": "CharXiv Reasoning",
+            "score": 91.3,
+            "metric": "accuracy",
+            "variant": "max effort, with tools",
+            "source": "https://www.kimi.com/blog/kimi-k3",
+            "date": "2026-07-16"
+          },
+          {
+            "name": "ZeroBench",
+            "score": 41,
+            "metric": "pass@5",
+            "variant": "max effort, with tools",
+            "source": "https://www.kimi.com/blog/kimi-k3",
+            "date": "2026-07-16"
+          }
+        ],
+        "cost": {
+          "input": 3.0,
+          "output": 15.0,
+          "cache_read": 0.3
+        },
+        "extra": {
+          "rp5h": 196,
+          "retention": 20.0,
+          "intelligence": "59.7",
+          "note": "官方评分",
+          "tok_s": 38
+        }
+      },
+      "mimo-v2.5": {
+        "id": "mimo-v2.5",
+        "name": "MiMo V2.5",
+        "description": "Open MiMo model for multimodal coding agents and long-context automation",
+        "family": "mimo",
+        "attachment": true,
+        "reasoning": true,
+        "tool_call": true,
+        "temperature": true,
+        "knowledge": "2024-12",
+        "release_date": "2026-04-22",
+        "last_updated": "2026-04-22",
+        "modalities": {
+          "input": [
+            "text",
+            "image",
+            "audio",
+            "video"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": true,
+        "limit": {
+          "context": 1048576,
+          "output": 131072
+        },
+        "weights": [
+          {
+            "label": "Hugging Face",
+            "url": "https://huggingface.co/XiaomiMiMo/MiMo-V2.5"
+          }
+        ],
+        "cost": {
+          "input": 0.8,
+          "output": 4.0,
+          "cache_read": 0.16
+        },
+        "extra": {
+          "rp5h": 19500,
+          "retention": 30.0,
+          "intelligence": "38.0",
+          "note": "官方评分",
+          "tok_s": 64
+        }
+      },
+      "mimo-v2.5-pro": {
+        "id": "mimo-v2.5-pro",
+        "name": "MiMo V2.5 Pro",
+        "description": "Stronger MiMo Pro tier for multimodal reasoning and coding-agent execution",
+        "family": "mimo",
+        "attachment": false,
+        "reasoning": true,
+        "tool_call": true,
+        "temperature": true,
+        "knowledge": "2024-12",
+        "release_date": "2026-04-22",
+        "last_updated": "2026-04-22",
+        "modalities": {
+          "input": [
+            "text"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": true,
+        "limit": {
+          "context": 1048576,
+          "output": 131072
+        },
+        "weights": [
+          {
+            "label": "Hugging Face",
+            "url": "https://huggingface.co/XiaomiMiMo/MiMo-V2.5-Pro"
+          }
+        ],
+        "benchmarks": [
+          {
+            "name": "SWE-Bench Verified",
+            "score": 78.9,
+            "metric": "resolved",
+            "source": "https://huggingface.co/XiaomiMiMo/MiMo-V2.5-Pro"
+          },
+          {
+            "name": "SWE-Bench Pro",
+            "score": 57.2,
+            "metric": "resolve rate",
+            "source": "https://mimo.xiaomi.com/mimo-v2-5-pro/",
+            "date": "2026-04-22"
+          },
+          {
+            "name": "GPQA Diamond",
+            "score": 86.6,
+            "metric": "accuracy",
+            "source": "https://mimo.xiaomi.com/mimo-v2-5-pro/",
+            "date": "2026-04-22"
+          }
+        ],
+        "cost": {
+          "input": 2.0,
+          "output": 6.0,
+          "cache_read": 0.4
+        },
+        "extra": {
+          "rp5h": 5700,
+          "retention": 20.0,
+          "intelligence": "42.9",
+          "note": "官方评分",
+          "tok_s": 43
+        }
+      },
+      "muse-spark-1.2": {
+        "id": "muse-spark-1.2",
+        "name": "Muse Spark 1.2",
+        "description": "Muse Spark 1.2 is a coding-focused update to Muse Spark 1.1 with improvements in code generation, complex debugging, codebase understanding, and end-to-end developer workflows.",
+        "family": "muse",
+        "attachment": true,
+        "reasoning": true,
+        "tool_call": true,
+        "structured_output": true,
+        "temperature": true,
+        "release_date": "2026-08-05",
+        "last_updated": "2026-08-05",
+        "modalities": {
+          "input": [
+            "text",
+            "image",
+            "video",
+            "pdf",
+            "audio"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": false,
+        "limit": {
+          "context": 1048576,
+          "output": 131072
+        },
+        "cost": {
+          "input": 1.25,
+          "output": 4.25,
+          "cache_read": 0.15
+        },
+        "extra": {
+          "rp5h": 428,
+          "retention": 20.0,
+          "intelligence": "56.8",
+          "note": "官方评分",
+          "tok_s": null
+        }
+      },
+      "muse-spark-1.3": {
+        "id": "muse-spark-1.3",
+        "name": "Muse Spark 1.3",
+        "description": "Muse Spark 1.3 is a multimodal reasoning model from Meta for long-running agentic, multi-agent, and coding workflows. It improves long-horizon agent collaboration, instruction following, and coding efficiency relative to Muse Spark 1.2.",
+        "family": "muse",
+        "attachment": true,
+        "reasoning": true,
+        "tool_call": true,
+        "structured_output": true,
+        "temperature": true,
+        "release_date": "2026-09-02",
+        "last_updated": "2026-09-02",
+        "modalities": {
+          "input": [
+            "text",
+            "image",
+            "video",
+            "pdf",
+            "audio"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": false,
+        "limit": {
+          "context": 1048576,
+          "output": 131072
+        },
+        "cost": {
+          "input": 1.25,
+          "output": 4.25,
+          "cache_read": 0.15
+        },
+        "extra": {
+          "rp5h": 428,
+          "retention": 20.0,
+          "intelligence": "56.8*",
+          "note": "继承自 Muse Spark 1.2（not yet scored）",
+          "tok_s": null
+        }
+      },
+      "nemotron-3-ultra-550b-a55b": {
+        "id": "nemotron-3-ultra-550b-a55b",
+        "name": "Nemotron 3 Ultra",
+        "description": "Largest Nemotron 3 model for maximum open-weight reasoning and agent accuracy",
+        "family": "nemotron",
+        "attachment": false,
+        "reasoning": true,
+        "tool_call": true,
+        "temperature": true,
+        "release_date": "2026-06-04",
+        "last_updated": "2026-06-04",
+        "modalities": {
+          "input": [
+            "text"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": true,
+        "limit": {
+          "context": 1000000,
+          "output": 128000
+        },
+        "benchmarks": [
+          {
+            "name": "SWE-Bench Verified",
+            "score": 70.7,
+            "metric": "resolved",
+            "source": "https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16",
+            "date": "2026-06-04"
+          },
+          {
+            "name": "SWE-Bench Multilingual",
+            "score": 67.7,
+            "metric": "resolve rate",
+            "source": "https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16",
+            "date": "2026-06-04"
+          },
+          {
+            "name": "Terminal-Bench",
+            "score": 56.4,
+            "metric": "success rate",
+            "version": "2.1",
+            "source": "https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16",
+            "date": "2026-06-04"
+          },
+          {
+            "name": "GPQA",
+            "score": 87,
+            "metric": "accuracy",
+            "variant": "no tools",
+            "source": "https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16",
+            "date": "2026-06-04"
+          },
+          {
+            "name": "Humanity's Last Exam",
+            "score": 26.7,
+            "metric": "accuracy",
+            "variant": "no tools",
+            "source": "https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16",
+            "date": "2026-06-04"
+          },
+          {
+            "name": "Humanity's Last Exam",
+            "score": 37.4,
+            "metric": "accuracy",
+            "variant": "with tools",
+            "source": "https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16",
+            "date": "2026-06-04"
+          },
+          {
+            "name": "LiveCodeBench",
+            "score": 89,
+            "metric": "pass@1",
+            "version": "v6",
+            "source": "https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16",
+            "date": "2026-06-04"
+          },
+          {
+            "name": "MMLU-Pro",
+            "score": 86.8,
+            "metric": "accuracy",
+            "source": "https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16",
+            "date": "2026-06-04"
+          },
+          {
+            "name": "BrowseComp",
+            "score": 44.4,
+            "metric": "accuracy",
+            "source": "https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16",
+            "date": "2026-06-04"
+          },
+          {
+            "name": "IFBench",
+            "score": 81.7,
+            "metric": "accuracy",
+            "variant": "prompt loose",
+            "source": "https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16",
+            "date": "2026-06-04"
+          },
+          {
+            "name": "GDPval",
+            "score": 46.7,
+            "metric": "wins or ties",
+            "source": "https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16",
+            "date": "2026-06-04"
+          }
+        ],
+        "cost": {
+          "input": 0.6,
+          "output": 2.4,
+          "cache_read": 0.12
+        },
+        "extra": {
+          "rp5h": 575,
+          "retention": 20.0,
+          "intelligence": "38.3",
+          "note": "官方评分",
+          "tok_s": 174
+        }
+      },
+      "qwen3.6-max-preview": {
+        "id": "qwen3.6-max-preview",
+        "name": "Qwen 3.6 Max Preview",
+        "description": "Flagship Qwen model for complex reasoning, coding, and agentic workflows",
+        "family": "qwen",
+        "attachment": false,
+        "reasoning": true,
+        "tool_call": true,
+        "temperature": true,
+        "knowledge": "2025-04",
+        "release_date": "2026-04-20",
+        "last_updated": "2026-04-20",
+        "modalities": {
+          "input": [
+            "text"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": false,
+        "limit": {
+          "context": 262144,
+          "output": 65536
+        },
+        "cost": {
+          "input": 1.3,
+          "output": 7.8,
+          "cache_read": 0.26,
+          "cache_write": 1.63
+        },
+        "extra": {
+          "rp5h": null,
+          "retention": null,
+          "intelligence": "41.1",
+          "note": "官方评分",
+          "tok_s": null
+        }
+      },
+      "qwen3.6-plus": {
+        "id": "qwen3.6-plus",
+        "name": "Qwen 3.6 Plus",
+        "description": "Earlier Qwen multimodal workhorse for million-token agent and document tasks",
+        "family": "qwen",
+        "attachment": true,
+        "reasoning": true,
+        "tool_call": true,
+        "temperature": true,
+        "knowledge": "2025-04",
+        "release_date": "2026-04-02",
+        "last_updated": "2026-04-02",
+        "modalities": {
+          "input": [
+            "text",
+            "image",
+            "video"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": false,
+        "limit": {
+          "context": 1000000,
+          "output": 65536
+        },
+        "cost": {
+          "input": 0.5,
+          "output": 3.0,
+          "cache_read": 0.1
+        },
+        "extra": {
+          "rp5h": 1100,
+          "retention": null,
+          "intelligence": "40.5",
+          "note": "官方评分",
+          "tok_s": null
+        }
+      },
+      "qwen3.7-flash": {
+        "id": "qwen3.7-flash",
+        "name": "Qwen 3.7 Flash",
+        "description": "Lightweight multimodal Qwen model for high-throughput text, image, and video tasks",
+        "family": "qwen",
+        "attachment": true,
+        "reasoning": true,
+        "tool_call": true,
+        "structured_output": true,
+        "temperature": true,
+        "release_date": "2026-07-15",
+        "last_updated": "2026-07-15",
+        "modalities": {
+          "input": [
+            "text",
+            "image",
+            "video"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": false,
+        "limit": {
+          "context": 1000000,
+          "input": 991000,
+          "output": 65536
+        },
+        "cost": {
+          "input": 0.03,
+          "output": 0.13,
+          "cache_read": 0.006,
+          "cache_write": 0.038
+        },
+        "extra": {
+          "rp5h": null,
+          "retention": null,
+          "intelligence": "50",
+          "note": "无前代分数，默认赋 50",
+          "tok_s": null
+        }
+      },
+      "qwen3.7-max": {
+        "id": "qwen3.7-max",
+        "name": "Qwen 3.7 Max",
+        "description": "Qwen frontier model tuned for agent frameworks, coding assistants, and long tasks",
+        "family": "qwen",
+        "attachment": false,
+        "reasoning": true,
+        "tool_call": true,
+        "temperature": true,
+        "release_date": "2026-05-21",
+        "last_updated": "2026-05-21",
+        "modalities": {
+          "input": [
+            "text"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": false,
+        "limit": {
+          "context": 1000000,
+          "output": 65536
+        },
+        "benchmarks": [
+          {
+            "name": "SWE-Bench Verified",
+            "score": 80.4,
+            "metric": "resolved",
+            "source": "https://qwen.ai/blog?id=qwen3.7",
+            "date": "2026-05-19"
+          },
+          {
+            "name": "SWE-Bench Pro",
+            "score": 60.6,
+            "metric": "resolve rate",
+            "source": "https://qwen.ai/blog?id=qwen3.7",
+            "date": "2026-05-19"
+          },
+          {
+            "name": "SWE-Bench Multilingual",
+            "score": 78.3,
+            "metric": "resolve rate",
+            "source": "https://qwen.ai/blog?id=qwen3.7",
+            "date": "2026-05-19"
+          },
+          {
+            "name": "Terminal-Bench",
+            "score": 69.7,
+            "metric": "success rate",
+            "harness": "Terminus-2",
+            "version": "2.0",
+            "source": "https://qwen.ai/blog?id=qwen3.7",
+            "date": "2026-05-19"
+          },
+          {
+            "name": "GPQA Diamond",
+            "score": 92.4,
+            "metric": "accuracy",
+            "source": "https://qwen.ai/blog?id=qwen3.7",
+            "date": "2026-05-19"
+          },
+          {
+            "name": "Humanity's Last Exam",
+            "score": 41.4,
+            "metric": "accuracy",
+            "source": "https://qwen.ai/blog?id=qwen3.7",
+            "date": "2026-05-19"
+          },
+          {
+            "name": "SciCode",
+            "score": 53.5,
+            "source": "https://qwen.ai/blog?id=qwen3.7",
+            "date": "2026-05-19"
+          },
+          {
+            "name": "MCP Atlas",
+            "score": 76.4,
+            "metric": "success rate",
+            "source": "https://qwen.ai/blog?id=qwen3.7",
+            "date": "2026-05-19"
+          },
+          {
+            "name": "NL2Repo",
+            "score": 47.2,
+            "harness": "Claude Code",
+            "source": "https://qwen.ai/blog?id=qwen3.7",
+            "date": "2026-05-19"
+          }
+        ],
+        "cost": {
+          "input": 2.5,
+          "output": 7.5,
+          "cache_read": 0.5,
+          "cache_write": 3.13
+        },
+        "extra": {
+          "rp5h": 232,
+          "retention": 33.0,
+          "intelligence": "46.7",
+          "note": "官方评分",
+          "tok_s": null
+        }
+      },
+      "qwen3.7-plus": {
+        "id": "qwen3.7-plus",
+        "name": "Qwen 3.7 Plus",
+        "description": "Multimodal Qwen workhorse for long-context agents, visual inputs, and coding",
+        "family": "qwen",
+        "attachment": true,
+        "reasoning": true,
+        "tool_call": true,
+        "temperature": true,
+        "knowledge": "2025-04",
+        "release_date": "2026-06-02",
+        "last_updated": "2026-06-02",
+        "modalities": {
+          "input": [
+            "text",
+            "image",
+            "video"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": false,
+        "limit": {
+          "context": 1000000,
+          "output": 64000
+        },
+        "cost": {
+          "input": 0.4,
+          "output": 1.6,
+          "cache_read": 0.08,
+          "cache_write": 0.5
+        },
+        "extra": {
+          "rp5h": 1420,
+          "retention": null,
+          "intelligence": "39.4",
+          "note": "官方评分",
+          "tok_s": 56
+        }
+      },
+      "qwen3.8-27b": {
+        "id": "qwen3.8-27b",
+        "name": "Qwen 3.8 27B",
+        "description": "Dense 27B vision-language model for coding, agent tasks, and image and video understanding",
+        "family": "qwen",
+        "attachment": true,
+        "reasoning": true,
+        "tool_call": true,
+        "structured_output": true,
+        "temperature": true,
+        "release_date": "2026-08-14",
+        "last_updated": "2026-08-14",
+        "modalities": {
+          "input": [
+            "text",
+            "image",
+            "video"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": true,
+        "limit": {
+          "context": 262144,
+          "output": 32768
+        },
+        "weights": [
+          {
+            "label": "Hugging Face",
+            "url": "https://huggingface.co/Qwen/Qwen3.8-27B"
+          }
+        ],
+        "benchmarks": [
+          {
+            "name": "SWE-bench Pro",
+            "score": 61.7,
+            "metric": "resolved",
+            "source": "https://huggingface.co/Qwen/Qwen3.8-27B"
+          }
+        ],
+        "cost": {
+          "input": 0.4,
+          "output": 3.0,
+          "cache_read": 0.04
+        },
+        "extra": {
+          "rp5h": 4790,
+          "retention": 70.0,
+          "intelligence": "52.0",
+          "note": "官方评分",
+          "tok_s": 51
+        }
+      },
+      "qwen3.8-flash": {
+        "id": "qwen3.8-flash",
+        "name": "Qwen 3.8 Flash",
+        "description": "Qwen vision-language model for visual reasoning, documents, and agent tasks",
+        "family": "qwen",
+        "attachment": true,
+        "reasoning": true,
+        "tool_call": true,
+        "structured_output": true,
+        "release_date": "2026-08-26",
+        "last_updated": "2026-08-26",
+        "modalities": {
+          "input": [
+            "text",
+            "image",
+            "video"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": false,
+        "limit": {
+          "context": 1000000,
+          "output": 131072
+        },
+        "cost": {
+          "input": 0.16,
+          "output": 0.47,
+          "cache_read": 0.016
+        },
+        "extra": {
+          "rp5h": 3910,
+          "retention": 20.0,
+          "intelligence": "50",
+          "note": "无前代分数，默认赋 50",
+          "tok_s": null
+        }
+      },
+      "qwen3.8-max": {
+        "id": "qwen3.8-max",
+        "name": "Qwen 3.8 Max",
+        "description": "2.4-trillion-parameter MoE flagship for coding, professional work, multimodal understanding, and long-horizon agentic workflows",
+        "family": "qwen",
+        "attachment": true,
+        "reasoning": true,
+        "tool_call": true,
+        "temperature": true,
+        "release_date": "2026-08-03",
+        "last_updated": "2026-08-03",
+        "modalities": {
+          "input": [
+            "text",
+            "image",
+            "video",
+            "pdf"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": false,
+        "limit": {
+          "context": 1000000,
+          "output": 131072
+        },
+        "cost": {
+          "input": 2.0,
+          "output": 6.0,
+          "cache_read": 0.25,
+          "cache_write": 2.5
+        },
+        "extra": {
+          "rp5h": 261,
+          "retention": 20.0,
+          "intelligence": "58.1",
+          "note": "官方评分",
+          "tok_s": 24
+        }
+      },
+      "qwen3.8-max-0902": {
+        "id": "qwen3.8-max-0902",
+        "name": "Qwen 3.8 Max 0902",
+        "description": "2026-09-02 upgraded snapshot of Qwen3.8 Max with stronger coding, collaborative agents, and multimodal document understanding",
+        "family": "qwen",
+        "attachment": true,
+        "reasoning": true,
+        "tool_call": true,
+        "temperature": true,
+        "release_date": "2026-09-02",
+        "last_updated": "2026-09-02",
+        "modalities": {
+          "input": [
+            "text",
+            "image",
+            "video",
+            "pdf"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": false,
+        "limit": {
+          "context": 1000000,
+          "output": 131072
+        },
+        "cost": {
+          "input": 2.0,
+          "output": 6.0,
+          "cache_read": 0.25
+        },
+        "extra": {
+          "rp5h": 261,
+          "retention": 20.0,
+          "intelligence": "58.1*",
+          "note": "继承自 Qwen 3.8 Max（not yet scored）",
+          "tok_s": null
+        }
+      },
+      "step-3.5-flash": {
+        "id": "step-3.5-flash",
+        "name": "Step 3.5 Flash",
+        "description": "StepFun flash lane for quick multimodal reasoning and coding assistance",
+        "attachment": false,
+        "reasoning": true,
+        "tool_call": true,
+        "temperature": true,
+        "knowledge": "2025-01",
+        "release_date": "2026-01-29",
+        "last_updated": "2026-02-13",
+        "modalities": {
+          "input": [
+            "text"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": true,
+        "limit": {
+          "context": 256000,
+          "input": 256000,
+          "output": 256000
+        },
+        "weights": [
+          {
+            "label": "Hugging Face",
+            "url": "https://huggingface.co/stepfun-ai/Step-3.5-Flash"
+          }
+        ],
+        "benchmarks": [
+          {
+            "name": "Artificial Analysis Coding Index",
+            "score": 31.6,
+            "metric": "index",
+            "source": "https://openrouter.ai/stepfun/step-3.5-flash/benchmarks",
+            "date": "2026-06-02"
+          },
+          {
+            "name": "SciCode",
+            "score": 40.4,
+            "metric": "percent correct",
+            "source": "https://openrouter.ai/stepfun/step-3.5-flash/benchmarks",
+            "date": "2026-06-02"
+          },
+          {
+            "name": "Terminal-Bench Hard",
+            "score": 27.3,
+            "metric": "success rate",
+            "source": "https://openrouter.ai/stepfun/step-3.5-flash/benchmarks",
+            "date": "2026-06-02"
+          },
+          {
+            "name": "SWE-Bench Verified",
+            "score": 74.4,
+            "metric": "resolved",
+            "source": "https://arxiv.org/abs/2602.10604"
+          }
+        ],
+        "cost": {
+          "input": 0.1,
+          "output": 0.3,
+          "cache_read": 0.02
+        },
+        "extra": {
+          "rp5h": 3510,
+          "retention": 20.0,
+          "intelligence": "26.5",
+          "note": "官方评分",
+          "tok_s": null
+        }
+      },
+      "step-3.7-flash": {
+        "id": "step-3.7-flash",
+        "name": "Step 3.7 Flash",
+        "description": "Newer StepFun flash model for faster agents, coding, and multimodal prompts",
+        "attachment": true,
+        "reasoning": true,
+        "tool_call": true,
+        "temperature": true,
+        "knowledge": "2026-03-01",
+        "release_date": "2026-05-29",
+        "last_updated": "2026-05-29",
+        "modalities": {
+          "input": [
+            "text",
+            "image",
+            "video"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "open_weights": true,
+        "limit": {
+          "context": 256000,
+          "input": 256000,
+          "output": 256000
+        },
+        "weights": [
+          {
+            "label": "Hugging Face",
+            "url": "https://huggingface.co/stepfun-ai/Step-3.7-Flash"
+          }
+        ],
+        "benchmarks": [
+          {
+            "name": "SWE-Bench Pro",
+            "score": 56.3,
+            "metric": "resolve rate",
+            "source": "https://static.stepfun.com/blog/step-3.7-flash/",
+            "date": "2026-05-29"
+          },
+          {
+            "name": "SWE-Bench Verified",
+            "score": 76.5,
+            "metric": "resolved",
+            "source": "https://static.stepfun.com/blog/step-3.7-flash/",
+            "date": "2026-05-29"
+          },
+          {
+            "name": "Terminal-Bench",
+            "score": 59.6,
+            "metric": "success rate",
+            "version": "2.1",
+            "source": "https://static.stepfun.com/blog/step-3.7-flash/",
+            "date": "2026-05-29"
+          },
+          {
+            "name": "Humanity's Last Exam",
+            "score": 47.2,
+            "metric": "accuracy",
+            "variant": "with tools",
+            "source": "https://static.stepfun.com/blog/step-3.7-flash/",
+            "date": "2026-05-29"
+          },
+          {
+            "name": "BrowseComp",
+            "score": 75.8,
+            "metric": "accuracy",
+            "source": "https://static.stepfun.com/blog/step-3.7-flash/",
+            "date": "2026-05-29"
+          },
+          {
+            "name": "Toolathlon",
+            "score": 49.5,
+            "metric": "success rate",
+            "source": "https://static.stepfun.com/blog/step-3.7-flash/",
+            "date": "2026-05-29"
+          },
+          {
+            "name": "GDPval",
+            "score": 45.8,
+            "metric": "wins or ties",
+            "source": "https://static.stepfun.com/blog/step-3.7-flash/",
+            "date": "2026-05-29"
+          },
+          {
+            "name": "ClawEval",
+            "score": 67.1,
+            "metric": "pass^3",
+            "version": "1.1",
+            "source": "https://static.stepfun.com/blog/step-3.7-flash/",
+            "date": "2026-05-29"
+          },
+          {
+            "name": "Artificial Analysis Coding Index",
+            "score": 37.1,
+            "metric": "index",
+            "source": "https://openrouter.ai/stepfun/step-3.7-flash/benchmarks",
+            "date": "2026-06-15"
+          },
+          {
+            "name": "SciCode",
+            "score": 40,
+            "metric": "percent correct",
+            "source": "https://openrouter.ai/stepfun/step-3.7-flash/benchmarks",
+            "date": "2026-06-15"
+          },
+          {
+            "name": "Terminal-Bench Hard",
+            "score": 35.6,
+            "metric": "success rate",
+            "source": "https://openrouter.ai/stepfun/step-3.7-flash/benchmarks",
+            "date": "2026-06-15"
+          }
+        ],
+        "cost": {
+          "input": 0.2,
+          "output": 1.15,
+          "cache_read": 0.04
+        },
+        "extra": {
+          "rp5h": 1670,
+          "retention": 20.0,
+          "intelligence": "30.9",
+          "note": "官方评分",
+          "tok_s": 94
+        }
+      }
+    }
+  }
+}
