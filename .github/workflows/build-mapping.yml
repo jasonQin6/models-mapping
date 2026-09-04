@@ -10,6 +10,7 @@ on:
       - config/model-decisions.json
   workflow_run:
     workflows:
+      - Watch Models
       - Watch OpenCode Go
       - Watch Arena
     types:
@@ -40,7 +41,7 @@ jobs:
 
       - name: Build mapping workspace
         run: |
-          python3 scripts/build_mapping.py \
+          python3 models-mapping/scripts/build_mapping.py \
             --models data/models.json \
             --go data/go.json \
             --arena data/arena.json \

@@ -1,0 +1,45 @@
+name: Watch Models
+
+on:
+  schedule:
+    - cron: '17 */4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: model-data-writes
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch opencode-go snapshot from models.dev
+        run: |
+          set -euo pipefail
+          curl -fsSL --max-time 60 https://models.dev/api.json -o /tmp/api.json
+          jq -S '{ "opencode-go": .["opencode-go"] }' /tmp/api.json > data/opencode-go-models.json
+          echo "opencode-go models: $(jq '.["opencode-go"].models | length' data/opencode-go-models.json)"
+
+      - name: Fetch full models catalog from models.dev
+        run: |
+          set -euo pipefail
+          curl -fsSL --max-time 60 https://models.dev/models.json -o data/all_models.json
+          echo "all_models.json size: $(wc -c < data/all_models.json) bytes"
+
+      - name: Commit and push snapshots
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "40985853+github-actions[bot]@users.noreply.github.com"
+          git add data/opencode-go-models.json data/all_models.json
+          if git diff --cached --quiet; then
+            echo "No snapshot changes"
+          else
+            git commit -m "data: update models snapshots"
+            git pull --rebase origin "$GITHUB_REF_NAME"
+            git push
+          fi
