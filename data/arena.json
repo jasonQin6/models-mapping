@@ -2,7 +2,7 @@
   "schema_version": 1,
   "source": {
     "url": "https://lmarena.ai/leaderboard/code/webdev",
-    "fetched_at": "2026-09-03T00:53:20.998346+00:00"
+    "fetched_at": "2026-09-04T00:35:15.074558+00:00"
   },
   "models": {
     "claude-fable-5": {
@@ -648,6 +648,13 @@
       "arena_context": "-",
       "organization": "Meta",
       "effort": null
+    },
+    "muse-spark-1.3": {
+      "arena_score": 1623.36,
+      "arena_rank": 0,
+      "arena_context": 1000000,
+      "organization": "Meta",
+      "effort": "xhigh"
     },
     "qwen3-coder-480b-a35b-instruct": {
       "arena_score": 1273.54,
