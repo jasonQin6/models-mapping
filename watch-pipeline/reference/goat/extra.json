@@ -1,0 +1,34 @@
+{
+  "channel": "goat",
+  "script": "watch-pipeline/scripts/watch_goat.py",
+  "upstream": "https://commandcode.ai/docs/plans/goat",
+  "snapshot": "data/goat-models.json",
+  "description": "Fields scraped from the Command Code GOAT plan page (three HTML tables) and where they land in the snapshot. Only fields with a downstream consumer are stored.",
+  "targets": {
+    "models.<id>.cost": {
+      "note": "GOAT deal pricing; differs from any upstream cost in all_models.json. Omitted when every column is empty.",
+      "fields": {
+        "input": {"source_column": "Input", "table": "main", "type": "float|null", "parse": "strip $ and commas; 'free' -> 0.0"},
+        "output": {"source_column": "Output", "table": "main", "type": "float|null", "parse": "strip $ and commas"},
+        "cache_read": {"source_column": "Cache Read", "table": "main", "type": "float|null", "parse": "strip $ and commas"},
+        "cache_write": {"source_column": "Cache Write", "table": "main", "type": "float|null", "parse": "strip $ and commas"}
+      }
+    },
+    "models.<id>.extra": {
+      "fields": {
+        "rp5h": {"source_column": "Requests / 5 hours", "table": "quota", "type": "int|null", "consumer": "axonhub-catalog-sync remark"},
+        "usage_quota": {"source_column": "Monthly credits", "table": "credits", "type": "float|null", "consumer": "axonhub-catalog-sync remark", "note": "Monthly credits stored under the remark-consumed name usage_quota"},
+        "tok_s": {"source_column": "tok/s", "table": "main", "type": "int|null", "consumer": "GOAT-only throughput, no models.dev equivalent"}
+      }
+    },
+    "models.<id>.{id,name}": {
+      "note": "id comes from the /models/<slug> anchor (dotted version restored, e.g. qwen3-8-27b -> qwen3.8-27b); name from the anchor text. Static fields (limit, modalities, ...) are NOT scraped here — they are fallback-merged from data/all_models.json.",
+      "fields": {}
+    }
+  },
+  "not_collected": {
+    "note": "Intelligence column drives which models are kept (scored / inherited / default-50) but is not stored: no downstream consumer. Likewise the derived note.",
+    "fields": ["intelligence", "note"]
+  },
+  "drop_rule": "GOAT-exclusive model ids with no bare-id record in data/all_models.json are dropped (no upstream base to merge)."
+}

@@ -1,0 +1,20 @@
+{
+  "channel": "arena",
+  "script": "watch-pipeline/scripts/watch_arena.py",
+  "upstream": "https://lmarena.ai/leaderboard/code/webdev",
+  "snapshot": "data/arena.json",
+  "description": "Fields parsed from the Arena WebDev leaderboard (Next.js serialized entries JSON) into the schema-versioned snapshot.",
+  "targets": {
+    "models.<id>": {
+      "note": "Snapshot is flat (no provider envelope): {schema_version, source:{url,fetched_at}, models}. id is the normalized model id from name_matching.normalize_arena_name. fetched_at is preserved from the previous snapshot when models are unchanged (byte-stable daily runs).",
+      "fields": {
+        "arena_score": {"source_field": "rating", "type": "float", "parse": "rounded to 2 decimals; highest rating wins per model_id"},
+        "arena_rank": {"source_field": "rank", "type": "int", "parse": "defaults to 0 when missing"},
+        "arena_context": {"source_field": "contextLength", "type": "int|\"-\"", "parse": "defaults to \"-\" when missing"},
+        "organization": {"source_field": "modelOrganization", "type": "string", "parse": "defaults to \"\""},
+        "effort": {"derived": true, "type": "string|null", "note": "extracted from the display name by normalize_arena_name (e.g. 'high'/'low'); null when absent"}
+      }
+    }
+  },
+  "join_rule": "arena.json stays keyed by normalized Arena id; joining to OpenCode model ids happens only in models-mapping build_mapping.py, never here."
+}

@@ -2,23 +2,25 @@
 
 用中文回复用户。本仓约束分置四处，各有唯一职责；本文件常驻，其余按需披露。
 
-系统分四层：采集（watch-pipeline）→ 变换（models-mapping）→ 确认（用户）→ 写入（axonhub-admin）。每层只做自己的事；归属细节见 `README.md`。
+系统分五层：采集（watch-pipeline）→ 变换（models-mapping）→ 目录规划（axonhub-catalog-sync，只读 plan）→ 确认（用户）→ 写入（axonhub-admin）。每层只做自己的事；归属细节见 `README.md`。
 
 ## 何时读什么
 
 - 术语、映射判断、门禁分级 → [`CONTEXT.md`](CONTEXT.md)
 - 数据归属、流程、skills 分工、产物表 → [`README.md`](README.md)
 - 凭据、workflow 安全、AxonHub 写入、事件响应 → [`SECURITY.md`](SECURITY.md)
-- 改变拥有或写入边界 → [`docs/adr/`](docs/adr)（当前 0005、0006），再改本文
+- 改变拥有或写入边界 → [`docs/adr/`](docs/adr)（当前 0005–0007），再改本文
 
 ## 命令
 
 ```bash
 python3 models-mapping/scripts/build_mapping.py --model-decisions config/model-decisions.json --fail-on-errors
+AXONHUB_JWT=<jwt> python3 axonhub-catalog-sync/scripts/sync_models.py --source data/goat-models.json --plan-output /tmp/catalog-plan.json
+python3 axonhub-admin/scripts/apply_catalog_plan.py --plan-input /tmp/catalog-plan.json --apply --verify
 python3 -m pytest -q
 ```
 
-采集脚本由 `watch-pipeline` skill 维护并经 watch-pipeline.yml 执行；本地运行 watch_* 仅作调试，产物仍归对应渠道。skill 校验见各自 `SKILL.md`。
+采集脚本位于 `watch-pipeline/scripts/`，由 `watch-pipeline` skill 维护并经 watch-pipeline.yml 执行；本地运行 watch_* 仅作调试，产物仍归对应渠道。脚本失败会在 `watch-pipeline/reference/<channel>/last-error.json` 留痕，修复流程见 `watch-pipeline/SKILL.md`。skill 校验见各自 `SKILL.md`。
 
 ## 约束
 

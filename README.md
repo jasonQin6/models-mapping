@@ -36,11 +36,12 @@ watch-goat-models → data/goat-models.json (decision 参考，不进 builder) �
 
 ## Skills
 
-- `watch-pipeline`：维护 watch-pipeline.yml 与全部采集渠道；原 `commandcode-goat-scraper` 及 models-mapping、opencode-axonhub-sync 中的采集部分降级为渠道，归入其 reference。
+- `watch-pipeline`：维护 watch-pipeline.yml、采集脚本（`watch-pipeline/scripts/watch_*.py`）与全部采集渠道；每渠道字段契约在 `watch-pipeline/reference/<channel>/extra.json`，脚本失败留痕于 `reference/<channel>/last-error.json`（成功后自删），修复流程见其 `SKILL.md`。原 `commandcode-goat-scraper` 及 models-mapping、opencode-axonhub-sync 中的采集部分已并入。
 - `models-mapping`：把 `data/*.json` 按映射逻辑变换为 AxonHub 需要的数据格式（含 build-mapping 工作区与审核材料）；不做网络抓取，不写 AxonHub。
-- `axonhub-admin`：把确认后的处理结果写入 AxonHub 并验证；唯一面向 AxonHub 写入、持有其凭据的 skill。
-- 原 `opencode-axonhub-sync`、`axonhub-config` 不再作为独立职责层：采集部分归 watch-pipeline 渠道，AxonHub 写入与通用运维由 `axonhub-admin` 承接。
-- `scripts/{csv_io,name_matching,parse_opencode_mdx}` 为共享库，无独立 skill 归属，由 `models-mapping/scripts` 使用。
+- `axonhub-catalog-sync`（原 `opencode-axonhub-sync` 的写入前身）：从 api.json 形状快照（`data/goat-models.json`、`data/opencode-go-models.json` 等）产出渠道/模型卡目录同步 plan；只读规划，不写 AxonHub，不持有凭据政策。
+- `axonhub-admin`：唯一面向 AxonHub 写入、持有其凭据的 skill；执行确认后的 catalog plan（`apply_catalog_plan.py`）与映射写入并验证。
+- `axonhub-config` 不再作为独立职责层：通用运维归 `axonhub-admin`；采集部分归 watch-pipeline 渠道。
+- `scripts/{csv_io,name_matching,parse_opencode_mdx}` 为共享库，无独立 skill 归属，由 `models-mapping/scripts` 与 `watch-pipeline/scripts` 使用。
 
 ## 映射规则
 

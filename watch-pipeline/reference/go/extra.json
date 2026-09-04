@@ -1,0 +1,25 @@
+{
+  "channel": "go",
+  "script": "watch-pipeline/scripts/watch_go.py",
+  "upstream": "https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/web/src/content/docs/go.mdx",
+  "snapshot": "data/opencode-go-models.json",
+  "description": "Fields parsed from the OpenCode go.mdx document and injected into each opencode-go model record in place. No separate go.json is produced. Only fields with a downstream consumer are stored; models.dev already covers the rest.",
+  "targets": {
+    "models.<id>.<field>": {
+      "note": "Injected directly at the top level of each model record (not nested under extra). Fields are cleared for models that disappear from go.mdx. Free models: missing rp5h/usage_quota filled from the largest non-free value; all four price fields forced to 0.",
+      "fields": {
+        "rp5h": {"source_column": "requests per 5 hour", "type": "number|null", "consumer": "build_mapping.py candidate scoring (log-normalized RP5H component)"},
+        "usage_quota": {"source_column": "Usage (pricing table)", "type": "number|null", "consumer": "build_mapping.py model-decision supplements; axonhub-catalog-sync remarks"},
+        "price_input": {"source_column": "Input", "type": "number|null", "consumer": "cost calibration", "note": "calibrates models.dev cost.input; known drift: glm-5.3-flash is 2x in models.dev (2x-usage billing variant)"},
+        "price_output": {"source_column": "Output", "type": "number|null", "consumer": "cost calibration", "note": "calibrates models.dev cost.output"},
+        "price_cached_read": {"source_column": "Cached Read", "type": "number|null", "consumer": "cost calibration", "note": "calibrates models.dev cost.cache_read; minimax-m2.5 is 2x in models.dev"},
+        "price_cached_write": {"source_column": "Cached Write", "type": "number|null", "consumer": "cost calibration", "note": "models.dev omits cache_write entirely for most Go models (e.g. minimax-m2.5/m2.7); mdx is the only source"}
+      }
+    }
+  },
+  "not_collected": {
+    "note": "Parsed by scripts/parse_opencode_mdx.py but dropped here: no downstream consumer and/or models.dev carries them.",
+    "fields": ["rpw", "rpm", "max_price_output", "context_threshold", "peak_hours", "retention", "protocol", "endpoint"]
+  },
+  "enrich_rule": "Go-only model ids with no record in the models.dev opencode-go provider are skipped; the models.dev base (cost, limit, modalities, ...) is preserved untouched."
+}

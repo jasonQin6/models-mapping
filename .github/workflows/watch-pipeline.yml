@@ -76,7 +76,7 @@ jobs:
 
       - name: Enrich opencode-go with Go fields
         run: |
-          python3 models-mapping/scripts/watch_go.py "$RUNNER_TEMP/go.mdx" \
+          python3 watch-pipeline/scripts/watch_go.py "$RUNNER_TEMP/go.mdx" \
             --url "https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/web/src/content/docs/go.mdx" \
             --source-commit "${{ steps.source.outputs.commit }}" \
             --opencode-go data/opencode-go-models.json
@@ -97,6 +97,18 @@ jobs:
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Commit opencode-go error state
+        if: failure()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "40985853+github-actions[bot]@users.noreply.github.com"
+          git add watch-pipeline/reference/go/
+          if ! git diff --cached --quiet; then
+            git commit -m "watch-go: record failure state"
+            git pull --rebase origin "$GITHUB_REF_NAME"
+            git push
+          fi
+
   watch-goat-models:
     needs: fetch-all-models
     runs-on: ubuntu-latest
@@ -111,7 +123,7 @@ jobs:
 
       - name: Build goat-models.json
         run: |
-          python3 models-mapping/scripts/watch_goat.py \
+          python3 watch-pipeline/scripts/watch_goat.py \
             --all-models data/all_models.json \
             --output data/goat-models.json
 
@@ -131,6 +143,18 @@ jobs:
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Commit goat error state
+        if: failure()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "40985853+github-actions[bot]@users.noreply.github.com"
+          git add watch-pipeline/reference/goat/
+          if ! git diff --cached --quiet; then
+            git commit -m "watch-goat: record failure state"
+            git pull --rebase origin "$GITHUB_REF_NAME"
+            git push
+          fi
+
   watch-arena:
     needs: fetch-opencode-go
     if: needs.fetch-opencode-go.outputs.changed == 'true'
@@ -146,7 +170,7 @@ jobs:
 
       - name: Fetch arena data
         run: |
-          python3 models-mapping/scripts/watch_arena.py --top-n 0 --output data/arena.json
+          python3 watch-pipeline/scripts/watch_arena.py --top-n 0 --output data/arena.json
 
       - name: Commit arena snapshot
         id: commit
@@ -162,4 +186,16 @@ jobs:
             git pull --rebase origin "$GITHUB_REF_NAME"
             git push
             echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit arena error state
+        if: failure()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "40985853+github-actions[bot]@users.noreply.github.com"
+          git add watch-pipeline/reference/arena/
+          if ! git diff --cached --quiet; then
+            git commit -m "watch-arena: record failure state"
+            git pull --rebase origin "$GITHUB_REF_NAME"
+            git push
           fi
