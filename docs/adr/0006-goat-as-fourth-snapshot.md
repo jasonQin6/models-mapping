@@ -12,10 +12,10 @@ the single source `data/all_models.json`, and maintained via the
 `watch-pipeline` skill (channel contract in
 `watch-pipeline/reference/goat/extra.json`).
 
-It does not enter the `build-mapping` candidate intersection, which remains
-the exact `all_models ∩ opencode-go` minus reviewed model decisions. GOAT
-changes therefore do not trigger `build-mapping` rebuilds; they serve as
-decision reference and a future consumption source.
+It originally stayed outside the `build-mapping` candidate intersection.
+ADR 0007 superseded that rule: the candidate universe is now the union of
+`opencode-go-models.json` and `goat-models.json` minus reviewed decisions, and
+GOAT snapshot changes feed `build-mapping` rebuilds like the other inputs.
 
 The snapshot changes independently of `opencode-go`, so its job depends only
 on `fetch-all-models` and runs unconditionally once its input is fresh.

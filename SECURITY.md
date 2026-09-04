@@ -2,12 +2,13 @@
 
 本文件是安全边界唯一真源。采集、变换、写入分为三层；数据归属与流程见 [`README.md`](README.md)，术语与门禁分级见 [`CONTEXT.md`](CONTEXT.md)，拥有变更见 [`docs/adr/`](docs/adr)。
 
-三层边界：watch-pipeline.yml（GitHub Actions）只做公开数据抓取并提交仓库快照；`models-mapping` 只消费仓库内快照做数据变换，不联网抓取、不持有凭据；`axonhub-admin` 是唯一面向 AxonHub 写入的 skill，必须经用户显式确认。写入与变换使用独立的确认材料，确认其一不授权另一。
+三层边界：watch-pipeline.yml（GitHub Actions）只做公开数据抓取并提交仓库快照；`models-mapping` 只消费仓库内快照做数据变换与只读规划（catalog plan 不含凭据、不含 mutation 执行），不联网写入、不持有凭据；`axonhub-admin` 是唯一面向 AxonHub 写入的 skill，必须经用户对 plan 文件的显式确认。写入与变换使用独立的确认材料，确认其一不授权另一。
 
 ## 凭据
 
 - 采集 workflow 只访问公开上游，不持有 AxonHub JWT、API key、SQLite secret 或 SSH 私钥。
-- `axonhub-admin` 优先读取 `AXONHUB_JWT`。本地后备 JWT 仅在内存中生成；SQLite secret 不打印、不复制、不写入快照或日志。
+- `axonhub-admin` 优先读取 `AXONHUB_JWT`。`models-mapping` 的 sync_models.py 规划时也需要一个只读 JWT（查询当前状态用于 diff），同样只经 `AXONHUB_JWT` 或 `--token` 传入；token 不打印、不复制、不写入 plan 或日志，plan 文件本身必须无凭据。
+- JWT 铸造、TTL、签名等凭据政策只存在于 `axonhub-admin`；其他 skill 不复制该逻辑。
 - 所有凭据通过环境变量或 GitHub Secrets 注入。不把 token 放入 JSON、CSV、plan、commit message 或 workflow 输出。
 
 ## Workflow 安全
@@ -19,8 +20,8 @@
 
 ## AxonHub 写入
 
-- 全部 AxonHub 变更由 `axonhub-admin` 执行：先生成 plan/dry-run 并展示影响摘要，未经用户对确认材料的明确认可不执行写入。
-- 写入输入来自 `models-mapping` 的变换产物（如 `models.csv` 及其审核材料）；发现 schema、scope 或指纹不符时停止。
+- 全部 AxonHub 变更由 `axonhub-admin` 执行：先生成 plan/dry-run 并展示影响摘要，未经用户对确认材料的明确认可不执行写入。catalog plan 的执行入口是 `axonhub-admin/scripts/apply_catalog_plan.py`，它先校验 plan 形状与源指纹、重读远端 before-state 检测漂移，任一不符即拒绝。
+- 写入输入来自 `models-mapping` 的变换产物（如 `models.csv` 及其审核材料）或 `models-mapping/scripts/sync_models.py` 的 plan 文件；发现 schema、scope 或指纹不符时停止。
 - 变更范围以 `config/model-decisions.json` 的 managed scope 为准；scope 同时被变换与写入消费，变更时两侧复核。
 - 被排除模型仅从 managed channels 移除；被外部 channel 引用或被 association 精确引用的全局对象不进入删除，仅未被引用且未被外部使用的对象才可进入已确认的删除计划。
 - 写入仅替换已确认的 association 集合与 managed templates 的 `modelMappings`，保留维护集合外的人工 mappings 与非映射字段。

@@ -11,22 +11,22 @@
 | `data/all_models.json` | `watch-pipeline/fetch-all-models` | `models.dev/models.json` 全量 provider 目录快照 |
 | `data/opencode-go-models.json` | `watch-pipeline/fetch-opencode-go` | `models.dev/api.json` 的 `opencode-go` provider 经 `go.mdx` 补充 rp5h、usage quota、价格和限制字段 |
 | `data/arena.json` | `watch-pipeline/watch-arena` | Arena 评分、排名、effort 及名称匹配证据，`schema_version: 1` |
-| `data/goat-models.json` | `watch-pipeline/watch-goat-models` | Command Code GOAT 套餐快照（`commandcode-goat` provider），不进入 `build-mapping` 交集，见 [`docs/adr/0006-goat-as-fourth-snapshot.md`](docs/adr/0006-goat-as-fourth-snapshot.md) |
+| `data/goat-models.json` | `watch-pipeline/watch-goat-models` | Command Code GOAT 套餐快照（`commandcode-goat` provider），与 opencode-go 并集构成候选宇宙 |
 | `config/request-models.json` | 项目维护者 | 固定的 Claude/GPT request model 集合 |
-| `config/model-decisions.json` | 项目维护者 | managed scope、交集内 exclude/supplement 和 mapping override |
-| `models.csv` | `build-mapping` | 由三个快照确定性生成的审核工作区，不手工编辑；列定义以 `scripts/csv_io.py` 为准 |
+| `config/model-decisions.json` | 项目维护者 | 候选 exclude/supplement 和 mapping override |
+| `data/enriched.json` | `build-mapping` | 派生补全字段（free 模型 rp5h/usage_quota）及来源标注，可随时重算 |
+| `models.csv` | `build-mapping` | 由快照确定性生成的审核工作区，不手工编辑；列定义以 `scripts/csv_io.py` 为准 |
 
-`models.csv` 列为 `model_id,role,arena_score,rp5h,mapping`，其中 `role` 为 `candidate` 或 `request`，仅 request 行填写 `mapping`。其他字段留在源 JSON 中，由 `axonhub-admin` 写入 AxonHub。`data/goat-models.json` 为正式第四快照，仅作人工 decision 参考，不进入 `build-mapping` 候选交集。
+`models.csv` 列为 `model_id,role,arena_score,rp5h,mapping`，其中 `role` 为 `candidate` 或 `request`，仅 request 行填写 `mapping`。其他字段留在源 JSON 中，由 `axonhub-admin` 写入 AxonHub。候选宇宙 = `opencode-go-models.json ∪ goat-models.json` − request models − 人工 excludes；free 模型缺 rp5h 取同渠道非 free 最大值、缺 usage_quota 补 60（记录进 `data/enriched.json`）。
 
 ## 流程
 
 ```text
 fetch-all-models ─→ data/all_models.json ─┐
-fetch-opencode-go → data/opencode-go-models.json ─┼→ build-mapping → models.csv
+fetch-opencode-go → data/opencode-go-models.json ─┼→ build-mapping → models.csv + data/enriched.json
 watch-arena ──────→ data/arena.json ───────┘                         │
-watch-goat-models → data/goat-models.json (decision 参考，不进 builder) │
-                                                                     ▼
-                      models-mapping：变换为 AxonHub 数据格式 → 审核 → 用户确认
+watch-goat-models → data/goat-models.json ┘                         ▼
+                      models-mapping：补全 + 映射建议 + catalog plan → 审核 → 用户确认
                                                                      │
                                                                      ▼
                                         axonhub-admin 写入 AxonHub 并验证
@@ -37,9 +37,8 @@ watch-goat-models → data/goat-models.json (decision 参考，不进 builder) �
 ## Skills
 
 - `watch-pipeline`：维护 watch-pipeline.yml、采集脚本（`watch-pipeline/scripts/watch_*.py`）与全部采集渠道；每渠道字段契约在 `watch-pipeline/reference/<channel>/extra.json`，脚本失败留痕于 `reference/<channel>/last-error.json`（成功后自删），修复流程见其 `SKILL.md`。原 `commandcode-goat-scraper` 及 models-mapping、opencode-axonhub-sync 中的采集部分已并入。
-- `models-mapping`：把 `data/*.json` 按映射逻辑变换为 AxonHub 需要的数据格式（含 build-mapping 工作区与审核材料）；不做网络抓取，不写 AxonHub。
-- `axonhub-catalog-sync`（原 `opencode-axonhub-sync` 的写入前身）：从 api.json 形状快照（`data/goat-models.json`、`data/opencode-go-models.json` 等）产出渠道/模型卡目录同步 plan；只读规划，不写 AxonHub，不持有凭据政策。
-- `axonhub-admin`：唯一面向 AxonHub 写入、持有其凭据的 skill；执行确认后的 catalog plan（`apply_catalog_plan.py`）与映射写入并验证。
+- `models-mapping`：把 `data/*.json` 变换为 AxonHub 需要的数据格式——free 模型补全（`data/enriched.json`）、Claude/GPT 映射建议（`models.csv`）、目录同步 plan（`sync_models.py`）；只读规划，不做网络抓取，不写 AxonHub。
+- `axonhub-admin`：唯一面向 AxonHub 写入、持有其凭据的 skill；执行确认后的 catalog plan（`apply_catalog_plan.py`）与映射写入（`apply_mapping.py`）并验证。
 - `axonhub-config` 不再作为独立职责层：通用运维归 `axonhub-admin`；采集部分归 watch-pipeline 渠道。
 - `scripts/{csv_io,name_matching,parse_opencode_mdx}` 为共享库，无独立 skill 归属，由 `models-mapping/scripts` 与 `watch-pipeline/scripts` 使用。
 

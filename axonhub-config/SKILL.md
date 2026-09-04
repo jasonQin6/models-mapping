@@ -10,7 +10,7 @@ description: 在 AxonHub 服务器上维护通用 channel 配置和非固定模�
 ## 边界
 
 - `models-mapping` 负责固定 Claude/GPT request→candidate 映射，并通过确认计划写入 `type=model` associations 与 `stable`/`claude`/`gpt` templates。
-- `opencode-axonhub-sync` 负责三个 managed channels、model card、remark 和 candidate 的 managed `channel_model` association。
+- `models-mapping` 的 `sync_models.py` 负责目录 plan：从快照产出渠道 `supportedModels`、model card、remark 和 candidate 的 managed `channel_model` association 的变更计划；执行归 `axonhub-admin` 的 `apply_catalog_plan.py`。
 - 通用流程不读取 mapping CSV，不修改 managed templates 或固定 request associations。
 - `configure_models.py` 只处理非固定模型的通道选择；它不会处理 Claude/GPT request models。
 

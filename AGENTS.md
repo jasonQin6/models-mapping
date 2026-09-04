@@ -2,7 +2,7 @@
 
 用中文回复用户。本仓约束分置四处，各有唯一职责；本文件常驻，其余按需披露。
 
-系统分五层：采集（watch-pipeline）→ 变换（models-mapping）→ 目录规划（axonhub-catalog-sync，只读 plan）→ 确认（用户）→ 写入（axonhub-admin）。每层只做自己的事；归属细节见 `README.md`。
+系统分四层：采集（watch-pipeline）→ 变换与规划（models-mapping：补全、映射建议、catalog plan）→ 确认（用户）→ 写入（axonhub-admin）。每层只做自己的事；归属细节见 `README.md`。
 
 ## 何时读什么
 
@@ -15,7 +15,7 @@
 
 ```bash
 python3 models-mapping/scripts/build_mapping.py --model-decisions config/model-decisions.json --fail-on-errors
-AXONHUB_JWT=<jwt> python3 axonhub-catalog-sync/scripts/sync_models.py --source data/goat-models.json --plan-output /tmp/catalog-plan.json
+AXONHUB_JWT=<jwt> python3 models-mapping/scripts/sync_models.py --source data/opencode-go-models.json --source data/goat-models.json --provider-channel commandcode-goat=commandcode --plan-output /tmp/catalog-plan.json
 python3 axonhub-admin/scripts/apply_catalog_plan.py --plan-input /tmp/catalog-plan.json --apply --verify
 python3 -m pytest -q
 ```

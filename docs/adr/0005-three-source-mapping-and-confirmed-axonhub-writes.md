@@ -17,13 +17,14 @@ deletion, but never mutates them. Protocol partitions come from each go.mdx
 model: completions, responses, and messages map to the three managed channels.
 A conflicting model-level npm is blocking rather than silently preferred.
 
-`opencode-axonhub-sync` reconciles managed `supportedModels`, model cards,
-structured remarks, and exactly one protocol-correct managed `channel_model`
-association per included candidate while preserving every unmanaged
-association. Excluded models are removed only from managed channels. Objects
-used by external channels are retained; exact association references block
-deletion; only unreferenced, externally unused objects can enter a confirmed
-delete plan.
+`models-mapping` (sync_models.py) plans reconciliation of managed `supportedModels`, model
+cards, structured remarks, and exactly one managed `channel_model` association
+per included candidate while preserving every unmanaged association. Excluded
+models are removed only from managed channels. Objects used by external
+channels are retained; exact association references block deletion; only
+unreferenced, externally unused objects can enter a confirmed delete plan.
+Execution of that plan belongs to `axonhub-admin`
+(see ADR 0007).
 
 `models-mapping` applies one canonical target per fixed request model to its
 global `type=model` association and to the managed templates. `claude` and `gpt`

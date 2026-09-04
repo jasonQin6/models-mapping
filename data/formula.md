@@ -37,13 +37,14 @@ available, it maps to the eligible candidate with the highest RP5H.
 
 ## Data quality
 
-The candidate universe is the exact intersection of IDs in `data/models.json`
-and `data/go.json`, minus reviewed excludes in `config/model-decisions.json`.
-One-sided models are reported as catalog exclusions.
-Missing `rp5h` or an Arena score excludes a candidate from target selection.
+The candidate universe is the union of IDs in `data/opencode-go-models.json`
+and `data/goat-models.json`, minus request models and reviewed excludes in
+`config/model-decisions.json`. A free candidate missing `rp5h` copies its own
+channel's largest non-free `rp5h`; missing `usage_quota` becomes 60.
+Candidates still missing `rp5h` or an Arena score are ineligible for target
+selection and reported with reasons.
 Missing `usage_quota` or price data is reported for catalog review but does
-not affect mapping eligibility. Missing RP5H requires an exclude/supplement
-decision. Arena direct matches are high confidence;
+not affect mapping eligibility. Arena direct matches are high confidence;
 contributor-suffix and version-downgrade matches are medium confidence;
 prefix matches and free defaults are low confidence. Unmatched request
 models are blocking errors for an apply workflow.
