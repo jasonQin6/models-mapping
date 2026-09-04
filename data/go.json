@@ -2,8 +2,8 @@
   "schema_version": 1,
   "source": {
     "url": "https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/web/src/content/docs/go.mdx",
-    "commit": "79d503150ca22f151afe4ea543fac8a8eb8aef53",
-    "fetched_at": "2026-09-03T19:14:42.043616+00:00"
+    "commit": "8b9f89e7e8011dfe5b1350c92a6311e39b39d723",
+    "fetched_at": "2026-09-04T12:39:48.649186+00:00"
   },
   "models": {
     "grok-4.6": {
@@ -469,6 +469,24 @@
       "price_output": 0.58,
       "max_price_output": 0.58,
       "price_cached_read": 0.035,
+      "price_cached_write": null,
+      "context_threshold": null,
+      "peak_hours": null,
+      "retention": 0
+    },
+    "omen-alpha": {
+      "model_id": "omen-alpha",
+      "name": "Omen Alpha",
+      "protocol": "completions",
+      "endpoint": "`https://opencode.ai/zen/go/v1/chat/completions`",
+      "rp5h": 11600,
+      "rpw": 29000,
+      "rpm": 57900,
+      "usage_quota": 100.0,
+      "price_input": 0.2,
+      "price_output": 0.66,
+      "max_price_output": 0.66,
+      "price_cached_read": 0.04,
       "price_cached_write": null,
       "context_threshold": null,
       "peak_hours": null,
