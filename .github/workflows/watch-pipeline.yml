@@ -1,0 +1,165 @@
+name: Watch Pipeline
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # UTC 00:00 = CST 08:00
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: model-data-writes
+  cancel-in-progress: false
+
+jobs:
+  fetch-all-models:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.commit.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch full models catalog
+        run: |
+          set -euo pipefail
+          curl -fsSL --max-time 60 https://models.dev/models.json -o data/all_models.json
+          echo "all_models.json: $(wc -c < data/all_models.json) bytes"
+
+      - name: Commit all_models snapshot
+        id: commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "40985853+github-actions[bot]@users.noreply.github.com"
+          git add data/all_models.json
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No all_models changes"
+          else
+            git commit -m "data: update all_models snapshot"
+            git pull --rebase origin "$GITHUB_REF_NAME"
+            git push
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  fetch-opencode-go:
+    needs: fetch-all-models
+    if: needs.fetch-all-models.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.commit.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Fetch opencode-go snapshot from models.dev
+        run: |
+          set -euo pipefail
+          curl -fsSL --max-time 60 https://models.dev/api.json -o /tmp/api.json
+          jq -S '{ "opencode-go": .["opencode-go"] }' /tmp/api.json > data/opencode-go-models.json
+          echo "opencode-go models: $(jq '.["opencode-go"].models | length' data/opencode-go-models.json)"
+
+      - name: Fetch source document
+        id: source
+        env:
+          GO_COMMIT_API_URL: https://api.github.com/repos/anomalyco/opencode/commits?path=packages/web/src/content/docs/go.mdx&sha=dev&per_page=1
+        run: |
+          set -euo pipefail
+          latest_hash="$(curl -fsSL --max-time 30 "$GO_COMMIT_API_URL" | python3 -c 'import json, sys; print(json.load(sys.stdin)[0]["sha"])')"
+          curl -fsSL --max-time 30 \
+            "https://raw.githubusercontent.com/anomalyco/opencode/$latest_hash/packages/web/src/content/docs/go.mdx" \
+            -o "$RUNNER_TEMP/go.mdx"
+          echo "commit=$latest_hash" >> "$GITHUB_OUTPUT"
+
+      - name: Enrich opencode-go with Go fields
+        run: |
+          python3 models-mapping/scripts/watch_go.py "$RUNNER_TEMP/go.mdx" \
+            --url "https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/web/src/content/docs/go.mdx" \
+            --source-commit "${{ steps.source.outputs.commit }}" \
+            --opencode-go data/opencode-go-models.json
+
+      - name: Commit opencode-go snapshot
+        id: commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "40985853+github-actions[bot]@users.noreply.github.com"
+          git add data/opencode-go-models.json
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No opencode-go changes"
+          else
+            git commit -m "data: update opencode-go snapshot"
+            git pull --rebase origin "$GITHUB_REF_NAME"
+            git push
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  watch-goat-models:
+    needs: fetch-all-models
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.commit.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build goat-models.json
+        run: |
+          python3 models-mapping/scripts/watch_goat.py \
+            --all-models data/all_models.json \
+            --output data/goat-models.json
+
+      - name: Commit goat snapshot
+        id: commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "40985853+github-actions[bot]@users.noreply.github.com"
+          git add data/goat-models.json
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No goat snapshot changes"
+          else
+            git commit -m "data: update GOAT snapshot"
+            git pull --rebase origin "$GITHUB_REF_NAME"
+            git push
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  watch-arena:
+    needs: fetch-opencode-go
+    if: needs.fetch-opencode-go.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.commit.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Fetch arena data
+        run: |
+          python3 models-mapping/scripts/watch_arena.py --top-n 0 --output data/arena.json
+
+      - name: Commit arena snapshot
+        id: commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "40985853+github-actions[bot]@users.noreply.github.com"
+          git add data/arena.json
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No Arena snapshot changes"
+          else
+            git commit -m "data: update Arena snapshot"
+            git pull --rebase origin "$GITHUB_REF_NAME"
+            git push
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi

@@ -3,16 +3,14 @@ name: Build Mapping
 on:
   push:
     paths:
-      - data/models.json
-      - data/go.json
+      - data/all_models.json
+      - data/opencode-go-models.json
       - data/arena.json
       - config/request-models.json
       - config/model-decisions.json
   workflow_run:
     workflows:
-      - Watch Models
-      - Watch OpenCode Go
-      - Watch Arena
+      - Watch Pipeline
     types:
       - completed
   workflow_dispatch:
@@ -42,8 +40,8 @@ jobs:
       - name: Build mapping workspace
         run: |
           python3 models-mapping/scripts/build_mapping.py \
-            --models data/models.json \
-            --go data/go.json \
+            --models data/all_models.json \
+            --go data/opencode-go-models.json \
             --arena data/arena.json \
             --request-models config/request-models.json \
             --model-decisions config/model-decisions.json \
