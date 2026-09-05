@@ -27,6 +27,7 @@
 - 四条护栏：只碰托管渠道；保留非托管关联与外部引用（被外部 channel 引用或被 association 精确引用的全局对象只保留并报告，不删除）；read-before-write；write-then-verify，无猜测性重试或无关回滚。
 - 执行时核验托管渠道的 `autoSyncSupportedModels` 必须关闭——发现开启则报告并征询，不得在开启状态下写入策展清单。
 - 写入仅替换已确认的渠道 `supportedModels`、模型卡目标值与 managed templates 的 `modelMappings`，保留维护集合外的人工 mappings、非映射字段与 remark 的 `manual` 内容；部分失败逐项报告。
+- 写入只发生在交互式 agent 会话；CI（GitHub Actions）永不写 AxonHub，也不持有其凭据。
 
 ## 事件响应
 
