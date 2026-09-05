@@ -11,14 +11,14 @@ types, one enrichment record:
 - **Mapping suggestions** — `models.csv`: one canonical target per fixed
   Claude/GPT request model (scoring formula in `data/formula.md`).
 - **Catalog plans** — plan JSON: channel `supportedModels`, model cards,
-  structured remarks, and `channel_model` associations for the
-  `opencode-go`/`commandcode` channels (any provider→channel pair works).
+  structured remarks, and `channel_model` associations for the managed
+  channels — the provider→channel scope in `config/model-decisions.json`.
 - **Enrichment record** — `data/enriched.json`: derived-only fields
   (free-model fills) with provenance.
 
 Execution of both plan types belongs to `axonhub-admin`
 (`apply_mapping.py`, `apply_catalog_plan.py`). This skill never mutates
-AxonHub. Channels other than the two planned are read only.
+AxonHub. Channels outside the managed scope are read only.
 
 ## Rebuild, enrich, and validate
 
@@ -59,11 +59,13 @@ AXONHUB_JWT=<jwt> python3 models-mapping/scripts/sync_models.py \
   --plan-output /tmp/catalog-plan.json
 ```
 
-Each `--source` contributes its provider; `--provider-channel` routes a
-provider to a channel (default: provider id). `commandcode` is append-only:
-its `supportedModels` keeps existing vendor-prefixed entries and only gains
-missing bare IDs. `opencode-go` is replaced wholesale with the exact included
-list. The change report diffs `data/all_models.json` (added/removed models)
+Each `--source` contributes its provider; routing defaults to the managed
+provider→channel scope in `config/model-decisions.json`, and a source provider
+or `--provider-channel` pair outside that scope is rejected. `commandcode` is
+append-only: its `supportedModels` keeps existing vendor-prefixed entries and
+only gains missing bare IDs. `opencode-go` is replaced wholesale with the exact
+included list. The change report diffs `data/all_models.json` (added/removed
+models)
 and both snapshots (price changes) against `HEAD~1`. Missing remark fields
 (`rp5h`, `usage_quota`, `context_threshold`, `peak_hours`, `retention`) are
 warnings, not blockers.

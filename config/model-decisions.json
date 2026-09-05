@@ -1,7 +1,10 @@
 {
   "schema_version": 1,
   "scope": {
-    "channels": ["opencode-go", "op-responses", "op-anthropic"],
+    "channels": {
+      "opencode-go": "opencode-go",
+      "commandcode-goat": "commandcode"
+    },
     "templates": ["stable", "claude", "gpt"]
   },
   "models": [

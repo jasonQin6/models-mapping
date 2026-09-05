@@ -42,13 +42,23 @@ def raw_source(provider: str, *model_ids: str) -> dict:
     }
 
 
-def decisions_file(path: Path, models: list[dict] | None = None) -> Path:
+DEFAULT_SCOPE = {
+    "opencode-go": "opencode-go",
+    "commandcode-goat": "commandcode",
+}
+
+
+def decisions_file(
+    path: Path,
+    models: list[dict] | None = None,
+    scope: dict[str, str] | None = None,
+) -> Path:
     write_json(
         path,
         {
             "schema_version": 1,
             "scope": {
-                "channels": ["opencode-go", "op-responses", "op-anthropic"],
+                "channels": scope or DEFAULT_SCOPE,
                 "templates": ["stable", "claude", "gpt"],
             },
             "models": models or [],
@@ -167,10 +177,13 @@ def test_duplicate_model_across_sources_keeps_first(
     decisions = decisions_file(tmp_path / "decisions.json")
     write_json(goat, raw_source("commandcode-goat", "shared"))
     write_json(opengo, raw_source("opencode-go", "shared"))
-    channels = {"commandcode": channel_node("commandcode", 20, [])}
+    channels = {
+        "commandcode": channel_node("commandcode", 20, []),
+        "opencode-go": channel_node("opencode-go", 6, []),
+    }
 
     plan = build_plan(
-        [(opengo, "opencode-go", "commandcode"), (goat, "commandcode-goat", "commandcode")],
+        [(opengo, "opencode-go", "opencode-go"), (goat, "commandcode-goat", "commandcode")],
         decisions,
         monkeypatch,
         channels,
@@ -232,13 +245,17 @@ def test_missing_rp5h_is_warning_not_blocker(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     source = tmp_path / "source.json"
-    decisions = decisions_file(tmp_path / "decisions.json")
     payload = raw_source("p", "model-a")
     payload["p"]["models"]["model-a"]["extra"] = {"rp5h": None, "note": "x"}
     write_json(source, payload)
     channels = {"p": channel_node("p", 6, [])}
 
-    plan = build_plan([(source, "p", "p")], decisions, monkeypatch, channels)
+    plan = build_plan(
+        [(source, "p", "p")],
+        decisions_file(tmp_path / "decisions.json", scope={"p": "p"}),
+        monkeypatch,
+        channels,
+    )
 
     assert plan["errors"] == []
     assert plan["decisionRequired"] == []
@@ -254,13 +271,17 @@ def test_free_model_rp5h_filled_from_channel_maximum(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     source = tmp_path / "source.json"
-    decisions = decisions_file(tmp_path / "decisions.json")
     payload = raw_source("p", "paid-a", "ox-alpha-free")
     payload["p"]["models"]["paid-a"]["extra"] = {"rp5h": 900, "usage_quota": 60}
     write_json(source, payload)
     channels = {"p": channel_node("p", 6, [])}
 
-    plan = build_plan([(source, "p", "p")], decisions, monkeypatch, channels)
+    plan = build_plan(
+        [(source, "p", "p")],
+        decisions_file(tmp_path / "decisions.json", scope={"p": "p"}),
+        monkeypatch,
+        channels,
+    )
 
     assert plan["errors"] == []
     free_create = next(c for c in plan["creates"] if c["modelID"] == "ox-alpha-free")
@@ -283,6 +304,7 @@ def test_supplement_fills_missing_remark_fields(
                 "fields": {"rp5h": 900},
             }
         ],
+        scope={"p": "p"},
     )
     write_json(source, raw_source("p", "model-a"))
     channels = {"p": channel_node("p", 6, [])}
@@ -330,6 +352,7 @@ def test_manual_exclude_plans_unreferenced_existing_deletion(
                 "reason": "expired",
             }
         ],
+        scope={"p": "p"},
     )
     write_json(source, raw_source("p", "active", "expired"))
     channels = {"p": channel_node("p", 6, ["active", "expired"])}
@@ -352,7 +375,7 @@ def test_candidate_association_moves_only_target_channel_and_preserves_external(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     source = tmp_path / "source.json"
-    decisions = decisions_file(tmp_path / "decisions.json")
+    decisions = decisions_file(tmp_path / "decisions.json", scope={"p": "p"})
     write_json(source, raw_source("p", "model"))
     channels = {
         "p": channel_node("p", 6, ["model"]),
@@ -406,6 +429,7 @@ def test_excluded_model_supported_externally_is_retained(
                 "reason": "dropped upstream",
             }
         ],
+        scope={"p": "p"},
     )
     write_json(source, raw_source("p", "active"))
     # excluded 模型必须仍在源里才会进入 excluded 列表并被分析
@@ -487,3 +511,173 @@ def test_change_report_diffs_previous_commit(
             "after": {"input": 1, "output": 2},
         }
     ]
+
+
+def test_build_plan_rejects_provider_outside_managed_scope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "source.json"
+    decisions = decisions_file(tmp_path / "decisions.json")
+    write_json(source, raw_source("op-responses", "model-a"))
+    channels = {"op-responses": channel_node("op-responses", 7, [])}
+
+    with pytest.raises(sync_models.SyncError, match="not in the managed scope"):
+        build_plan([(source, "op-responses", "op-responses")], decisions, monkeypatch, channels)
+
+
+def test_build_plan_rejects_channel_outside_managed_scope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "source.json"
+    decisions = decisions_file(tmp_path / "decisions.json")
+    write_json(source, raw_source("opencode-go", "model-a"))
+    channels = {"commandcode": channel_node("commandcode", 20, [])}
+
+    with pytest.raises(sync_models.SyncError, match="outside the managed scope"):
+        build_plan([(source, "opencode-go", "commandcode")], decisions, monkeypatch, channels)
+
+
+def test_build_plan_rejects_malformed_scope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "source.json"
+    decisions = decisions_file(tmp_path / "decisions.json")
+    # 旧形状：channels 是字符串清单而非 provider→channel 映射
+    write_json(
+        decisions,
+        {
+            "schema_version": 1,
+            "scope": {
+                "channels": ["opencode-go", "op-responses"],
+                "templates": ["stable", "claude", "gpt"],
+            },
+            "models": [],
+            "mapping_overrides": [],
+        },
+    )
+    write_json(source, raw_source("opencode-go", "model-a"))
+    channels = {"opencode-go": channel_node("opencode-go", 6, [])}
+
+    with pytest.raises(sync_models.SyncError, match="provider→channel mapping"):
+        build_plan([(source, "opencode-go", "opencode-go")], decisions, monkeypatch, channels)
+
+
+def test_main_defaults_provider_channels_from_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    goat = tmp_path / "goat.json"
+    opengo = tmp_path / "opengo.json"
+    decisions = decisions_file(tmp_path / "decisions.json")
+    write_json(goat, raw_source("commandcode-goat", "model-a"))
+    write_json(opengo, raw_source("opencode-go", "model-b"))
+    captured: dict = {}
+
+    def fake_build_plan(sources, client, *, decisions_path, page_size):
+        captured["sources"] = sources
+        captured["decisions_path"] = decisions_path
+        return {"errors": [], "decisionRequired": []}
+
+    monkeypatch.setattr(sync_models, "build_plan", fake_build_plan)
+
+    rc = sync_models.main(
+        [
+            "--source",
+            str(opengo),
+            "--source",
+            str(goat),
+            "--model-decisions",
+            str(decisions),
+            "--token",
+            "test-jwt",
+        ]
+    )
+
+    assert rc == 0
+    assert captured["sources"] == [
+        (opengo, "opencode-go", "opencode-go"),
+        (goat, "commandcode-goat", "commandcode"),
+    ]
+    assert captured["decisions_path"] == decisions
+
+
+def test_main_rejects_provider_channel_outside_scope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    source = tmp_path / "opengo.json"
+    decisions = decisions_file(tmp_path / "decisions.json")
+    write_json(source, raw_source("opencode-go", "model-a"))
+
+    rc = sync_models.main(
+        [
+            "--source",
+            str(source),
+            "--model-decisions",
+            str(decisions),
+            "--provider-channel",
+            "opencode-go=commandcode",
+        ]
+    )
+
+    assert rc == 2
+    assert "outside the managed scope" in capsys.readouterr().err
+
+
+def test_main_rejects_source_provider_outside_scope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    source = tmp_path / "op-responses.json"
+    decisions = decisions_file(tmp_path / "decisions.json")
+    write_json(source, raw_source("op-responses", "model-a"))
+
+    rc = sync_models.main(
+        ["--source", str(source), "--model-decisions", str(decisions)]
+    )
+
+    assert rc == 2
+    assert "not in the managed scope" in capsys.readouterr().err
+
+
+def test_main_rejects_missing_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    source = tmp_path / "opengo.json"
+    write_json(source, raw_source("opencode-go", "model-a"))
+
+    rc = sync_models.main(
+        [
+            "--source",
+            str(source),
+            "--model-decisions",
+            str(tmp_path / "missing.json"),
+        ]
+    )
+
+    assert rc == 2
+    assert "source file not found" in capsys.readouterr().err
+
+
+def test_main_rejects_malformed_scope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    source = tmp_path / "opengo.json"
+    write_json(source, raw_source("opencode-go", "model-a"))
+    decisions = decisions_file(tmp_path / "decisions.json")
+    write_json(
+        decisions,
+        {
+            "schema_version": 1,
+            "scope": {
+                "channels": {"opencode-go": 6},
+                "templates": ["stable", "claude", "gpt"],
+            },
+            "models": [],
+            "mapping_overrides": [],
+        },
+    )
+
+    rc = sync_models.main(
+        ["--source", str(source), "--model-decisions", str(decisions)]
+    )
+
+    assert rc == 2
+    assert "non-empty provider" in capsys.readouterr().err

@@ -7,6 +7,10 @@ standalone, dependency-free helper only produces a reviewed plan file: it never
 mutates AxonHub, never runs Git operations, and holds no credential policy of
 its own — pass a read token via ``AXONHUB_JWT`` or ``--token``.  Execution
 belongs to the ``axonhub-admin`` skill (``apply_catalog_plan.py``).
+
+The managed provider→channel scope comes from ``model-decisions.json``:
+providers route to their configured channel by default, and a source provider
+or ``--provider-channel`` selection outside that scope is rejected.
 """
 
 from __future__ import annotations
@@ -226,6 +230,75 @@ def reconcile_candidate_settings(
     )
     current["traceStickyMode"] = str(current.get("traceStickyMode") or "default")
     return current
+
+
+def load_managed_scope(path: Path) -> dict[str, Any]:
+    """Load the managed provider→channel scope from model-decisions.json.
+
+    The scope is the single source of truth for which channels this project
+    plans; scripts default to it and CLI selections may only stay within it.
+    """
+
+    document = load_json(path)
+    if not isinstance(document, Mapping) or document.get("schema_version") != SCHEMA_VERSION:
+        raise SyncError("model-decisions.json must use schema_version 1")
+    scope = document.get("scope")
+    if not isinstance(scope, Mapping):
+        raise SyncError("model-decisions.json scope must be an object")
+    channels = scope.get("channels")
+    if not isinstance(channels, Mapping):
+        raise SyncError(
+            "model-decisions.json scope.channels must be a provider→channel mapping"
+        )
+    managed: dict[str, str] = {}
+    for provider, channel in channels.items():
+        if (
+            not isinstance(provider, str)
+            or not isinstance(channel, str)
+            or not provider.strip()
+            or not channel.strip()
+        ):
+            raise SyncError(
+                "model-decisions.json scope.channels must map non-empty provider "
+                "strings to non-empty channel strings"
+            )
+        managed[provider.strip()] = channel.strip()
+    templates = scope.get("templates")
+    if not isinstance(templates, list) or not all(
+        isinstance(item, str) and item.strip() for item in templates
+    ):
+        raise SyncError(
+            "model-decisions.json scope.templates must be a list of strings"
+        )
+    return {"channels": managed, "templates": list(templates)}
+
+
+def managed_channel(provider: str, scope: Mapping[str, Any]) -> str:
+    """Return the managed channel for a provider or raise an out-of-scope error."""
+
+    channels: Mapping[str, str] = scope["channels"]
+    channel = channels.get(provider)
+    if channel is None:
+        raise SyncError(
+            f"provider {provider!r} is not in the managed scope "
+            f"{sorted(channels)}; planning is limited to managed providers"
+        )
+    return channel
+
+
+def validate_provider_channels_in_scope(
+    requested: Mapping[str, str],
+    scope: Mapping[str, Any],
+) -> None:
+    """Reject CLI provider→channel selections outside the managed scope."""
+
+    for provider, channel in requested.items():
+        expected = managed_channel(provider, scope)
+        if channel != expected:
+            raise SyncError(
+                f"provider→channel {provider}={channel} is outside the managed "
+                f"scope; config maps {provider!r} to {expected!r}"
+            )
 
 
 def load_model_decisions(path: Path, provider: str) -> dict[str, Any]:
@@ -628,6 +701,10 @@ def build_plan(
 
     if decisions_path is None:
         raise SyncError("model decisions path is required")
+    scope = load_managed_scope(decisions_path)
+    validate_provider_channels_in_scope(
+        {provider: channel for _, provider, channel in sources}, scope
+    )
     provider_nodes: dict[str, dict[str, Any]] = {}
     provider_channel: dict[str, str] = {}
     source_files: list[Path] = []
@@ -1037,7 +1114,8 @@ def _parser() -> argparse.ArgumentParser:
         action="append",
         dest="provider_channels",
         metavar="PROVIDER=CHANNEL",
-        help="route a provider to a channel; repeatable (e.g. commandcode-goat=commandcode). Default: provider id",
+        help="reaffirm a provider→channel routing; must match the managed scope "
+        "in --model-decisions (default routing comes from that scope)",
     )
     parser.add_argument(
         "--model-decisions",
@@ -1098,19 +1176,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not args.sources:
         print("--source is required for planning", file=sys.stderr)
         return 2
-    if not args.token:
-        print(
-            "a JWT is required to read AxonHub state: set AXONHUB_JWT or pass --token",
-            file=sys.stderr,
-        )
-        return 2
     try:
+        scope = load_managed_scope(args.model_decisions)
         provider_channels = _parse_provider_channels(args.provider_channels)
+        validate_provider_channels_in_scope(provider_channels, scope)
         sources: list[tuple[Path, str, str]] = []
         for source_path in args.sources:
             document = load_json(source_path)
             provider = _resolve_provider(document, source_path, None)
-            sources.append((source_path, provider, provider_channels.get(provider, provider)))
+            sources.append((source_path, provider, managed_channel(provider, scope)))
+        if not args.token:
+            print(
+                "a JWT is required to read AxonHub state: set AXONHUB_JWT or pass --token",
+                file=sys.stderr,
+            )
+            return 2
         if args.change_report_output:
             report = change_report(args.all_models, args.sources)
             write_json(args.change_report_output, report)

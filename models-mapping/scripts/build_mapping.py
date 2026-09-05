@@ -417,17 +417,21 @@ def load_request_models_data(payload: Any, report: Optional[dict] = None) -> Lis
 def load_model_decisions_data(
     payload: Any,
     report: Optional[dict] = None,
-    *,
-    provider: str = "opencode-go",
 ) -> dict[str, Any]:
-    """Load reviewed exclusions, supplements, scope, and mapping overrides."""
+    """Load reviewed exclusions, supplements, scope, and mapping overrides.
+
+    The managed scope is a provider→channel mapping and the single source of
+    truth for the managed boundary: decision entries apply only for providers
+    listed in it, and any other scope shape is reported as an error (blocking
+    under ``--fail-on-errors``).
+    """
 
     target_report = report or {"errors": [], "warnings": []}
     result = {
         "excluded": {},
         "supplements": {},
         "mapping_overrides": {},
-        "scope": {},
+        "scope": {"channels": {}, "templates": []},
     }
     if not isinstance(payload, Mapping) or payload.get("schema_version") != SCHEMA_VERSION:
         target_report["errors"].append(
@@ -445,21 +449,39 @@ def load_model_decisions_data(
     else:
         channels = scope.get("channels")
         templates = scope.get("templates")
-        if not isinstance(channels, list) or not all(isinstance(x, str) for x in channels):
+        if not isinstance(channels, Mapping) or not all(
+            isinstance(provider_key, str)
+            and provider_key.strip()
+            and isinstance(channel, str)
+            and channel.strip()
+            for provider_key, channel in channels.items()
+        ):
             target_report["errors"].append(
-                _report_item("invalid_decision_channels", "managed channels must be strings")
+                _report_item(
+                    "invalid_decision_channels",
+                    "managed channels must be a provider→channel mapping of non-empty strings",
+                )
             )
-        if not isinstance(templates, list) or not all(isinstance(x, str) for x in templates):
+        else:
+            result["scope"]["channels"] = {
+                str(provider_key).strip(): str(channel).strip()
+                for provider_key, channel in channels.items()
+            }
+        if not isinstance(templates, list) or not all(
+            isinstance(x, str) and x.strip() for x in templates
+        ):
             target_report["errors"].append(
                 _report_item("invalid_decision_templates", "managed templates must be strings")
             )
-        result["scope"] = dict(scope)
+        else:
+            result["scope"]["templates"] = list(templates)
     entries = payload.get("models")
     if not isinstance(entries, list):
         target_report["errors"].append(
             _report_item("invalid_model_decision_entries", "model decisions must be a list")
         )
         entries = []
+    scoped_providers = set(result["scope"]["channels"])
     seen = set()
     allowed_supplements = {
         "rp5h",
@@ -474,7 +496,7 @@ def load_model_decisions_data(
                 _report_item("invalid_model_decision", "model decision is not an object")
             )
             continue
-        if str(entry.get("provider") or "") != provider:
+        if str(entry.get("provider") or "") not in scoped_providers:
             continue
         model_id = str(entry.get("model_id") or "").strip()
         action = str(entry.get("action") or "").strip()
@@ -742,7 +764,7 @@ def build_mapping_data(
     if model_decisions_payload is None:
         model_decisions_payload = {
             "schema_version": 1,
-            "scope": {"channels": [], "templates": []},
+            "scope": {"channels": {}, "templates": []},
             "models": [],
             "mapping_overrides": [],
         }

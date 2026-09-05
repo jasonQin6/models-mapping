@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Regression tests for the deterministic mapping builder (union candidate universe)."""
 
+import json
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 
-from build_mapping import build_mapping_data, score_match
+from build_mapping import build_mapping_data, main, score_match
 
 
 def all_models_snapshot(*model_ids: str) -> dict:
@@ -48,6 +49,18 @@ def run(models, go, arena, requests, goat=None):
         models, go, arena, requests, None, goat
     )
     return rows, report, enrichment
+
+
+def decisions_payload(channels, models=None):
+    return {
+        "schema_version": 1,
+        "scope": {
+            "channels": channels,
+            "templates": ["stable", "claude", "gpt"],
+        },
+        "models": models or [],
+        "mapping_overrides": [],
+    }
 
 
 def test_mapping_uses_only_arena_and_rp5h_for_candidate_eligibility() -> None:
@@ -209,3 +222,97 @@ def test_score_formula_uses_log_rp5h_and_no_price_or_quota() -> None:
     assert score_match(1500, base, max_values) == score_match(
         1500, alternate, max_values
     )
+
+
+def test_scope_must_be_provider_channel_mapping() -> None:
+    _, report, _ = build_mapping_data(
+        all_models_snapshot("candidate-a"),
+        opencode_go_snapshot({"candidate-a": {"rp5h": 100}}),
+        arena_snapshot({"candidate-a": 1500, "gpt-5.5": 1500}),
+        request_config("gpt-5.5"),
+        decisions_payload(["opencode-go", "op-responses"]),
+    )
+
+    codes = {error["code"] for error in report["errors"]}
+    assert "invalid_decision_channels" in codes
+
+
+def test_decisions_apply_for_providers_in_managed_scope() -> None:
+    rows, report, _ = build_mapping_data(
+        all_models_snapshot("candidate-a", "goat-only"),
+        opencode_go_snapshot({"candidate-a": {"rp5h": 100}}),
+        arena_snapshot({"candidate-a": 1500, "goat-only": 1400, "gpt-5.5": 1500}),
+        request_config("gpt-5.5"),
+        decisions_payload(
+            {"opencode-go": "opencode-go", "commandcode-goat": "commandcode"},
+            models=[
+                {
+                    "provider": "commandcode-goat",
+                    "model_id": "goat-only",
+                    "action": "exclude",
+                    "reason": "not entitled",
+                }
+            ],
+        ),
+        goat_snapshot({"goat-only": {"rp5h": 800}}),
+    )
+
+    candidates = {row["model_id"] for row in rows if row["role"] == "candidate"}
+    assert candidates == {"candidate-a"}
+    assert any(item["model_id"] == "goat-only" for item in report["excluded"])
+    assert report["errors"] == []
+
+
+def test_decisions_for_unscoped_providers_are_ignored() -> None:
+    rows, report, _ = build_mapping_data(
+        all_models_snapshot("candidate-a", "goat-only"),
+        opencode_go_snapshot({"candidate-a": {"rp5h": 100}}),
+        arena_snapshot({"candidate-a": 1500, "goat-only": 1400, "gpt-5.5": 1500}),
+        request_config("gpt-5.5"),
+        decisions_payload(
+            {"opencode-go": "opencode-go"},
+            models=[
+                {
+                    "provider": "op-responses",
+                    "model_id": "goat-only",
+                    "action": "exclude",
+                    "reason": "unmanaged",
+                }
+            ],
+        ),
+        goat_snapshot({"goat-only": {"rp5h": 800}}),
+    )
+
+    candidates = {row["model_id"] for row in rows if row["role"] == "candidate"}
+    assert candidates == {"candidate-a", "goat-only"}
+    assert report["excluded"] == []
+
+
+def test_main_rejects_missing_config(tmp_path, capsys) -> None:
+    snapshots = {
+        "--models": all_models_snapshot("candidate-a"),
+        "--go": opencode_go_snapshot({"candidate-a": {"rp5h": 100}}),
+        "--arena": arena_snapshot({"candidate-a": 1500, "gpt-5.5": 1500}),
+        "--request-models": request_config("gpt-5.5"),
+        "--goat": goat_snapshot({"goat-only": {"rp5h": 800}}),
+    }
+    args = []
+    for flag, payload in snapshots.items():
+        path = tmp_path / f"{flag.strip('-')}.json"
+        path.write_text(json.dumps(payload), encoding="utf-8")
+        args += [flag, str(path)]
+
+    rc = main(
+        args
+        + [
+            "--model-decisions",
+            str(tmp_path / "missing.json"),
+            "--output",
+            str(tmp_path / "models.csv"),
+            "--enriched-output",
+            str(tmp_path / "enriched.json"),
+        ]
+    )
+
+    assert rc == 1
+    assert "missing model-decisions.json" in capsys.readouterr().err
