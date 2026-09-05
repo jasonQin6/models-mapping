@@ -9,7 +9,7 @@
 - 术语、映射判断、门禁分级 → [`CONTEXT.md`](CONTEXT.md)
 - 数据归属、流程、skills 分工、产物表 → [`README.md`](README.md)
 - 凭据、workflow 安全、AxonHub 写入、事件响应 → [`SECURITY.md`](SECURITY.md)
-- 改变拥有或写入边界 → [`docs/adr/`](docs/adr)（当前 0005–0007），再改本文
+- 改变拥有或写入边界 → [`docs/adr/`](docs/adr)（当前 0005–0009），再改本文
 
 ## 命令
 
