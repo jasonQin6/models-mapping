@@ -22,7 +22,7 @@ from pathlib import Path
 from common import fetch_connection, fetch_graphql, CHANNELS, ALI_TOKEN_NIGHT_MODELS
 
 
-def calculate_channel_priority(channel_id, model_id):
+def calculate_channel_priority(channel_name: str, model_id: str) -> tuple[int, str]:
     """
     Calculate priority for a channel-model pair.
     Lower value = higher priority.
@@ -34,9 +34,9 @@ def calculate_channel_priority(channel_id, model_id):
 
     Returns (priority_score, channel_name)
     """
-    ch = CHANNELS.get(channel_id)
+    ch = CHANNELS.get(channel_name)
     if not ch:
-        return (999999, "unknown")
+        return (999999, channel_name)
 
     quota = ch["quota"]
     billing = ch["billing"]
@@ -51,27 +51,30 @@ def calculate_channel_priority(channel_id, model_id):
         base = 100000 - quota
 
     # Model-specific adjustments
-    if channel_id == 6:  # opencode-go
+    if channel_name == "opencode-go":
         if model_id.startswith("deepseek") or model_id.startswith("qwen"):
             # +10000: push below other token-based models in same channel
             # because deepseek/qwen have peak/off-peak pricing that makes them less attractive
             base += 10000
 
-    if channel_id == 5:  # Ali-Token
+    if channel_name == "Ali-Token":
         if model_id in ALI_TOKEN_NIGHT_MODELS:
             # -5000: boost night-only models above daytime Ali-Token models
             # so they get picked first during night hours (22:00-08:00)
             base -= 5000
 
-    return (base, ch["name"])
+    return (base, channel_name)
 
 
 def get_model_channels(model_id, channel_models_map):
-    """Get all channels that support a model, sorted by priority."""
+    """Get all channels that support a model, sorted by priority.
+
+    channel_models_map maps channel name -> (server-assigned channel id, set of models).
+    """
     channels = []
-    for ch_id, models in channel_models_map.items():
+    for ch_name, (ch_id, models) in channel_models_map.items():
         if model_id in models:
-            priority, ch_name = calculate_channel_priority(ch_id, model_id)
+            priority, ch_name = calculate_channel_priority(ch_name, model_id)
             channels.append((priority, ch_id, ch_name))
 
     channels.sort(key=lambda x: x[0])
@@ -113,7 +116,7 @@ def main():
     print("                -5000 for Ali-Token night models")
     print()
 
-    # Fetch all channels with supported models
+    # Fetch all channels with supported models; match CHANNELS by exact name.
     print("Fetching channels...")
     channel_nodes = fetch_connection(
         args.axonhub_url,
@@ -125,13 +128,16 @@ def main():
     channel_models_map = {}
     for node in channel_nodes:
         ch_id = int(node["id"].split("/")[-1])
-        channel_models_map[ch_id] = set(node.get("supportedModels", []))
+        if node["name"] in channel_models_map:
+            print(f"  WARNING: duplicate channel name {node['name']!r} — keeping the first occurrence")
+            continue
+        channel_models_map[node["name"]] = (ch_id, set(node.get("supportedModels", [])))
 
     print(f"Found {len(channel_models_map)} channels")
-    for ch_id in sorted(channel_models_map.keys()):
-        models = channel_models_map[ch_id]
-        ch = CHANNELS.get(ch_id, {})
-        print(f"  ch{ch_id}: {ch.get('name', 'unknown'):20s} | {len(models):3d} models | quota={ch.get('quota', '?'):>6} | {ch.get('billing', '?')}")
+    for ch_name in sorted(channel_models_map.keys()):
+        ch_id, models = channel_models_map[ch_name]
+        ch = CHANNELS.get(ch_name, {})
+        print(f"  ch{ch_id}: {ch_name:20s} | {len(models):3d} models | quota={ch.get('quota', '?'):>6} | {ch.get('billing', '?')}")
     print()
 
     # Fetch all models
@@ -204,26 +210,26 @@ def main():
             print(f"  {model_id:30s} {' | '.join(ch_strs)}")
             updated_count += 1
         else:
-            response = fetch_graphql(args.axonhub_url, args.token, mutation, {
-                "id": internal_id,
-                "input": {
-                    "settings": {
-                        "disableDeveloperSettingsInheritance": (
-                            node.get("settings") or {}
-                        ).get("disableDeveloperSettingsInheritance", False),
-                        "associations": associations,
-                        "loadBalancerStrategy": (node.get("settings") or {}).get(
-                            "loadBalancerStrategy", "default"
-                        ),
-                        "traceStickyMode": (node.get("settings") or {}).get(
-                            "traceStickyMode", "default"
-                        ),
+            try:
+                fetch_graphql(args.axonhub_url, args.token, mutation, {
+                    "id": internal_id,
+                    "input": {
+                        "settings": {
+                            "disableDeveloperSettingsInheritance": (
+                                node.get("settings") or {}
+                            ).get("disableDeveloperSettingsInheritance", False),
+                            "associations": associations,
+                            "loadBalancerStrategy": (node.get("settings") or {}).get(
+                                "loadBalancerStrategy", "default"
+                            ),
+                            "traceStickyMode": (node.get("settings") or {}).get(
+                                "traceStickyMode", "default"
+                            ),
+                        }
                     }
-                }
-            })
-
-            if "errors" in response:
-                print(f"  ERROR: {model_id} - {response['errors']}")
+                })
+            except RuntimeError as exc:
+                print(f"  ERROR: {model_id} - {exc}")
                 skipped_count += 1
             else:
                 ch_strs = []

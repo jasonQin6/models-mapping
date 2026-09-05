@@ -3,13 +3,17 @@
 
 import importlib.util
 import json
+import sys
 from pathlib import Path
 
 import pytest
 
+SCRIPT_DIR = Path(__file__).resolve().parents[1] / "scripts"
+sys.path.insert(0, str(SCRIPT_DIR))
 
-SCRIPT = Path(__file__).parents[1] / "scripts" / "apply_catalog_plan.py"
-SPEC = importlib.util.spec_from_file_location("apply_catalog_plan", SCRIPT)
+SPEC = importlib.util.spec_from_file_location(
+    "apply_catalog_plan", SCRIPT_DIR / "apply_catalog_plan.py"
+)
 assert SPEC and SPEC.loader
 apply_catalog_plan = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(apply_catalog_plan)
@@ -82,52 +86,37 @@ def test_validate_plan_shape_accepts_sample_plan() -> None:
     apply_catalog_plan.validate_plan_shape(sample_plan())
 
 
-def test_validate_plan_shape_rejects_errors_in_plan() -> None:
+def test_apply_plan_rejects_errors_in_plan() -> None:
     plan = sample_plan(errors=[{"type": "boom"}])
 
     with pytest.raises(
         apply_catalog_plan.BlockingPlanError, match="blocking errors"
     ):
-        apply_catalog_plan.apply_plan(object(), plan)
+        apply_catalog_plan.apply_plan("https://axonhub", "token", plan)
 
 
-def test_validate_remote_state_detects_drift() -> None:
-    plan = sample_plan(
-        updates=[
-            {
-                "modelID": "m",
-                "internalID": "gid://axonhub/Model/1",
-                "beforeFingerprint": "stale",
-                "input": {"name": "changed"},
-            }
-        ]
-    )
-    channels = {"p": channel_node("p", 6, [])}
-    models = {
-        "m": {
-            "id": "gid://axonhub/Model/1",
-            "modelID": "m",
-            "status": "enabled",
-        }
-    }
-
-    with pytest.raises(apply_catalog_plan.BlockingPlanError, match="changed after review"):
-        apply_catalog_plan.validate_remote_state(
-            _FakeClient(channels, models), plan
-        )
-
-
-class _FakeClient:
-    """Fake AxonHub: starts at the before-state, mutates like the server."""
+class _FakeHub:
+    """Fake AxonHub: fetch_connection serves reads, fetch_graphql applies mutations."""
 
     def __init__(self, channels: dict, models: dict) -> None:
         self.channels = channels
         self.models = models
-        self.mutated = False
 
-    def execute(self, query: str, variables=None) -> dict:
+    def connection(
+        self,
+        axonhub_url: str,
+        token: str,
+        field: str,
+        node_selection: str,
+        page_size: int = 100,
+    ) -> list[dict]:
+        source = self.channels if field == "channels" else self.models
+        return [dict(node) for node in source.values()]
+
+    def graphql(
+        self, axonhub_url: str, token: str, query: str, variables: dict | None = None
+    ) -> dict:
         if "createModel" in query:
-            self.mutated = True
             variables = variables or {}
             input_data = dict(variables.get("input") or {})
             model_id = str(input_data.get("modelID"))
@@ -146,40 +135,23 @@ class _FakeClient:
             }
             return {"createModel": {"id": "gid://axonhub/Model/99", "modelID": model_id}}
         if "updateModel" in query:
-            self.mutated = True
             variables = variables or {}
             model = self._by_internal_id(str(variables.get("id")))
             if model is not None:
                 model.update(variables.get("input") or {})
-            return {}
+            return {"updateModel": {"id": variables.get("id")}}
         if "deleteModel" in query:
-            self.mutated = True
             variables = variables or {}
             model = self._by_internal_id(str(variables.get("id")))
             if model is not None:
                 self.models.pop(str(model["modelID"]))
-            return {}
+            return {"deleteModel": None}
         if "updateChannel" in query:
-            self.mutated = True
             variables = variables or {}
             for node in self.channels.values():
                 if str(node["id"]) == str(variables.get("id")):
                     node["supportedModels"] = (variables.get("input") or {}).get("supportedModels")
-            return {}
-        if "channels" in query:
-            return {
-                "channels": {
-                    "edges": [{"node": node} for node in self.channels.values()],
-                    "pageInfo": {"hasNextPage": False, "endCursor": None},
-                }
-            }
-        if "models" in query:
-            return {
-                "models": {
-                    "edges": [{"node": node} for node in self.models.values()],
-                    "pageInfo": {"hasNextPage": False, "endCursor": None},
-                }
-            }
+            return {"updateChannel": {}}
         raise AssertionError(f"unexpected query: {query[:60]}")
 
     def _by_internal_id(self, internal_id: str) -> dict | None:
@@ -189,7 +161,39 @@ class _FakeClient:
         return None
 
 
-def test_apply_plan_creates_enables_and_verifies() -> None:
+def _bind_hub(monkeypatch: pytest.MonkeyPatch, hub: _FakeHub) -> None:
+    monkeypatch.setattr(apply_catalog_plan, "fetch_graphql", hub.graphql)
+    monkeypatch.setattr(apply_catalog_plan, "fetch_connection", hub.connection)
+
+
+def test_validate_remote_state_detects_drift(monkeypatch: pytest.MonkeyPatch) -> None:
+    plan = sample_plan(
+        updates=[
+            {
+                "modelID": "m",
+                "internalID": "gid://axonhub/Model/1",
+                "beforeFingerprint": "stale",
+                "input": {"name": "changed"},
+            }
+        ]
+    )
+    hub = _FakeHub(
+        {"p": channel_node("p", 6, [])},
+        {
+            "m": {
+                "id": "gid://axonhub/Model/1",
+                "modelID": "m",
+                "status": "enabled",
+            }
+        },
+    )
+    _bind_hub(monkeypatch, hub)
+
+    with pytest.raises(apply_catalog_plan.BlockingPlanError, match="changed after review"):
+        apply_catalog_plan.validate_remote_state("https://axonhub", "token", plan)
+
+
+def test_apply_plan_creates_enables_and_verifies(monkeypatch: pytest.MonkeyPatch) -> None:
     plan = sample_plan(
         channelUpdates=[
             {
@@ -201,41 +205,22 @@ def test_apply_plan_creates_enables_and_verifies() -> None:
             }
         ]
     )
-    created_model = {
-        "id": "gid://axonhub/Model/99",
-        "modelID": "new-model",
-        "status": "enabled",
-        "name": "new-model",
-        "developer": "p",
-        "icon": "Default",
-        "group": "test",
-        "remark": "{}",
-        "settings": {
-            "disableDeveloperSettingsInheritance": False,
-            "associations": [],
-            "loadBalancerStrategy": "default",
-            "traceStickyMode": "default",
-        },
-    }
-    client = _FakeClient(
-        {"p": channel_node("p", 6, [])},
-        {},
-    )
+    hub = _FakeHub({"p": channel_node("p", 6, [])}, {})
+    _bind_hub(monkeypatch, hub)
 
-    result = apply_catalog_plan.apply_plan(client, plan)
+    result = apply_catalog_plan.apply_plan("https://axonhub", "token", plan)
 
     assert result["created"] == ["new-model"]
     assert result["enabled"] == ["new-model"]
     assert result["updatedChannels"] == ["p"]
-    assert client.models["new-model"]["status"] == "enabled"
-    assert client.channels["p"]["supportedModels"] == ["new-model"]
+    assert hub.models["new-model"]["status"] == "enabled"
+    assert hub.channels["p"]["supportedModels"] == ["new-model"]
 
-    verification = apply_catalog_plan.verify_plan(client, plan)
+    verification = apply_catalog_plan.verify_plan("https://axonhub", "token", plan)
     assert verification["ok"] is True
-    assert created_model  # shape reference; remote state lives on the client
 
 
-def test_verify_plan_detects_missing_channel_entry() -> None:
+def test_verify_plan_detects_missing_channel_entry(monkeypatch: pytest.MonkeyPatch) -> None:
     plan = sample_plan(
         channelUpdates=[
             {
@@ -247,9 +232,10 @@ def test_verify_plan_detects_missing_channel_entry() -> None:
             }
         ]
     )
-    client = _FakeClient({"p": channel_node("p", 6, [])}, {})
+    hub = _FakeHub({"p": channel_node("p", 6, [])}, {})
+    _bind_hub(monkeypatch, hub)
 
-    verification = apply_catalog_plan.verify_plan(client, plan)
+    verification = apply_catalog_plan.verify_plan("https://axonhub", "token", plan)
 
     assert verification["ok"] is False
     assert {"type": "missing_model", "model": "new-model"} in verification["failures"]

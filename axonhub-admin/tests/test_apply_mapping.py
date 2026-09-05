@@ -60,17 +60,6 @@ def model_node(
     }
 
 
-def page(nodes: list[dict], *, has_next: bool = False, cursor: str | None = None) -> dict:
-    return {
-        "data": {
-            "models": {
-                "edges": [{"node": node} for node in nodes],
-                "pageInfo": {"hasNextPage": has_next, "endCursor": cursor},
-            }
-        }
-    }
-
-
 def test_build_model_association_has_canonical_shape() -> None:
     assert apply_mapping.build_model_association("deepseek-v4-flash") == {
         "type": "model",
@@ -132,28 +121,26 @@ def test_read_mapping_rows_rejects_unknown_target(tmp_path: Path) -> None:
         apply_mapping.read_mapping_rows(path)
 
 
-def test_fetch_all_models_follows_relay_pagination(monkeypatch: pytest.MonkeyPatch) -> None:
-    responses = iter(
-        [
-            page([model_node("candidate-a")], has_next=True, cursor="cursor-1"),
-            page([model_node("candidate-b")]),
+def test_fetch_all_models_builds_index_from_connection(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, object] = {}
+
+    def fake_connection(
+        url: str, token: str, field: str, node_selection: str, *, page_size: int = 100
+    ) -> list[dict]:
+        seen["field"] = field
+        seen["page_size"] = page_size
+        return [
+            model_node("candidate-a"),
+            model_node("candidate-b"),
+            {"id": "gid://axonhub/Model/anonymous"},
         ]
-    )
-    calls: list[dict] = []
 
-    def fake_fetch(url: str, token: str, query: str, variables: dict) -> dict:
-        calls.append(variables)
-        return next(responses)
+    monkeypatch.setattr(apply_mapping, "fetch_connection", fake_connection)
 
-    monkeypatch.setattr(apply_mapping, "fetch_graphql", fake_fetch)
-
-    result = apply_mapping.fetch_all_models("https://axonhub", "token", page_size=1)
+    result = apply_mapping.fetch_all_models("https://axonhub", "token", page_size=50)
 
     assert set(result) == {"candidate-a", "candidate-b"}
-    assert calls == [
-        {"first": 1, "after": None},
-        {"first": 1, "after": "cursor-1"},
-    ]
+    assert seen == {"field": "models", "page_size": 50}
 
 
 def test_build_plan_reports_legacy_change_and_noop(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -236,7 +223,7 @@ def test_apply_plan_sends_preserved_settings_only_for_changes(
 
     def fake_fetch(url: str, token: str, query: str, variables: dict) -> dict:
         calls.append(variables)
-        return {"data": {"updateModel": {"id": variables["id"], "modelID": "request"}}}
+        return {"updateModel": {"id": variables["id"], "modelID": "request"}}
 
     monkeypatch.setattr(apply_mapping, "fetch_graphql", fake_fetch)
 
@@ -372,3 +359,24 @@ def test_template_profile_compare_normalizes_null_collections() -> None:
     assert apply_mapping.normalize_profile_for_compare(
         actual
     ) == apply_mapping.normalize_profile_for_compare(expected)
+
+
+def test_settings_fingerprint_treats_absent_settings_as_empty() -> None:
+    assert apply_mapping.settings_fingerprint(None) == apply_mapping.settings_fingerprint({})
+    assert apply_mapping.settings_fingerprint(None) == apply_mapping.value_fingerprint({})
+
+
+def test_template_fingerprint_stable_for_missing_template() -> None:
+    assert apply_mapping.template_fingerprint(None) == apply_mapping.value_fingerprint({})
+
+
+def test_validate_saved_plan_checks_schema_and_hash_gates() -> None:
+    with pytest.raises(apply_mapping.MappingInputError, match="schema_version"):
+        apply_mapping.validate_saved_plan(
+            {"schema_version": 2, "planHash": "x"}, set(), {}, set(), {}
+        )
+
+    plan = {"schema_version": 1}
+    plan["planHash"] = apply_mapping.mapping_plan_hash(plan)
+    with pytest.raises(apply_mapping.MappingInputError, match="must be a list"):
+        apply_mapping.validate_saved_plan(plan, set(), {}, set(), {})

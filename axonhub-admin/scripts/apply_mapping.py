@@ -13,7 +13,6 @@ from __future__ import annotations
 import argparse
 import csv
 import copy
-import hashlib
 import json
 import math
 import os
@@ -22,7 +21,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from common import fetch_connection, fetch_graphql
+from common import fetch_connection, fetch_graphql, value_fingerprint
+
+
+def settings_fingerprint(settings: dict[str, Any] | None) -> str:
+    """Absent settings fingerprint as the empty object, matching plan-build time."""
+
+    return value_fingerprint(settings or {})
 
 
 CSV_COLUMNS = ("model_id", "role", "arena_score", "rp5h", "mapping")
@@ -37,32 +42,14 @@ ASSOCIATION_KEYS = (
     "channelTagsModel",
     "channelTagsRegex",
 )
-MODEL_QUERY = """
-query ListModels($first: Int!, $after: Cursor) {
-  models(first: $first, after: $after) {
-    edges {
-      node {
-        id
-        modelID
-        status
-        settings {
-          disableDeveloperSettingsInheritance
-          associations {
-            type
-            priority
-            disabled
-            channelModel { channelId modelId }
-            modelId { modelId }
-          }
-          loadBalancerStrategy
-          traceStickyMode
-        }
-      }
-    }
-    pageInfo { hasNextPage endCursor }
-  }
-}
-"""
+MODEL_NODE_SELECTION = (
+    "id modelID status "
+    "settings { disableDeveloperSettingsInheritance "
+    "associations { type priority disabled "
+    "channelModel { channelId modelId } "
+    "modelId { modelId } } "
+    "loadBalancerStrategy traceStickyMode }"
+)
 UPDATE_MODEL_MUTATION = """
 mutation UpdateModel($id: ID!, $input: UpdateModelInput!) {
   updateModel(id: $id, input: $input) {
@@ -262,18 +249,6 @@ def settings_with_single_model_association(
     return updated
 
 
-def settings_fingerprint(settings: dict[str, Any] | None) -> str:
-    """Return a stable, secret-free fingerprint for optimistic concurrency."""
-
-    payload = json.dumps(
-        settings or {},
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-    return hashlib.sha256(payload).hexdigest()
-
-
 def associations_match(
     settings: dict[str, Any] | None, target_model: str
 ) -> bool:
@@ -318,53 +293,17 @@ def current_target(settings: dict[str, Any] | None) -> str | None:
     return None
 
 
-def _graphql_data(
-    axonhub_url: str, token: str, query: str, variables: dict[str, Any] | None = None
-) -> dict[str, Any]:
-    """Call GraphQL and convert protocol errors into one clear exception."""
-
-    result = fetch_graphql(axonhub_url, token, query, variables)
-    if result.get("errors"):
-        raise RuntimeError(json.dumps(result["errors"], ensure_ascii=False))
-    data = result.get("data")
-    if not isinstance(data, dict):
-        raise RuntimeError("AxonHub GraphQL response did not contain data")
-    return data
-
-
 def fetch_all_models(
     axonhub_url: str, token: str, page_size: int = 100
 ) -> dict[str, dict[str, Any]]:
     """Fetch every model through the Relay connection, not just the first page."""
 
-    if page_size < 1:
-        raise ValueError("page_size must be positive")
-    models: dict[str, dict[str, Any]] = {}
-    after: str | None = None
-    while True:
-        data = _graphql_data(
-            axonhub_url,
-            token,
-            MODEL_QUERY,
-            {"first": page_size, "after": after},
-        )
-        connection = data.get("models") or {}
-        edges = connection.get("edges") or []
-        for edge in edges:
-            node = edge.get("node") or {}
-            model_id = node.get("modelID")
-            internal_id = node.get("id")
-            if model_id and internal_id:
-                models[str(model_id)] = node
-
-        page_info = connection.get("pageInfo") or {}
-        if not page_info.get("hasNextPage"):
-            break
-        next_cursor = page_info.get("endCursor")
-        if not next_cursor or next_cursor == after:
-            raise RuntimeError("AxonHub models pagination did not advance")
-        after = str(next_cursor)
-    return models
+    nodes = fetch_connection(axonhub_url, token, "models", MODEL_NODE_SELECTION, page_size=page_size)
+    return {
+        str(node["modelID"]): node
+        for node in nodes
+        if node.get("modelID") and node.get("id")
+    }
 
 
 TEMPLATE_SELECTION = (
@@ -665,7 +604,7 @@ def build_plan(
         remote_templates,
     )
     return {
-        "schemaVersion": 1,
+        "schema_version": 1,
         "mappingFile": str(mapping_path),
         "requestModelsFile": str(request_models_path),
         "modelDecisionsFile": str(model_decisions_path),
@@ -689,8 +628,8 @@ def validate_saved_plan(
 ) -> None:
     """Validate a reviewed plan and bind it to current model identities/state."""
 
-    if plan.get("schemaVersion") != 1:
-        raise MappingInputError("unsupported mapping plan schemaVersion")
+    if plan.get("schema_version") != 1:
+        raise MappingInputError("unsupported mapping plan schema_version")
     if plan.get("planHash") != mapping_plan_hash(plan):
         raise MappingInputError("mapping plan hash is missing or invalid")
     for field in ("changes", "noops", "errors", "warnings"):
@@ -809,7 +748,7 @@ def apply_plan(
     failures: list[dict[str, str]] = []
     for item in plan.get("changes", []):
         try:
-            data = _graphql_data(
+            data = fetch_graphql(
                 axonhub_url,
                 token,
                 UPDATE_MODEL_MUTATION,
@@ -830,7 +769,7 @@ def apply_plan(
     template_plan = plan.get("templates") or {}
     for item in template_plan.get("changes", []):
         try:
-            _graphql_data(
+            fetch_graphql(
                 axonhub_url,
                 token,
                 UPDATE_TEMPLATE_MUTATION,
@@ -845,7 +784,7 @@ def apply_plan(
             failures.append({"model": f"template:{item['name']}", "message": str(exc)})
     for item in template_plan.get("creates", []):
         try:
-            _graphql_data(
+            fetch_graphql(
                 axonhub_url,
                 token,
                 CREATE_TEMPLATE_MUTATION,

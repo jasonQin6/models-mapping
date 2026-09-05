@@ -5,7 +5,8 @@ The plan file is produced by ``models-mapping/scripts/sync_models.py``
 and reviewed by a human.  This executor re-validates the plan shape, checks
 every source fingerprint and remote before-state for drift, applies the
 mutations, and reads back each written value.  It never regenerates a plan and
-never performs Git operations.
+never performs Git operations.  GraphQL transport, pagination, and value
+fingerprints are shared with the other executors via ``common.py``.
 """
 
 from __future__ import annotations
@@ -16,10 +17,10 @@ import hashlib
 import json
 import os
 import sys
-import urllib.error
-import urllib.request
 from pathlib import Path
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any, Mapping, Sequence
+
+from common import fetch_connection, fetch_graphql, value_fingerprint
 
 
 SCHEMA_VERSION = 1
@@ -53,16 +54,6 @@ def file_sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
-
-
-def value_fingerprint(value: Any) -> str:
-    encoded = json.dumps(
-        value,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
 
 
 def managed_model_state(model: Mapping[str, Any]) -> dict[str, Any]:
@@ -113,120 +104,6 @@ def normalize_settings_for_compare(
     return settings
 
 
-class GraphQLClient:
-    """Small stdlib GraphQL client that keeps tokens out of process argv."""
-
-    def __init__(
-        self,
-        url: str,
-        auth_token: str,
-        timeout: int = 30,
-        opener: Callable[..., Any] = urllib.request.urlopen,
-    ) -> None:
-        self.url = url.rstrip("/")
-        self.auth_token = auth_token
-        self.timeout = timeout
-        self.opener = opener
-
-    def execute(self, query: str, variables: Mapping[str, Any] | None = None) -> dict[str, Any]:
-        payload = json.dumps({"query": query, "variables": dict(variables or {})}, ensure_ascii=False)
-        request = urllib.request.Request(
-            f"{self.url}/admin/graphql",
-            data=payload.encode("utf-8"),
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": "Bearer " + self.auth_token,
-            },
-            method="POST",
-        )
-        try:
-            with self.opener(request, timeout=self.timeout) as response:
-                body = response.read().decode("utf-8")
-        except (OSError, urllib.error.URLError) as exc:
-            raise SyncError("AxonHub GraphQL request timed out") from exc
-        try:
-            decoded = json.loads(body)
-        except (TypeError, json.JSONDecodeError) as exc:
-            raise SyncError("AxonHub returned invalid GraphQL JSON") from exc
-        if decoded.get("errors"):
-            raise SyncError("AxonHub GraphQL returned an error")
-        data = decoded.get("data")
-        if not isinstance(data, Mapping):
-            raise SyncError("AxonHub GraphQL response has no data")
-        return dict(data)
-
-
-CHANNEL_NODE_SELECTION = "id name status supportedModels defaultTestModel"
-MODEL_NODE_SELECTION = (
-    "id modelID name developer icon group status remark "
-    "modelCard { reasoning { supported default } toolCall temperature "
-    "modalities { input output } vision cost { input output cacheRead cacheWrite } "
-    "limit { context output } knowledge releaseDate lastUpdated } "
-    "settings { disableDeveloperSettingsInheritance loadBalancerStrategy traceStickyMode "
-    "associations { type priority disabled "
-    "when { enabled condition { type logic field operator value "
-    "conditions { type logic field operator value } } } "
-    "channelModel { channelId modelId } "
-    "channelRegex { channelId pattern } "
-    "regex { pattern exclude { channelNamePattern channelIds channelTags } } "
-    "modelId { modelId exclude { channelNamePattern channelIds channelTags } } "
-    "channelTagsModel { channelTags modelId } "
-    "channelTagsRegex { channelTags pattern } } }"
-)
-
-
-def paged_nodes(
-    client: GraphQLClient,
-    field: str,
-    node_selection: str,
-    page_size: int = 100,
-) -> list[dict[str, Any]]:
-    """Fetch all Relay pages and reject a repeated or malformed cursor."""
-
-    query = (
-        f"query Paged{field.title()}($first: Int!, $after: Cursor) {{ "
-        f"{field}(first: $first, after: $after) {{ edges {{ node {{ {node_selection} }} }} "
-        "pageInfo { hasNextPage endCursor } } }"
-    )
-    after: str | None = None
-    seen: set[str] = set()
-    result_nodes: list[dict[str, Any]] = []
-    while True:
-        data = client.execute(query, {"first": page_size, "after": after})
-        connection = data.get(field)
-        if not isinstance(connection, Mapping):
-            raise SyncError(f"AxonHub GraphQL response has no {field} connection")
-        edges = connection.get("edges")
-        page_info = connection.get("pageInfo")
-        if not isinstance(edges, list) or not isinstance(page_info, Mapping):
-            raise SyncError(f"AxonHub {field} response is not paginated")
-        for edge in edges:
-            if isinstance(edge, Mapping) and isinstance(edge.get("node"), Mapping):
-                result_nodes.append(dict(edge["node"]))
-        if not page_info.get("hasNextPage"):
-            return result_nodes
-        next_cursor = page_info.get("endCursor")
-        if not next_cursor or str(next_cursor) in seen or str(next_cursor) == str(after):
-            raise SyncError(f"AxonHub {field} pagination returned a repeated cursor")
-        seen.add(str(next_cursor))
-        after = str(next_cursor)
-
-
-def fetch_channels(client: GraphQLClient, page_size: int = 100) -> dict[str, dict[str, Any]]:
-    nodes = paged_nodes(client, "channels", CHANNEL_NODE_SELECTION, page_size)
-    return {str(node["name"]): node for node in nodes if node.get("name")}
-
-
-def fetch_models(client: GraphQLClient, page_size: int = 100) -> dict[str, dict[str, Any]]:
-    nodes = paged_nodes(client, "models", MODEL_NODE_SELECTION, page_size)
-    result: dict[str, dict[str, Any]] = {}
-    for node in nodes:
-        model_id = node.get("modelID")
-        if model_id:
-            result[str(model_id)] = node
-    return result
-
-
 CREATE_MODEL_MUTATION = """
 mutation CreateModel($input: CreateModelInput!) {
   createModel(input: $input) { id modelID }
@@ -247,6 +124,39 @@ mutation DeleteModel($id: ID!) {
   deleteModel(id: $id)
 }
 """
+
+CHANNEL_NODE_SELECTION = "id name status supportedModels defaultTestModel"
+MODEL_NODE_SELECTION = (
+    "id modelID name developer icon group status remark "
+    "modelCard { reasoning { supported default } toolCall temperature "
+    "modalities { input output } vision cost { input output cacheRead cacheWrite } "
+    "limit { context output } knowledge releaseDate lastUpdated } "
+    "settings { disableDeveloperSettingsInheritance loadBalancerStrategy traceStickyMode "
+    "associations { type priority disabled "
+    "when { enabled condition { type logic field operator value "
+    "conditions { type logic field operator value } } } "
+    "channelModel { channelId modelId } "
+    "channelRegex { channelId pattern } "
+    "regex { pattern exclude { channelNamePattern channelIds channelTags } } "
+    "modelId { modelId exclude { channelNamePattern channelIds channelTags } } "
+    "channelTagsModel { channelTags modelId } "
+    "channelTagsRegex { channelTags pattern } } }"
+)
+
+
+def fetch_channels(axonhub_url: str, token: str, page_size: int = 100) -> dict[str, dict[str, Any]]:
+    nodes = fetch_connection(axonhub_url, token, "channels", CHANNEL_NODE_SELECTION, page_size=page_size)
+    return {str(node["name"]): node for node in nodes if node.get("name")}
+
+
+def fetch_models(axonhub_url: str, token: str, page_size: int = 100) -> dict[str, dict[str, Any]]:
+    nodes = fetch_connection(axonhub_url, token, "models", MODEL_NODE_SELECTION, page_size=page_size)
+    result: dict[str, dict[str, Any]] = {}
+    for node in nodes:
+        model_id = node.get("modelID")
+        if model_id:
+            result[str(model_id)] = node
+    return result
 
 
 def validate_plan_shape(plan: Mapping[str, Any]) -> None:
@@ -320,15 +230,16 @@ def validate_plan_shape(plan: Mapping[str, Any]) -> None:
 
 
 def validate_remote_state(
-    client: GraphQLClient,
+    axonhub_url: str,
+    token: str,
     plan: Mapping[str, Any],
     *,
     page_size: int = 100,
 ) -> None:
     """Ensure every reviewed before-state is still current."""
 
-    current_models = fetch_models(client, page_size)
-    current_channels = fetch_channels(client, page_size)
+    current_models = fetch_models(axonhub_url, token, page_size)
+    current_channels = fetch_channels(axonhub_url, token, page_size)
     drift: list[str] = []
     for item in plan.get("creates", []):
         if str(item.get("modelID")) in current_models:
@@ -410,7 +321,8 @@ def validate_source_files(
 
 
 def apply_plan(
-    client: GraphQLClient,
+    axonhub_url: str,
+    token: str,
     plan: Mapping[str, Any],
     *,
     page_size: int = 100,
@@ -420,30 +332,30 @@ def apply_plan(
     validate_plan_shape(plan)
     if plan.get("errors") or plan.get("decisionRequired"):
         raise BlockingPlanError("plan contains blocking errors; apply was refused")
-    validate_remote_state(client, plan, page_size=page_size)
+    validate_remote_state(axonhub_url, token, plan, page_size=page_size)
     created: list[str] = []
     enabled: list[str] = []
     updated: list[str] = []
     deleted: list[str] = []
     updated_channels: list[str] = []
     for item in plan.get("creates", []):
-        response = client.execute(CREATE_MODEL_MUTATION, {"input": item["input"]})
+        response = fetch_graphql(axonhub_url, token, CREATE_MODEL_MUTATION, {"input": item["input"]})
         node = _as_dict(response.get("createModel"))
         internal_id = node.get("id")
         if not internal_id:
             raise SyncError(f"createModel returned no id for {item.get('modelID')}")
         model_id = str(item["modelID"])
         created.append(model_id)
-        client.execute(UPDATE_MODEL_MUTATION, {"id": internal_id, "input": {"status": "enabled"}})
+        fetch_graphql(axonhub_url, token, UPDATE_MODEL_MUTATION, {"id": internal_id, "input": {"status": "enabled"}})
         enabled.append(model_id)
     for item in plan.get("updates", []):
-        client.execute(UPDATE_MODEL_MUTATION, {"id": item["internalID"], "input": item["input"]})
+        fetch_graphql(axonhub_url, token, UPDATE_MODEL_MUTATION, {"id": item["internalID"], "input": item["input"]})
         updated.append(str(item["modelID"]))
     for item in plan.get("channelUpdates", []):
-        client.execute(UPDATE_CHANNEL_MUTATION, {"id": item["channelId"], "input": item["input"]})
+        fetch_graphql(axonhub_url, token, UPDATE_CHANNEL_MUTATION, {"id": item["channelId"], "input": item["input"]})
         updated_channels.append(str(item["channel"]))
     for item in plan.get("deletes", []):
-        client.execute(DELETE_MODEL_MUTATION, {"id": item["internalID"]})
+        fetch_graphql(axonhub_url, token, DELETE_MODEL_MUTATION, {"id": item["internalID"]})
         deleted.append(str(item["modelID"]))
     return {
         "created": created,
@@ -454,11 +366,11 @@ def apply_plan(
     }
 
 
-def verify_plan(client: GraphQLClient, plan: Mapping[str, Any], *, page_size: int = 100) -> dict[str, Any]:
+def verify_plan(axonhub_url: str, token: str, plan: Mapping[str, Any], *, page_size: int = 100) -> dict[str, Any]:
     """Verify desired model/channel values after apply."""
 
-    actual_models = fetch_models(client, page_size)
-    actual_channels = fetch_channels(client, page_size)
+    actual_models = fetch_models(axonhub_url, token, page_size)
+    actual_channels = fetch_channels(axonhub_url, token, page_size)
     failures: list[dict[str, Any]] = []
     expected_models: dict[str, dict[str, Any]] = {}
     new_models: set[str] = set()
@@ -585,17 +497,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         if not args.apply:
             print("plan validated; pass --apply after explicit user confirmation", file=sys.stderr)
             return 0
-        client = GraphQLClient(args.axonhub_url, args.token)
-        result = apply_plan(client, plan, page_size=args.page_size)
+        result = apply_plan(args.axonhub_url, args.token, plan, page_size=args.page_size)
         print(json.dumps({"apply": result}, ensure_ascii=False, indent=2, sort_keys=True))
         if not args.verify:
             return 0
-        verification = verify_plan(client, plan, page_size=args.page_size)
+        verification = verify_plan(args.axonhub_url, args.token, plan, page_size=args.page_size)
         print(json.dumps({"verify": verification}, ensure_ascii=False, indent=2, sort_keys=True))
         if not verification["ok"]:
             return 3
         return 0
-    except SyncError as exc:
+    except RuntimeError as exc:
         print(str(exc), file=sys.stderr)
         return 2
 

@@ -38,8 +38,7 @@ watch-goat-models → data/goat-models.json ┘                         ▼
 
 - `watch-pipeline`：维护 watch-pipeline.yml、采集脚本（`watch-pipeline/scripts/watch_*.py`）与全部采集渠道；每渠道字段契约在 `watch-pipeline/reference/<channel>/extra.json`，脚本失败留痕于 `reference/<channel>/last-error.json`（成功后自删），修复流程见其 `SKILL.md`。原 `commandcode-goat-scraper` 及 models-mapping、opencode-axonhub-sync 中的采集部分已并入。
 - `models-mapping`：把 `data/*.json` 变换为 AxonHub 需要的数据格式——free 模型补全（`data/enriched.json`）、Claude/GPT 映射建议（`models.csv`）、目录同步 plan（`sync_models.py`）；只读规划，不做网络抓取，不写 AxonHub。
-- `axonhub-admin`：唯一面向 AxonHub 写入、持有其凭据的 skill；执行确认后的 catalog plan（`apply_catalog_plan.py`）与映射写入（`apply_mapping.py`）并验证。
-- `axonhub-config` 不再作为独立职责层：通用运维归 `axonhub-admin`；采集部分归 watch-pipeline 渠道。
+- `axonhub-admin`：唯一面向 AxonHub 写入、持有其凭据的 skill；执行确认后的 catalog plan（`apply_catalog_plan.py`）与映射写入（`apply_mapping.py`）并验证；通用 channel 运维（quota tags、ordering weights、非固定模型 `channel_model` associations）经 `configure_channels.py`/`configure_models.py` dry-run 展示 diff 后由用户确认执行。原 `axonhub-config` 已并入本 skill。
 - `scripts/{csv_io,name_matching,parse_opencode_mdx}` 为共享库，无独立 skill 归属，由 `models-mapping/scripts` 与 `watch-pipeline/scripts` 使用。
 
 ## 映射规则

@@ -1,6 +1,6 @@
 ---
 name: axonhub-admin
-description: Manage AxonHub (AI gateway) channels, models, model associations, and API key templates via its admin GraphQL API. Use when the user asks to view/change AxonHub channels or models, fix model-channel associations, add model mappings, or manage templates, without using the web UI.
+description: Operate AxonHub (AI gateway) over its admin GraphQL API — view/change channels and models, fix model-channel associations and mappings, manage API-key templates, execute confirmed catalog/mapping plans, and tune channel tags, weights, and non-fixed-model routing. Use when the user asks to view or change anything in AxonHub without the web UI.
 ---
 
 # AxonHub Admin
@@ -9,17 +9,17 @@ Operate AxonHub over HTTP as an agent. All management operations live on one end
 
 ## Step 1 — Obtain the token
 
-The convention: the live JWT is read from the user's logged-in AxonHub browser tab and exported as `AXONHUB_ADMIN_TOKEN` for the rest of the run.
+The convention: the live JWT is read from the user's logged-in AxonHub browser tab and exported as `AXONHUB_JWT` for the rest of the run.
 
-1. Check `AXONHUB_ADMIN_TOKEN` in the environment — if non-empty, use it (a token is valid for 7 days from sign-in).
-2. Otherwise claim the user's AxonHub browser tab and read the token from page context: `localStorage.getItem('axonhub_access_token')`, then export it as `AXONHUB_ADMIN_TOKEN`.
-3. If no logged-in tab exists, ask the user to sign in at `$AXONHUB_BASE_URL` (or supply credentials for `POST /admin/auth/signin` with `{email, password}` — the response contains the token). Then export it as `AXONHUB_ADMIN_TOKEN`.
+1. Check `AXONHUB_JWT` in the environment — if non-empty, use it (a token is valid for 7 days from sign-in).
+2. Otherwise claim the user's AxonHub browser tab and read the token from page context: `localStorage.getItem('axonhub_access_token')`, then export it as `AXONHUB_JWT`.
+3. If no logged-in tab exists, ask the user to sign in at the server (or supply credentials for `POST /admin/auth/signin` with `{email, password}` — the response contains the token). Then export it as `AXONHUB_JWT`.
 
 Verify before proceeding:
 
 ```bash
-curl -sS -X POST "$AXONHUB_BASE_URL/admin/graphql" \
-  -H "Authorization: Bearer $AXONHUB_ADMIN_TOKEN" \
+curl -sS -X POST "${AXONHUB_URL:-https://axon.jasonqin.site}/admin/graphql" \
+  -H "Authorization: Bearer $AXONHUB_JWT" \
   -H "Content-Type: application/json" \
   -d '{"query": "{ me { id email } }"}'
 ```
@@ -30,7 +30,7 @@ Done when: HTTP 200 with `data.me`. A 401 means the token expired or was cleared
 
 Always fetch live data first — model IDs and channel IDs drift:
 
-- Channels: `channels(first: 50) { edges { node { id name type status supportedModels manualModels baseURL settings { modelMappings { from to } } } } } }`
+- Channels: `channels(first: 50) { edges { node { id name type status supportedModels manualModels baseURL orderingWeight tags settings { modelMappings { from to } } } } } }`
 - Models: `models(first: 100) { edges { node { id modelID developer status settings { associations { type channelModel { channelId modelId } modelId { modelId } regex { pattern } } } } } } }`
 - API-key profile templates: `apiKeyProfileTemplates { id name ... }` (see the schema in `internal/server/gql/axonhub.graphql` of the axonhub repo for exact fields).
 
@@ -51,29 +51,40 @@ query Check($assocs: [ModelAssociationInput!]!) {
 
 Done when: the target channel appears in the result with the expected `actualModel`, and `source` is `mapping` (via mapping) or `direct`.
 
-## Applying a reviewed catalog plan
+## Execution entries
 
-`models-mapping/scripts/sync_models.py` produces a self-contained plan JSON (creates/updates/
-deletes/channelUpdates with fingerprints). Execute it only after the user has
-reviewed that plan file and explicitly confirmed it:
+Every write goes through a script in `scripts/` that re-reads live state, refuses on drift, and verifies its own writes. All scripts default to the production server and to `AXONHUB_JWT` for the token. Pick by task:
+
+### Catalog plan → `apply_catalog_plan.py`
+
+`models-mapping/scripts/sync_models.py` produces a self-contained plan JSON (creates/updates/deletes/channelUpdates with fingerprints). Execute it only after the user has reviewed that plan file and explicitly confirmed it:
 
 ```bash
 python3 axonhub-admin/scripts/apply_catalog_plan.py \
   --plan-input /tmp/catalog-plan.json \
-  --source data/goat-models.json \
-  --model-decisions config/model-decisions.json \
-  --axonhub-url "$AXONHUB_BASE_URL" \
-  --token "$AXONHUB_ADMIN_TOKEN"
+  --apply --verify
 ```
 
-Without `--apply` the script validates the plan shape, re-checks source
-fingerprints, and prints a summary; it performs no mutations. With
-`--apply --verify` it re-reads all before-state for drift, executes the
-mutations (new models are created then enabled), and reads back every written
-value. A stale plan (source changed, remote drifted) is refused.
+Without `--apply` the script validates the plan shape, re-checks source fingerprints, and prints a summary; it performs no mutations. With `--apply --verify` it re-reads all before-state for drift, executes the mutations (new models are created then enabled), and reads back every written value. A stale plan (source changed, remote drifted) is refused.
 
-Done when: `verify` prints `"ok": true`. Exit code 3 means verification found
-mismatches — report them, do not retry blindly.
+Done when: `verify` prints `"ok": true`. Exit code 3 means verification found mismatches — report them, do not retry blindly.
+
+### Mapping plan → `apply_mapping.py`
+
+`models-mapping` builds the one-to-one request-mapping plan from `models.csv` and shows its plan hash; execute only after the user has explicitly confirmed that plan. Build/preview with `--dry-run --plan-output <path>`, then apply the reviewed file via `--plan-input <path> --apply`. The helper re-checks fingerprints, preserves manual mappings and non-mapping template fields, and converges each request model to exactly one enabled `type=model` association across the managed templates (`stable`/`claude`/`gpt`).
+
+Done when: the summary reports every request model converged and verification passes.
+
+### Channel tags & non-fixed routing → `configure_channels.py` / `configure_models.py`
+
+General channel maintenance (quota tags, ordering weights) and `channel_model` associations for models outside the fixed Claude/GPT request set. Channels are matched by exact name; server-assigned IDs are never the join key. Run with `--dry-run` first and show the user the diff; apply only after they confirm, then re-read channels/models and check the change landed only on the intended objects:
+
+```bash
+AXONHUB_JWT=<jwt> python3 axonhub-admin/scripts/configure_channels.py --dry-run
+AXONHUB_JWT=<jwt> python3 axonhub-admin/scripts/configure_models.py --dry-run
+```
+
+`configure_models.py` skips the fixed Claude/GPT request models — their routing belongs to the mapping plan above. Desired channel state lives in `CHANNELS` (`scripts/common.py`); tag/weight semantics and priority scoring are printed by the scripts themselves.
 
 ## Reference
 
@@ -94,6 +105,6 @@ Association types: `channel_model` (pinned channel + exact ID), `model` (exact I
 
 ### Known facts about this deployment
 
-- Server: `https://axon.jasonqin.site` (`$AXONHUB_BASE_URL`, set in `~/.zshrc`).
-- `AXONHUB_ADMIN_TOKEN` (also in `~/.zshrc`, normally empty) is the agreed env-var name for the live JWT. It is a credential: use it in Authorization headers, never write it into files, commits, or logs.
+- Server: `https://axon.jasonqin.site` — the built-in default of every script; override with `AXONHUB_URL`.
+- `AXONHUB_JWT` is the agreed env-var name for the live JWT. It is a credential: use it in Authorization headers, never write it into files, commits, or logs.
 - The full admin schema to consult for exact field names: `internal/server/gql/*.graphql` in the axonhub repo.
