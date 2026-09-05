@@ -48,9 +48,11 @@ For each confirmation, show the artifact next to live state (current channel lis
 
 ### Read remote state (before any write)
 
-Fetch channels, models, and API-key profile templates in full:
+Fetch channels, models, and API-key profile templates in full. Note: this
+deployment's server errors on a channels query combining `tags` with
+`settings` — fetch them in two queries and join by `id`:
 
-- Channels: `channels(first: 50) { edges { node { id name type status supportedModels manualModels autoSyncSupportedModels baseURL orderingWeight tags settings { modelMappings { from to } } } } } }`
+- Channels: `channels(first: 50) { edges { node { id name type status supportedModels manualModels autoSyncSupportedModels baseURL orderingWeight tags } } } }` and `channels(first: 50) { edges { node { id settings { modelMappings { from to } } } } }`
 - Models: `models(first: 100) { edges { node { id modelID name developer status remark modelCard { reasoning { supported default } toolCall temperature modalities { input output } vision cost { input output cacheRead cacheWrite } limit { context output } knowledge releaseDate lastUpdated } settings { disableDeveloperSettingsInheritance loadBalancerStrategy traceStickyMode associations { type priority disabled channelModel { channelId modelId } modelId { modelId } regex { pattern } } } } } } }`
 - API-key profile templates: `apiKeyProfileTemplates { id name linkedProfilesCount profile { name modelMappings { from to } channelIDs channelTags channelTagsMatchMode modelIDs loadBalanceStrategy traceStickyMode quota { … } } }`
 
@@ -63,7 +65,7 @@ AxonHub's hourly upstream sync overwrites a channel's `supportedModels` with `ma
 ### Apply the catalog plan, item by item
 
 - **Channels** — for each planned channel: `updateChannel(id, input: { supportedModels: <exact plan list> })`. This is a wholesale replacement: legacy vendor-prefixed entries disappear with it. Prefix routing is that channel's own `auto-trim`/`modelMappings` setting, never the plan's or the agent's job. Do not merge with the remote list.
-- **Models** — for each `models[]` entry in the plan: read the live model; if absent, `createModel` with the plan's `input` (then enable it); if present, `updateModel` with only the fields that differ. When writing `remark`, parse the remote remark and keep its `manual` field — the plan's computed fields replace the old computed values only. Plan `settings` are not provided (the plan cannot see remote IDs): leave `settings` untouched except where the mapping section below applies.
+- **Models** — for each `models[]` entry in the plan: read the live model; if absent, `createModel` with the plan's `input` (then enable it); if present, `updateModel` with only the fields that differ. `CreateModelInput` requires `settings`, which the offline plan cannot carry: the executor supplies defaults — a `channel_model` rule pinning the model to its planned channel plus `disableDeveloperSettingsInheritance: false` and `default` load-balancer/trace-sticky strategies. When writing `remark`, parse the remote remark and keep its `manual` field — the plan's computed fields replace the old computed values only. For existing models, leave `settings` untouched except where the mapping section below applies.
 - **Removals** — for each `removals[]` candidate: check every external (non-managed) channel's `supportedModels` and all models' associations (`channel_model.modelId`, `modelId.modelId`) for references. If any external use or reference exists: retain the object and report it under "retained". Otherwise `deleteModel(id)`.
 - **Never write unmanaged objects**: a model that appears in the plan for one channel but has associations to other channels keeps those associations (guardrail 2) — when updating its `settings.associations`, replace only the rules that point at this managed channel.
 
