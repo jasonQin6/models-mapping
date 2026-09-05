@@ -15,8 +15,7 @@
 
 ```bash
 python3 models-mapping/scripts/build_mapping.py --model-decisions config/model-decisions.json --fail-on-errors
-AXONHUB_JWT=<jwt> python3 models-mapping/scripts/sync_models.py --source data/opencode-go-models.json --source data/goat-models.json --provider-channel commandcode-goat=commandcode --plan-output /tmp/catalog-plan.json
-python3 axonhub-admin/scripts/apply_catalog_plan.py --plan-input /tmp/catalog-plan.json --apply --verify
+python3 models-mapping/scripts/sync_models.py --source data/opencode-go-models.json --source data/goat-models.json --plan-output /tmp/catalog-plan.json
 python3 -m pytest -q
 ```
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unit tests for the source-snapshot → AxonHub catalog planner."""
+"""Offline planner tests: CLI in (fixture snapshots + config), plan JSON out."""
 
 import importlib.util
 import json
@@ -13,6 +13,25 @@ SPEC = importlib.util.spec_from_file_location("sync_models", SCRIPT)
 assert SPEC and SPEC.loader
 sync_models = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(sync_models)
+
+DEFAULT_SCOPE = {
+    "opencode-go": "opencode-go",
+    "commandcode-goat": "commandcode",
+}
+
+FORBIDDEN_PLAN_KEYS = {
+    "mode",
+    "appended",
+    "before",
+    "beforeFingerprint",
+    "sourceFingerprints",
+    "deletionGuardFingerprint",
+    "channelUpdates",
+    "creates",
+    "updates",
+    "deletes",
+    "decisionRequired",
+}
 
 
 def write_json(path: Path, value: object) -> None:
@@ -42,12 +61,6 @@ def raw_source(provider: str, *model_ids: str) -> dict:
     }
 
 
-DEFAULT_SCOPE = {
-    "opencode-go": "opencode-go",
-    "commandcode-goat": "commandcode",
-}
-
-
 def decisions_file(
     path: Path,
     models: list[dict] | None = None,
@@ -68,24 +81,41 @@ def decisions_file(
     return path
 
 
-def channel_node(channel: str, channel_id: int, supported: list[str]) -> dict:
-    return {
-        "id": f"gid://axonhub/Channel/{channel_id}",
-        "name": channel,
-        "status": "enabled",
-        "supportedModels": supported,
-        "defaultTestModel": None,
-    }
+def assert_plan_is_pure_desired_state(plan: dict) -> None:
+    """The plan carries no mode, fingerprint, or remote before-state fields."""
+
+    def walk(value: object) -> None:
+        if isinstance(value, dict):
+            assert not (set(value) & FORBIDDEN_PLAN_KEYS), sorted(set(value))
+            for item in value.values():
+                walk(item)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item)
+
+    walk(plan)
 
 
-def build_plan(sources: list[tuple[Path, str, str]], decisions: Path, monkeypatch, channels: dict, models: dict = None):
-    monkeypatch.setattr(sync_models, "fetch_channels", lambda client, page_size: channels)
-    monkeypatch.setattr(sync_models, "fetch_models", lambda client, page_size: models or {})
-    return sync_models.build_plan(
-        sources,
-        object(),
-        decisions_path=decisions,
-    )
+def run_main(
+    tmp_path: Path,
+    *sources: Path,
+    decisions: Path | None = None,
+    provider_channels: list[str] | None = None,
+    plan_output: Path | None = None,
+    change_report_output: Path | None = None,
+) -> int:
+    argv: list[str] = []
+    for source in sources:
+        argv += ["--source", str(source)]
+    if decisions is not None:
+        argv += ["--model-decisions", str(decisions)]
+    for pair in provider_channels or []:
+        argv += ["--provider-channel", pair]
+    if plan_output is not None:
+        argv += ["--plan-output", str(plan_output)]
+    if change_report_output is not None:
+        argv += ["--change-report-output", str(change_report_output)]
+    return sync_models.main(argv)
 
 
 def test_model_card_reads_real_source_cost_keys() -> None:
@@ -141,157 +171,167 @@ def test_fix_free_records_fills_channel_maxima() -> None:
     assert "paid-a" not in derived
 
 
-def test_build_plan_includes_union_of_sources(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_main_plans_exact_bare_id_lists_per_channel(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     goat = tmp_path / "goat.json"
     opengo = tmp_path / "opengo.json"
     decisions = decisions_file(tmp_path / "decisions.json")
     write_json(goat, raw_source("commandcode-goat", "model-a"))
-    write_json(opengo, raw_source("opencode-go", "model-b"))
-    channels = {
-        "commandcode": channel_node("commandcode", 20, []),
-        "opencode-go": channel_node("opencode-go", 6, []),
+    write_json(opengo, raw_source("opencode-go", "model-b", "model-c"))
+    plan_output = tmp_path / "plan.json"
+
+    rc = run_main(
+        tmp_path, opengo, goat, decisions=decisions, plan_output=plan_output
+    )
+
+    assert rc == 0
+    plan = json.loads(plan_output.read_text(encoding="utf-8"))
+    assert_plan_is_pure_desired_state(plan)
+    assert plan["schema_version"] == 2
+    assert plan["providers"] == {
+        "opencode-go": "opencode-go",
+        "commandcode-goat": "commandcode",
     }
+    assert plan["channels"]["commandcode"]["supportedModels"] == ["model-a"]
+    assert plan["channels"]["opencode-go"]["supportedModels"] == ["model-b", "model-c"]
+    entry = next(item for item in plan["models"] if item["modelID"] == "model-b")
+    assert entry["channel"] == "opencode-go"
+    assert entry["input"]["name"] == "model-b"
+    assert entry["input"]["type"] == "chat"
+    assert entry["input"]["modelCard"]["cost"] == {
+        "input": 1,
+        "output": 2,
+        "cacheRead": 0.1,
+        "cacheWrite": 0.2,
+    }
+    assert json.loads(entry["input"]["remark"]) == {
+        "manual": "",
+        "rp5h": None,
+        "usage_quota": None,
+        "context_threshold": None,
+        "peak_hours": None,
+        "retention": None,
+    }
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["channels"] == {"commandcode": 1, "opencode-go": 2}
+    assert summary["modelCount"] == 3
 
-    plan = build_plan(
-        [(opengo, "opencode-go", "opencode-go"), (goat, "commandcode-goat", "commandcode")],
-        decisions,
-        monkeypatch,
-        channels,
+
+def test_main_output_is_deterministic_byte_for_byte(tmp_path: Path) -> None:
+    goat = tmp_path / "goat.json"
+    opengo = tmp_path / "opengo.json"
+    decisions = decisions_file(tmp_path / "decisions.json")
+    write_json(goat, raw_source("commandcode-goat", "model-a", "free-x"))
+    write_json(opengo, raw_source("opencode-go", "model-b"))
+    first = tmp_path / "plan-1.json"
+    second = tmp_path / "plan-2.json"
+
+    assert run_main(tmp_path, opengo, goat, decisions=decisions, plan_output=first) == 0
+    assert run_main(tmp_path, opengo, goat, decisions=decisions, plan_output=second) == 0
+
+    assert first.read_bytes() == second.read_bytes()
+
+
+def test_planner_has_no_network_or_jwt_surface() -> None:
+    """Planning consumes snapshots + config only; no network imports, no token."""
+
+    script_text = SCRIPT.read_text(encoding="utf-8")
+    for banned in ("urllib", "http.client", "socket", "AXONHUB_JWT", "--token"):
+        assert banned not in script_text
+
+
+def test_main_lists_removal_candidates_with_execution_annotation(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source.json"
+    decisions = decisions_file(
+        tmp_path / "decisions.json",
+        [
+            {
+                "provider": "p",
+                "model_id": "expired",
+                "action": "exclude",
+                "reason": "dropped upstream",
+            }
+        ],
+        scope={"p": "p"},
     )
+    write_json(source, raw_source("p", "active", "expired"))
+    plan_output = tmp_path / "plan.json"
 
-    assert plan["errors"] == []
-    assert set(plan["included"]) == {"model-a", "model-b"}
-    assert all(
-        item["type"] in ("missing_remark_fields", "duplicate_model_across_sources")
-        for item in plan["warnings"]
-    )
+    rc = run_main(tmp_path, source, decisions=decisions, plan_output=plan_output)
+
+    assert rc == 0
+    plan = json.loads(plan_output.read_text(encoding="utf-8"))
+    assert plan["channels"]["p"]["supportedModels"] == ["active"]
+    assert plan["removals"] == [
+        {
+            "modelID": "expired",
+            "reason": "dropped upstream",
+            "note": sync_models.REMOVAL_NOTE,
+        }
+    ]
+    assert "执行时核验" in plan["removals"][0]["note"]
 
 
-def test_duplicate_model_across_sources_keeps_first(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_main_duplicate_model_across_sources_keeps_first(
+    tmp_path: Path,
 ) -> None:
     goat = tmp_path / "goat.json"
     opengo = tmp_path / "opengo.json"
     decisions = decisions_file(tmp_path / "decisions.json")
     write_json(goat, raw_source("commandcode-goat", "shared"))
     write_json(opengo, raw_source("opencode-go", "shared"))
-    channels = {
-        "commandcode": channel_node("commandcode", 20, []),
-        "opencode-go": channel_node("opencode-go", 6, []),
-    }
+    plan_output = tmp_path / "plan.json"
 
-    plan = build_plan(
-        [(opengo, "opencode-go", "opencode-go"), (goat, "commandcode-goat", "commandcode")],
-        decisions,
-        monkeypatch,
-        channels,
-    )
+    rc = run_main(tmp_path, opengo, goat, decisions=decisions, plan_output=plan_output)
 
-    assert plan["errors"] == []
-    assert any(
-        item["type"] == "duplicate_model_across_sources" for item in plan["warnings"]
-    )
-    assert plan["included"] == ["shared"]
-
-
-def test_append_only_channel_only_adds_missing_entries(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    source = tmp_path / "goat.json"
-    decisions = decisions_file(tmp_path / "decisions.json")
-    write_json(source, raw_source("commandcode-goat", "new-model"))
-    channels = {
-        "commandcode": channel_node(
-            "commandcode", 20, ["deepseek/deepseek-v4-flash", "gpt-5.6-sol"]
-        )
-    }
-
-    plan = build_plan(
-        [(source, "commandcode-goat", "commandcode")],
-        decisions,
-        monkeypatch,
-        channels,
-    )
-
-    assert plan["errors"] == []
-    update = plan["channelUpdates"][0]
-    assert update["before"] == ["deepseek/deepseek-v4-flash", "gpt-5.6-sol"]
-    assert "new-model" in update["appended"]
-    assert "deepseek/deepseek-v4-flash" in update["after"]
-
-
-def test_regular_channel_replaces_supported_models(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    source = tmp_path / "opengo.json"
-    decisions = decisions_file(tmp_path / "decisions.json")
-    write_json(source, raw_source("opencode-go", "model-a", "model-b"))
-    channels = {"opencode-go": channel_node("opencode-go", 6, ["model-a", "stale"])}
-
-    plan = build_plan(
-        [(source, "opencode-go", "opencode-go")],
-        decisions,
-        monkeypatch,
-        channels,
-    )
-
-    assert plan["channelUpdates"][0]["after"] == ["model-a", "model-b"]
-    assert "stale" not in plan["channelUpdates"][0]["after"]
-
-
-def test_missing_rp5h_is_warning_not_blocker(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    source = tmp_path / "source.json"
-    payload = raw_source("p", "model-a")
-    payload["p"]["models"]["model-a"]["extra"] = {"rp5h": None, "note": "x"}
-    write_json(source, payload)
-    channels = {"p": channel_node("p", 6, [])}
-
-    plan = build_plan(
-        [(source, "p", "p")],
-        decisions_file(tmp_path / "decisions.json", scope={"p": "p"}),
-        monkeypatch,
-        channels,
-    )
-
-    assert plan["errors"] == []
-    assert plan["decisionRequired"] == []
-    assert any(
-        item["type"] == "missing_remark_fields" and "rp5h" in item["fields"]
+    assert rc == 0
+    plan = json.loads(plan_output.read_text(encoding="utf-8"))
+    assert [item["modelID"] for item in plan["models"]] == ["shared"]
+    # 保留方由 sorted provider 顺序决定（commandcode-goat 在前），与 CLI 顺序无关
+    assert plan["models"][0]["channel"] == "commandcode"
+    assert plan["channels"]["opencode-go"]["supportedModels"] == []
+    assert next(
+        item
         for item in plan["warnings"]
-    )
-    create = plan["creates"][0]
-    assert json.loads(create["input"]["remark"])["rp5h"] is None
+        if item["type"] == "duplicate_model_across_sources"
+    ) == {
+        "type": "duplicate_model_across_sources",
+        "model": "shared",
+        "kept": "commandcode-goat",
+        "dropped": "opencode-go",
+    }
 
 
-def test_free_model_rp5h_filled_from_channel_maximum(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_main_fills_free_models_and_warns_missing_remark_fields(
+    tmp_path: Path,
 ) -> None:
     source = tmp_path / "source.json"
-    payload = raw_source("p", "paid-a", "ox-alpha-free")
+    decisions = decisions_file(tmp_path / "decisions.json", scope={"p": "p"})
+    payload = raw_source("p", "paid-a", "ox-alpha-free", "plain")
     payload["p"]["models"]["paid-a"]["extra"] = {"rp5h": 900, "usage_quota": 60}
     write_json(source, payload)
-    channels = {"p": channel_node("p", 6, [])}
+    plan_output = tmp_path / "plan.json"
 
-    plan = build_plan(
-        [(source, "p", "p")],
-        decisions_file(tmp_path / "decisions.json", scope={"p": "p"}),
-        monkeypatch,
-        channels,
+    rc = run_main(tmp_path, source, decisions=decisions, plan_output=plan_output)
+
+    assert rc == 0
+    plan = json.loads(plan_output.read_text(encoding="utf-8"))
+    free_entry = next(
+        item for item in plan["models"] if item["modelID"] == "ox-alpha-free"
+    )
+    assert json.loads(free_entry["input"]["remark"])["rp5h"] == 900.0
+    assert json.loads(free_entry["input"]["remark"])["usage_quota"] == 60.0
+    assert any(item["type"] == "free_default_filled" for item in plan["warnings"])
+    assert any(
+        item["type"] == "missing_remark_fields" and item["model"] == "plain"
+        for item in plan["warnings"]
     )
 
-    assert plan["errors"] == []
-    free_create = next(c for c in plan["creates"] if c["modelID"] == "ox-alpha-free")
-    assert json.loads(free_create["input"]["remark"])["rp5h"] == 900.0
-    assert any(item["type"] == "free_default_filled" for item in plan["warnings"])
 
-
-def test_supplement_fills_missing_remark_fields(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_main_supplement_fills_missing_remark_fields(tmp_path: Path) -> None:
     source = tmp_path / "source.json"
     decisions = decisions_file(
         tmp_path / "decisions.json",
@@ -307,160 +347,166 @@ def test_supplement_fills_missing_remark_fields(
         scope={"p": "p"},
     )
     write_json(source, raw_source("p", "model-a"))
-    channels = {"p": channel_node("p", 6, [])}
+    plan_output = tmp_path / "plan.json"
 
-    plan = build_plan([(source, "p", "p")], decisions, monkeypatch, channels)
+    rc = run_main(tmp_path, source, decisions=decisions, plan_output=plan_output)
 
-    assert plan["errors"] == []
+    assert rc == 0
+    plan = json.loads(plan_output.read_text(encoding="utf-8"))
+    entry = next(item for item in plan["models"] if item["modelID"] == "model-a")
+    assert json.loads(entry["input"]["remark"])["rp5h"] == 900
     warned = next(
         item
         for item in plan["warnings"]
         if item["type"] == "missing_remark_fields" and item["model"] == "model-a"
     )
     assert "rp5h" not in warned["fields"]
-    assert json.loads(plan["creates"][0]["input"]["remark"])["rp5h"] == 900
 
 
-def test_paged_query_uses_axonhub_cursor_type() -> None:
-    calls = []
+def test_main_defaults_provider_channels_from_config(tmp_path: Path) -> None:
+    goat = tmp_path / "goat.json"
+    opengo = tmp_path / "opengo.json"
+    decisions = decisions_file(tmp_path / "decisions.json")
+    write_json(goat, raw_source("commandcode-goat", "model-a"))
+    write_json(opengo, raw_source("opencode-go", "model-b"))
+    plan_output = tmp_path / "plan.json"
 
-    class Client:
-        def execute(self, query, variables):
-            calls.append((query, variables))
-            return {
-                "models": {
-                    "edges": [],
-                    "pageInfo": {"hasNextPage": False, "endCursor": None},
-                }
-            }
+    rc = run_main(tmp_path, opengo, goat, decisions=decisions, plan_output=plan_output)
 
-    assert sync_models.paged_nodes(Client(), "models", "id modelID") == []
-    assert "$after: Cursor" in calls[0][0]
+    assert rc == 0
+    plan = json.loads(plan_output.read_text(encoding="utf-8"))
+    assert plan["providers"] == DEFAULT_SCOPE
 
 
-def test_manual_exclude_plans_unreferenced_existing_deletion(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_main_rejects_duplicate_provider_sources(tmp_path: Path) -> None:
+    first = tmp_path / "one.json"
+    second = tmp_path / "two.json"
+    decisions = decisions_file(tmp_path / "decisions.json")
+    write_json(first, raw_source("opencode-go", "model-a"))
+    write_json(second, raw_source("opencode-go", "model-b"))
+
+    rc = run_main(tmp_path, first, second, decisions=decisions)
+
+    assert rc == 2
+
+
+def test_build_plan_rejects_provider_outside_managed_scope(tmp_path: Path) -> None:
     source = tmp_path / "source.json"
-    decisions = decisions_file(
-        tmp_path / "decisions.json",
-        [
-            {
-                "provider": "p",
-                "model_id": "expired",
-                "action": "exclude",
-                "reason": "expired",
-            }
-        ],
-        scope={"p": "p"},
-    )
-    write_json(source, raw_source("p", "active", "expired"))
-    channels = {"p": channel_node("p", 6, ["active", "expired"])}
-    expired = {
-        "id": "gid://axonhub/Model/2",
-        "modelID": "expired",
-        "status": "enabled",
-    }
+    decisions = decisions_file(tmp_path / "decisions.json")
+    write_json(source, raw_source("op-responses", "model-a"))
 
-    plan = build_plan(
-        [(source, "p", "p")], decisions, monkeypatch, channels, {"expired": expired}
-    )
-
-    assert [item["modelID"] for item in plan["deletes"]] == ["expired"]
-    assert plan["channelUpdates"][0]["after"] == ["active"]
-    assert any(item["modelID"] == "expired" for item in plan["excluded"])
+    with pytest.raises(sync_models.SyncError, match="not in the managed scope"):
+        sync_models.build_plan(
+            [(source, "op-responses", "op-responses")], decisions_path=decisions
+        )
 
 
-def test_candidate_association_moves_only_target_channel_and_preserves_external(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_build_plan_rejects_channel_outside_managed_scope(tmp_path: Path) -> None:
     source = tmp_path / "source.json"
-    decisions = decisions_file(tmp_path / "decisions.json", scope={"p": "p"})
-    write_json(source, raw_source("p", "model"))
-    channels = {
-        "p": channel_node("p", 6, ["model"]),
-        "external": channel_node("external", 99, ["model"]),
-    }
-    existing = {
-        "model": {
-            "id": "gid://axonhub/Model/1",
-            "modelID": "model",
-            "name": "model",
-            "developer": "p",
-            "icon": "Default",
-            "group": "test",
-            "status": "enabled",
-            "remark": "",
-            "modelCard": sync_models.model_card(
-                raw_source("p", "model")["p"]["models"]["model"]
-            ),
-            "settings": {
-                "disableDeveloperSettingsInheritance": False,
-                "associations": [
-                    sync_models.candidate_channel_association(6, "model"),
-                    sync_models.candidate_channel_association(99, "model"),
-                ],
-                "loadBalancerStrategy": "default",
-                "traceStickyMode": "default",
-            },
-        }
-    }
+    decisions = decisions_file(tmp_path / "decisions.json")
+    write_json(source, raw_source("opencode-go", "model-a"))
 
-    plan = build_plan(
-        [(source, "p", "p")], decisions, monkeypatch, channels, existing
-    )
-    update = next(item for item in plan["updates"] if item["modelID"] == "model")
-    associations = update["input"]["settings"]["associations"]
-
-    assert [item["channelModel"]["channelId"] for item in associations] == [99, 6]
+    with pytest.raises(sync_models.SyncError, match="outside the managed scope"):
+        sync_models.build_plan(
+            [(source, "opencode-go", "commandcode")], decisions_path=decisions
+        )
 
 
-def test_excluded_model_supported_externally_is_retained(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_build_plan_rejects_malformed_scope(tmp_path: Path) -> None:
     source = tmp_path / "source.json"
-    decisions = decisions_file(
-        tmp_path / "decisions.json",
-        [
-            {
-                "provider": "p",
-                "model_id": "external-old",
-                "action": "exclude",
-                "reason": "dropped upstream",
-            }
-        ],
-        scope={"p": "p"},
-    )
-    write_json(source, raw_source("p", "active"))
-    # excluded 模型必须仍在源里才会进入 excluded 列表并被分析
+    decisions = decisions_file(tmp_path / "decisions.json")
+    # 旧形状：channels 是字符串清单而非 provider→channel 映射
     write_json(
-        source,
+        decisions,
         {
-            "p": {
-                "id": "p",
-                "models": {
-                    "active": raw_source("p", "active")["p"]["models"]["active"],
-                    "external-old": raw_source("p", "x")["p"]["models"]["x"]
-                    | {"id": "external-old"},
-                },
-            }
+            "schema_version": 1,
+            "scope": {
+                "channels": ["opencode-go", "op-responses"],
+                "templates": ["stable", "claude", "gpt"],
+            },
+            "models": [],
+            "mapping_overrides": [],
         },
     )
-    channels = {
-        "p": channel_node("p", 6, ["active"]),
-        "external": channel_node("external", 99, ["external-old"]),
-    }
+    write_json(source, raw_source("opencode-go", "model-a"))
 
-    plan = build_plan([(source, "p", "p")], decisions, monkeypatch, channels)
+    with pytest.raises(sync_models.SyncError, match="provider→channel mapping"):
+        sync_models.build_plan(
+            [(source, "opencode-go", "opencode-go")], decisions_path=decisions
+        )
 
-    assert plan["deletes"] == []
-    assert plan["externallyRetained"] == [
+
+def test_main_rejects_provider_channel_outside_scope(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    source = tmp_path / "opengo.json"
+    decisions = decisions_file(tmp_path / "decisions.json")
+    write_json(source, raw_source("opencode-go", "model-a"))
+
+    rc = run_main(
+        tmp_path,
+        source,
+        decisions=decisions,
+        provider_channels=["opencode-go=commandcode"],
+    )
+
+    assert rc == 2
+    assert "outside the managed scope" in capsys.readouterr().err
+
+
+def test_main_rejects_source_provider_outside_scope(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    source = tmp_path / "op-responses.json"
+    decisions = decisions_file(tmp_path / "decisions.json")
+    write_json(source, raw_source("op-responses", "model-a"))
+
+    rc = run_main(tmp_path, source, decisions=decisions)
+
+    assert rc == 2
+    assert "not in the managed scope" in capsys.readouterr().err
+
+
+def test_main_rejects_missing_config(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    source = tmp_path / "opengo.json"
+    write_json(source, raw_source("opencode-go", "model-a"))
+
+    rc = run_main(tmp_path, source, decisions=tmp_path / "missing.json")
+
+    assert rc == 2
+    assert "source file not found" in capsys.readouterr().err
+
+
+def test_main_rejects_malformed_scope(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    source = tmp_path / "opengo.json"
+    write_json(source, raw_source("opencode-go", "model-a"))
+    decisions = decisions_file(tmp_path / "decisions.json")
+    write_json(
+        decisions,
         {
-            "modelID": "external-old",
-            "externalChannels": ["external"],
-            "references": [],
-        }
-    ]
+            "schema_version": 1,
+            "scope": {
+                "channels": {"opencode-go": 6},
+                "templates": ["stable", "claude", "gpt"],
+            },
+            "models": [],
+            "mapping_overrides": [],
+        },
+    )
+
+    rc = run_main(tmp_path, source, decisions=decisions)
+
+    assert rc == 2
+    assert "non-empty provider" in capsys.readouterr().err
+
+
+def test_main_requires_source(capsys: pytest.CaptureFixture[str]) -> None:
+    assert sync_models.main([]) == 2
+    assert "--source is required" in capsys.readouterr().err
 
 
 def test_change_report_diffs_previous_commit(
@@ -511,173 +557,3 @@ def test_change_report_diffs_previous_commit(
             "after": {"input": 1, "output": 2},
         }
     ]
-
-
-def test_build_plan_rejects_provider_outside_managed_scope(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    source = tmp_path / "source.json"
-    decisions = decisions_file(tmp_path / "decisions.json")
-    write_json(source, raw_source("op-responses", "model-a"))
-    channels = {"op-responses": channel_node("op-responses", 7, [])}
-
-    with pytest.raises(sync_models.SyncError, match="not in the managed scope"):
-        build_plan([(source, "op-responses", "op-responses")], decisions, monkeypatch, channels)
-
-
-def test_build_plan_rejects_channel_outside_managed_scope(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    source = tmp_path / "source.json"
-    decisions = decisions_file(tmp_path / "decisions.json")
-    write_json(source, raw_source("opencode-go", "model-a"))
-    channels = {"commandcode": channel_node("commandcode", 20, [])}
-
-    with pytest.raises(sync_models.SyncError, match="outside the managed scope"):
-        build_plan([(source, "opencode-go", "commandcode")], decisions, monkeypatch, channels)
-
-
-def test_build_plan_rejects_malformed_scope(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    source = tmp_path / "source.json"
-    decisions = decisions_file(tmp_path / "decisions.json")
-    # 旧形状：channels 是字符串清单而非 provider→channel 映射
-    write_json(
-        decisions,
-        {
-            "schema_version": 1,
-            "scope": {
-                "channels": ["opencode-go", "op-responses"],
-                "templates": ["stable", "claude", "gpt"],
-            },
-            "models": [],
-            "mapping_overrides": [],
-        },
-    )
-    write_json(source, raw_source("opencode-go", "model-a"))
-    channels = {"opencode-go": channel_node("opencode-go", 6, [])}
-
-    with pytest.raises(sync_models.SyncError, match="provider→channel mapping"):
-        build_plan([(source, "opencode-go", "opencode-go")], decisions, monkeypatch, channels)
-
-
-def test_main_defaults_provider_channels_from_config(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    goat = tmp_path / "goat.json"
-    opengo = tmp_path / "opengo.json"
-    decisions = decisions_file(tmp_path / "decisions.json")
-    write_json(goat, raw_source("commandcode-goat", "model-a"))
-    write_json(opengo, raw_source("opencode-go", "model-b"))
-    captured: dict = {}
-
-    def fake_build_plan(sources, client, *, decisions_path, page_size):
-        captured["sources"] = sources
-        captured["decisions_path"] = decisions_path
-        return {"errors": [], "decisionRequired": []}
-
-    monkeypatch.setattr(sync_models, "build_plan", fake_build_plan)
-
-    rc = sync_models.main(
-        [
-            "--source",
-            str(opengo),
-            "--source",
-            str(goat),
-            "--model-decisions",
-            str(decisions),
-            "--token",
-            "test-jwt",
-        ]
-    )
-
-    assert rc == 0
-    assert captured["sources"] == [
-        (opengo, "opencode-go", "opencode-go"),
-        (goat, "commandcode-goat", "commandcode"),
-    ]
-    assert captured["decisions_path"] == decisions
-
-
-def test_main_rejects_provider_channel_outside_scope(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    source = tmp_path / "opengo.json"
-    decisions = decisions_file(tmp_path / "decisions.json")
-    write_json(source, raw_source("opencode-go", "model-a"))
-
-    rc = sync_models.main(
-        [
-            "--source",
-            str(source),
-            "--model-decisions",
-            str(decisions),
-            "--provider-channel",
-            "opencode-go=commandcode",
-        ]
-    )
-
-    assert rc == 2
-    assert "outside the managed scope" in capsys.readouterr().err
-
-
-def test_main_rejects_source_provider_outside_scope(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    source = tmp_path / "op-responses.json"
-    decisions = decisions_file(tmp_path / "decisions.json")
-    write_json(source, raw_source("op-responses", "model-a"))
-
-    rc = sync_models.main(
-        ["--source", str(source), "--model-decisions", str(decisions)]
-    )
-
-    assert rc == 2
-    assert "not in the managed scope" in capsys.readouterr().err
-
-
-def test_main_rejects_missing_config(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    source = tmp_path / "opengo.json"
-    write_json(source, raw_source("opencode-go", "model-a"))
-
-    rc = sync_models.main(
-        [
-            "--source",
-            str(source),
-            "--model-decisions",
-            str(tmp_path / "missing.json"),
-        ]
-    )
-
-    assert rc == 2
-    assert "source file not found" in capsys.readouterr().err
-
-
-def test_main_rejects_malformed_scope(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    source = tmp_path / "opengo.json"
-    write_json(source, raw_source("opencode-go", "model-a"))
-    decisions = decisions_file(tmp_path / "decisions.json")
-    write_json(
-        decisions,
-        {
-            "schema_version": 1,
-            "scope": {
-                "channels": {"opencode-go": 6},
-                "templates": ["stable", "claude", "gpt"],
-            },
-            "models": [],
-            "mapping_overrides": [],
-        },
-    )
-
-    rc = sync_models.main(
-        ["--source", str(source), "--model-decisions", str(decisions)]
-    )
-
-    assert rc == 2
-    assert "non-empty provider" in capsys.readouterr().err

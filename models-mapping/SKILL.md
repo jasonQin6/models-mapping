@@ -16,8 +16,8 @@ types, one enrichment record:
 - **Enrichment record** — `data/enriched.json`: derived-only fields
   (free-model fills) with provenance.
 
-Execution of both plan types belongs to `axonhub-admin`
-(`apply_mapping.py`, `apply_catalog_plan.py`). This skill never mutates
+Execution of both plan types belongs to `axonhub-admin`'s interactive agent
+procedure (ADR 0009). This skill never mutates
 AxonHub. Channels outside the managed scope are read only.
 
 ## Rebuild, enrich, and validate
@@ -50,28 +50,30 @@ schema drift are blocking.
 ## Catalog plan
 
 ```bash
-AXONHUB_JWT=<jwt> python3 models-mapping/scripts/sync_models.py \
+python3 models-mapping/scripts/sync_models.py \
   --source data/opencode-go-models.json \
   --source data/goat-models.json \
-  --provider-channel commandcode-goat=commandcode \
   --model-decisions config/model-decisions.json \
   --change-report-output /tmp/change-report.json \
   --plan-output /tmp/catalog-plan.json
 ```
 
-Each `--source` contributes its provider; routing defaults to the managed
+Planning is fully offline — snapshots plus config, no JWT, no network. Each
+`--source` contributes its provider; routing defaults to the managed
 provider→channel scope in `config/model-decisions.json`, and a source provider
-or `--provider-channel` pair outside that scope is rejected. `commandcode` is
-append-only: its `supportedModels` keeps existing vendor-prefixed entries and
-only gains missing bare IDs. `opencode-go` is replaced wholesale with the exact
-included list. The change report diffs `data/all_models.json` (added/removed
-models)
-and both snapshots (price changes) against `HEAD~1`. Missing remark fields
-(`rp5h`, `usage_quota`, `context_threshold`, `peak_hours`, `retention`) are
-warnings, not blockers.
+or `--provider-channel` pair outside that scope is rejected. The plan is pure
+desired state: per channel an exact bare-ID `supportedModels` list applied
+wholesale at execution, target model-card values for every included model, and
+removal candidates annotated for the execution-time external-reference check.
+It has no modes, fingerprints, or remote before-state — regenerate it rather
+than staleness-checking it, and preserve the remote remark `manual` field when
+applying. The change report diffs `data/all_models.json` (added/removed
+models) and both snapshots (price changes) against `HEAD~1`. Missing remark
+fields (`rp5h`, `usage_quota`, `context_threshold`, `peak_hours`, `retention`)
+are warnings, not blockers.
 
-Review `included`, `excluded`, channel before/after, association diffs,
-`externallyRetained`, `blockingReferences`, creates/updates/deletes, and the
-change report. Done when: the plan file is written with zero errors and the
-user has reviewed it. Hand the plan to `axonhub-admin` for confirmation and
-execution. Confirming the catalog plan never authorizes the mapping plan.
+Review `providers`, per-channel `supportedModels`, the model targets,
+`removals`, and the change report. Done when: the plan file is written and the
+user has reviewed it. Hand the plan to `axonhub-admin` for interactive
+confirmation and execution. Confirming the catalog plan never authorizes the
+mapping plan.

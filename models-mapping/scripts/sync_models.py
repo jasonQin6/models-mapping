@@ -1,49 +1,52 @@
 #!/usr/bin/env python3
-"""Plan one provider's catalog from a source JSON for AxonHub.
+"""Plan managed channel catalogs offline from repository snapshots.
 
 The source is any api.json-shaped document (``{"<provider>": {"models": ...}}``)
 such as ``data/goat-models.json`` or ``data/opencode-go-models.json``.  This
 standalone, dependency-free helper only produces a reviewed plan file: it never
-mutates AxonHub, never runs Git operations, and holds no credential policy of
-its own — pass a read token via ``AXONHUB_JWT`` or ``--token``.  Execution
-belongs to the ``axonhub-admin`` skill (``apply_catalog_plan.py``).
+mutates AxonHub, never touches the network, and holds no credentials of its
+own.  Execution belongs to the ``axonhub-admin`` skill's interactive agent
+procedure (ADR 0009): read remote state, apply the plan item by item, verify
+by reading back.
 
 The managed provider→channel scope comes from ``model-decisions.json``:
 providers route to their configured channel by default, and a source provider
 or ``--provider-channel`` selection outside that scope is rejected.
+
+The plan is pure desired state: per channel an exact bare-ID
+``supportedModels`` list applied wholesale, target model-card values for every
+included model, and removal candidates annotated for the execution-time
+external-reference check.  It carries no modes, no fingerprints, and no remote
+before-state — regenerate it instead of staleness-checking it (ADR 0009).
 """
 
 from __future__ import annotations
 
 import argparse
-import copy
-import hashlib
 import json
 import os
 import subprocess
 import sys
 import tempfile
-import urllib.error
-import urllib.request
 from pathlib import Path
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any, Mapping, Sequence
 
 
+# schema_version of config/model-decisions.json.
 SCHEMA_VERSION = 1
+# schema_version of the emitted catalog plan (desired-state semantics).
+PLAN_SCHEMA_VERSION = 2
 REMARK_FIELDS = ("rp5h", "usage_quota", "context_threshold", "peak_hours", "retention")
 REMARK_ALIASES = {
     "usage_quota": ("usage_quota", "usageQuota"),
     "context_threshold": ("context_threshold", "contextThreshold"),
     "peak_hours": ("peak_hours", "peakHours"),
 }
+REMOVAL_NOTE = "执行时核验外部引用与外部渠道使用，再删除全局模型对象"
 
 
 class SyncError(RuntimeError):
     """A user-actionable synchronization failure."""
-
-
-class BlockingPlanError(SyncError):
-    """Raised when a plan cannot safely be executed."""
 
 
 def _as_dict(value: Any) -> dict[str, Any]:
@@ -115,121 +118,6 @@ def write_json(path: Path, value: Any) -> None:
         except FileNotFoundError:
             pass
         raise
-
-
-def file_sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
-def value_fingerprint(value: Any) -> str:
-    encoded = json.dumps(
-        value,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
-
-
-def managed_model_state(model: Mapping[str, Any]) -> dict[str, Any]:
-    return {
-        field: model.get(field)
-        for field in (
-            "name",
-            "developer",
-            "icon",
-            "group",
-            "modelCard",
-            "remark",
-            "status",
-            "settings",
-        )
-    }
-
-
-def candidate_channel_association(channel_id: int, model_id: str) -> dict[str, Any]:
-    return {
-        "type": "channel_model",
-        "priority": 0,
-        "disabled": False,
-        "when": None,
-        "channelModel": {"channelId": channel_id, "modelId": model_id},
-        "channelRegex": None,
-        "regex": None,
-        "modelId": None,
-        "channelTagsModel": None,
-        "channelTagsRegex": None,
-    }
-
-
-def normalize_model_card_for_compare(
-    value: Mapping[str, Any] | None,
-) -> dict[str, Any]:
-    card = copy.deepcopy(dict(value or {}))
-    for field in ("knowledge", "releaseDate", "lastUpdated"):
-        card[field] = card.get(field) or ""
-    return card
-
-
-def normalize_settings_for_compare(
-    value: Mapping[str, Any] | None,
-) -> dict[str, Any]:
-    settings = copy.deepcopy(dict(value or {}))
-    association_fields = (
-        "type",
-        "priority",
-        "disabled",
-        "when",
-        "channelModel",
-        "channelRegex",
-        "regex",
-        "modelId",
-        "channelTagsModel",
-        "channelTagsRegex",
-    )
-    settings["associations"] = [
-        {field: dict(item or {}).get(field) for field in association_fields}
-        for item in settings.get("associations") or []
-    ]
-    return settings
-
-
-def reconcile_candidate_settings(
-    settings: Mapping[str, Any] | None,
-    *,
-    model_id: str,
-    channel_id: int,
-) -> dict[str, Any]:
-    """Replace only this channel's channel_model rule and preserve external rules."""
-
-    current = dict(settings or {})
-    associations = []
-    for association in current.get("associations") or []:
-        if not isinstance(association, Mapping):
-            continue
-        channel_model = association.get("channelModel")
-        channel_id_value = (
-            channel_model.get("channelId")
-            if isinstance(channel_model, Mapping)
-            else None
-        )
-        if association.get("type") == "channel_model" and channel_id_value == channel_id:
-            continue
-        associations.append(dict(association))
-    associations.append(candidate_channel_association(channel_id, model_id))
-    current["disableDeveloperSettingsInheritance"] = bool(
-        current.get("disableDeveloperSettingsInheritance", False)
-    )
-    current["associations"] = associations
-    current["loadBalancerStrategy"] = str(
-        current.get("loadBalancerStrategy") or "default"
-    )
-    current["traceStickyMode"] = str(current.get("traceStickyMode") or "default")
-    return current
 
 
 def load_managed_scope(path: Path) -> dict[str, Any]:
@@ -476,126 +364,6 @@ def _model_meta(model: Mapping[str, Any], provider: str) -> tuple[str, str, str]
     return provider, "Default", family
 
 
-class GraphQLClient:
-    """Small stdlib GraphQL client that keeps tokens out of process argv."""
-
-    def __init__(
-        self,
-        url: str,
-        auth_token: str,
-        timeout: int = 30,
-        opener: Callable[..., Any] = urllib.request.urlopen,
-    ) -> None:
-        self.url = url.rstrip("/")
-        self.auth_token = auth_token
-        self.timeout = timeout
-        self.opener = opener
-
-    def execute(self, query: str, variables: Mapping[str, Any] | None = None) -> dict[str, Any]:
-        payload = json.dumps({"query": query, "variables": dict(variables or {})}, ensure_ascii=False)
-        request = urllib.request.Request(
-            f"{self.url}/admin/graphql",
-            data=payload.encode("utf-8"),
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": "Bearer " + self.auth_token,
-            },
-            method="POST",
-        )
-        try:
-            with self.opener(request, timeout=self.timeout) as response:
-                body = response.read().decode("utf-8")
-        except (OSError, urllib.error.URLError) as exc:
-            raise SyncError("AxonHub GraphQL request timed out") from exc
-        try:
-            decoded = json.loads(body)
-        except (TypeError, json.JSONDecodeError) as exc:
-            raise SyncError("AxonHub returned invalid GraphQL JSON") from exc
-        if decoded.get("errors"):
-            raise SyncError("AxonHub GraphQL returned an error")
-        data = decoded.get("data")
-        if not isinstance(data, Mapping):
-            raise SyncError("AxonHub GraphQL response has no data")
-        return dict(data)
-
-
-CHANNEL_NODE_SELECTION = "id name status supportedModels defaultTestModel"
-MODEL_NODE_SELECTION = (
-    "id modelID name developer icon group status remark "
-    "modelCard { reasoning { supported default } toolCall temperature "
-    "modalities { input output } vision cost { input output cacheRead cacheWrite } "
-    "limit { context output } knowledge releaseDate lastUpdated } "
-    "settings { disableDeveloperSettingsInheritance loadBalancerStrategy traceStickyMode "
-    "associations { type priority disabled "
-    "when { enabled condition { type logic field operator value "
-    "conditions { type logic field operator value } } } "
-    "channelModel { channelId modelId } "
-    "channelRegex { channelId pattern } "
-    "regex { pattern exclude { channelNamePattern channelIds channelTags } } "
-    "modelId { modelId exclude { channelNamePattern channelIds channelTags } } "
-    "channelTagsModel { channelTags modelId } "
-    "channelTagsRegex { channelTags pattern } } }"
-)
-
-
-def paged_nodes(
-    client: GraphQLClient,
-    field: str,
-    node_selection: str,
-    page_size: int = 100,
-) -> list[dict[str, Any]]:
-    """Fetch all Relay pages and reject a repeated or malformed cursor."""
-
-    query = (
-        f"query Paged{field.title()}($first: Int!, $after: Cursor) {{ "
-        f"{field}(first: $first, after: $after) {{ edges {{ node {{ {node_selection} }} }} "
-        "pageInfo { hasNextPage endCursor } } }"
-    )
-    after: str | None = None
-    seen: set[str] = set()
-    result_nodes: list[dict[str, Any]] = []
-    while True:
-        data = client.execute(query, {"first": page_size, "after": after})
-        connection = data.get(field)
-        if not isinstance(connection, Mapping):
-            raise SyncError(f"AxonHub GraphQL response has no {field} connection")
-        edges = connection.get("edges")
-        page_info = connection.get("pageInfo")
-        if not isinstance(edges, list) or not isinstance(page_info, Mapping):
-            raise SyncError(f"AxonHub {field} response is not paginated")
-        for edge in edges:
-            if isinstance(edge, Mapping) and isinstance(edge.get("node"), Mapping):
-                result_nodes.append(dict(edge["node"]))
-        if not page_info.get("hasNextPage"):
-            return result_nodes
-        next_cursor = page_info.get("endCursor")
-        if not next_cursor or str(next_cursor) in seen or str(next_cursor) == str(after):
-            raise SyncError(f"AxonHub {field} pagination returned a repeated cursor")
-        seen.add(str(next_cursor))
-        after = str(next_cursor)
-
-
-def fetch_channels(client: GraphQLClient, page_size: int = 100) -> dict[str, dict[str, Any]]:
-    nodes = paged_nodes(client, "channels", CHANNEL_NODE_SELECTION, page_size)
-    return {str(node["name"]): node for node in nodes if node.get("name")}
-
-
-def fetch_models(client: GraphQLClient, page_size: int = 100) -> dict[str, dict[str, Any]]:
-    nodes = paged_nodes(client, "models", MODEL_NODE_SELECTION, page_size)
-    result: dict[str, dict[str, Any]] = {}
-    for node in nodes:
-        model_id = node.get("modelID")
-        if model_id:
-            result[str(model_id)] = node
-    return result
-
-
-def _append_only_channel(channel: str) -> bool:
-    """Channels whose supportedModels carry vendor-prefixed upstream IDs."""
-
-    return channel == "commandcode"
-
-
 def _git_previous_blob(path: Path) -> str | None:
     """Return the previous committed version of a file as text, or None."""
 
@@ -688,26 +456,22 @@ def change_report(
 
 def build_plan(
     sources: Sequence[tuple[Path, str, str]],
-    client: GraphQLClient,
     *,
-    decisions_path: Path | None = None,
-    page_size: int = 100,
+    decisions_path: Path,
 ) -> dict[str, Any]:
-    """Build a safe, JSON-serializable plan from source files and AxonHub.
+    """Build the offline desired-state plan for the managed channels.
 
     ``sources`` is a list of ``(source_path, provider, channel)`` triples;
-    each provider's models are planned against its own channel.
+    each provider's models are planned for its own channel.  The result is a
+    deterministic function of the inputs and carries no remote state.
     """
 
-    if decisions_path is None:
-        raise SyncError("model decisions path is required")
     scope = load_managed_scope(decisions_path)
     validate_provider_channels_in_scope(
         {provider: channel for _, provider, channel in sources}, scope
     )
     provider_nodes: dict[str, dict[str, Any]] = {}
     provider_channel: dict[str, str] = {}
-    source_files: list[Path] = []
     for source_path, provider, channel in sources:
         document = load_json(source_path)
         node = find_provider(document, provider)
@@ -715,7 +479,6 @@ def build_plan(
             raise SyncError(f"provider {provider!r} appears in multiple sources")
         provider_nodes[provider] = node
         provider_channel[provider] = channel
-        source_files.append(source_path)
 
     provider_excluded: dict[str, dict[str, str]] = {}
     provider_supplements: dict[str, dict[str, dict[str, Any]]] = {}
@@ -783,324 +546,71 @@ def build_plan(
                 {"type": "missing_remark_fields", "model": model_id, "fields": missing}
             )
 
-    channels = fetch_channels(client, page_size)
-    existing = fetch_models(client, page_size)
-    errors: list[dict[str, Any]] = []
-    decision_required: list[dict[str, Any]] = []
-    channel_nodes: dict[str, dict[str, Any]] = {}
-    for provider, channel in sorted(provider_channel.items()):
-        node = channels.get(channel)
-        if node is None:
-            raise SyncError(f"target channel {channel!r} not found in AxonHub")
-        if str(node.get("status", "")).lower() != "enabled":
-            warnings.append(
-                {"type": "disabled_channel", "channel": channel, "status": node.get("status")}
+    channels: dict[str, dict[str, Any]] = {}
+    for channel in sorted(set(provider_channel.values())):
+        channels[channel] = {
+            "supportedModels": sorted(
+                model_id
+                for model_id, owner in record_provider.items()
+                if provider_channel[owner] == channel
             )
-        channel_nodes[channel] = node
+        }
 
-    channel_updates: list[dict[str, Any]] = []
-    for channel, node in sorted(channel_nodes.items()):
-        channel_models = sorted(
-            model_id
-            for model_id, owner in record_provider.items()
-            if provider_channel[owner] == channel
-        )
-        before = list(node.get("supportedModels") or [])
-        default_test_model = node.get("defaultTestModel")
-        if default_test_model and default_test_model not in channel_models and default_test_model not in before:
-            errors.append(
-                {
-                    "type": "default_test_model_removed",
-                    "channel": channel,
-                    "model": default_test_model,
-                }
-            )
-            continue
-        if _append_only_channel(channel):
-            missing = [m for m in channel_models if m not in before]
-            if missing:
-                channel_updates.append({
-                    "channel": channel,
-                    "channelId": str(node["id"]),
-                    "before": before,
-                    "after": sorted(set(before) | set(missing)),
-                    "appended": sorted(missing),
-                    "input": {"supportedModels": sorted(set(before) | set(missing))},
-                })
-        elif before != channel_models:
-            channel_updates.append({
-                "channel": channel,
-                "channelId": str(node["id"]),
-                "before": before,
-                "after": channel_models,
-                "input": {"supportedModels": channel_models},
-            })
-
-    creates: list[dict[str, Any]] = []
-    updates: list[dict[str, Any]] = []
-    deletes: list[dict[str, Any]] = []
-    externally_retained: list[dict[str, Any]] = []
-    blocking_references: list[dict[str, Any]] = []
-    for item in excluded:
-        model_id = str(item["modelID"])
-        external_channels = sorted(
-            name
-            for name, other in channels.items()
-            if name not in set(provider_channel.values())
-            and model_id in (other.get("supportedModels") or [])
-        )
-        references = []
-        for owner_id, owner in existing.items():
-            settings = owner.get("settings") or {}
-            for association in settings.get("associations") or []:
-                if not isinstance(association, Mapping):
-                    continue
-                channel_model = association.get("channelModel")
-                model_target = association.get("modelId")
-                target = None
-                if isinstance(channel_model, Mapping):
-                    target = channel_model.get("modelId")
-                if isinstance(model_target, Mapping):
-                    target = model_target.get("modelId")
-                if target == model_id and owner_id != model_id:
-                    references.append(
-                        {"owner": owner_id, "type": association.get("type")}
-                    )
-        if external_channels:
-            externally_retained.append(
-                {
-                    "modelID": model_id,
-                    "externalChannels": external_channels,
-                    "references": references,
-                }
-            )
-            continue
-        if references:
-            blocking_references.append(
-                {"modelID": model_id, "references": references}
-            )
-            continue
-        old = existing.get(model_id)
-        if old is not None:
-            deletes.append(
-                {
-                    "modelID": model_id,
-                    "internalID": str(old["id"]),
-                    "reason": item.get("detail", "excluded"),
-                    "beforeFingerprint": value_fingerprint(
-                        managed_model_state(old)
-                    ),
-                }
-            )
-    if blocking_references:
-        errors.append(
-            {
-                "type": "excluded_models_still_referenced",
-                "models": [item["modelID"] for item in blocking_references],
-            }
-        )
+    models: list[dict[str, Any]] = []
     for model_id in sorted(records):
         model = records[model_id]
         provider = record_provider[model_id]
-        channel = provider_channel[provider]
-        channel_id = int(str(channel_nodes[channel]["id"]).rsplit("/", 1)[-1])
         developer, icon, group = _model_meta(model, provider)
-        new_remark = remark_json(build_remark(existing.get(model_id, {}).get("remark"), remark_values[model_id]))
-        managed = {
-            "developer": developer,
-            "name": str(model.get("name") or model_id),
-            "icon": icon,
-            "group": group,
-            "modelCard": model_card(model),
-            "remark": new_remark,
-            "settings": reconcile_candidate_settings(
-                existing.get(model_id, {}).get("settings"),
-                model_id=model_id,
-                channel_id=channel_id,
-            ),
-        }
-        old = existing.get(model_id)
-        if old is None:
-            creates.append({
+        models.append(
+            {
                 "modelID": model_id,
-                "channel": channel,
+                "channel": provider_channel[provider],
                 "input": {
                     "modelID": model_id,
-                    "name": managed["name"],
+                    "name": str(model.get("name") or model_id),
                     "developer": developer,
                     "type": "chat",
                     "icon": icon,
                     "group": group,
-                    "modelCard": managed["modelCard"],
-                    "remark": new_remark,
-                    "settings": managed["settings"],
+                    "modelCard": model_card(model),
+                    "remark": remark_json(build_remark(None, remark_values[model_id])),
                 },
-            })
-            continue
-        changed_input = {}
-        for field, desired in managed.items():
-            actual = old.get(field)
-            if field == "modelCard":
-                equal = normalize_model_card_for_compare(actual) == normalize_model_card_for_compare(desired)
-            elif field == "settings":
-                equal = normalize_settings_for_compare(actual) == normalize_settings_for_compare(desired)
-            else:
-                equal = actual == desired
-            if not equal:
-                changed_input[field] = desired
-        if changed_input:
-            updates.append({
-                "modelID": model_id,
-                "internalID": str(old["id"]),
-                "beforeFingerprint": value_fingerprint(managed_model_state(old)),
-                "input": changed_input,
-            })
-    deletion_guard = value_fingerprint(
+            }
+        )
+
+    removals = [
         {
-            "channels": {
-                name: list(other.get("supportedModels") or [])
-                for name, other in sorted(channels.items())
-            },
-            "associations": {
-                model_id: (other.get("settings") or {}).get("associations") or []
-                for model_id, other in sorted(existing.items())
-            },
+            "modelID": item["modelID"],
+            "reason": item.get("detail", "excluded"),
+            "note": REMOVAL_NOTE,
         }
-    )
+        for item in excluded
+    ]
     return {
-        "schema_version": SCHEMA_VERSION,
-        "provider": sorted(provider_nodes),
-        "channel": sorted(channel_nodes),
-        "sourceFingerprints": {
-            "sources": {
-                str(path): file_sha256(path)
-                for path in sorted(set(source_files), key=lambda item: str(item))
-            },
-            "decisions": file_sha256(decisions_path),
-        },
-        "sourceCount": len(records),
-        "enabledChannels": sorted(channel_nodes),
-        "skippedChannels": [],
+        "schema_version": PLAN_SCHEMA_VERSION,
+        "providers": dict(sorted(provider_channel.items())),
+        "channels": channels,
+        "models": models,
+        "removals": removals,
         "warnings": warnings,
-        "decisionRequired": decision_required,
-        "errors": errors,
-        "included": sorted(records),
-        "excluded": sorted(excluded, key=lambda item: item["modelID"]),
-        "externallyRetained": externally_retained,
-        "blockingReferences": blocking_references,
-        "channelUpdates": channel_updates,
-        "creates": creates,
-        "updates": updates,
-        "deletes": deletes,
-        "deletionGuardFingerprint": deletion_guard,
     }
-
-
-CREATE_MODEL_MUTATION_DOC = """
-Reference only (documented in references/schema.md): execution uses these
-mutations from the axonhub-admin skill — createModel, updateModel,
-updateChannel (supportedModels only), deleteModel.  This planner never sends
-them.
-"""
-
-
-def validate_plan_shape(plan: Mapping[str, Any]) -> None:
-    """Reject malformed or over-broad saved plans before execution."""
-
-    if plan.get("schema_version") != SCHEMA_VERSION:
-        raise BlockingPlanError("unsupported sync plan schema_version")
-    if not isinstance(plan.get("provider"), str) or not plan["provider"]:
-        raise BlockingPlanError("sync plan has no provider")
-    if not isinstance(plan.get("channel"), str) or not plan["channel"]:
-        raise BlockingPlanError("sync plan has no channel")
-    fingerprints = plan.get("sourceFingerprints")
-    if not isinstance(fingerprints, Mapping) or not fingerprints.get("source"):
-        raise BlockingPlanError("sync plan has no source fingerprints")
-    for field in (
-        "creates",
-        "updates",
-        "deletes",
-        "channelUpdates",
-        "errors",
-        "warnings",
-        "decisionRequired",
-        "excluded",
-        "externallyRetained",
-        "blockingReferences",
-    ):
-        if not isinstance(plan.get(field), list):
-            raise BlockingPlanError(f"sync plan field {field} must be a list")
-    allowed_model_fields = {
-        "modelID",
-        "name",
-        "developer",
-        "type",
-        "icon",
-        "group",
-        "modelCard",
-        "remark",
-        "settings",
-    }
-    allowed_update_fields = allowed_model_fields - {"modelID", "type"}
-    for item in plan["creates"]:
-        if not isinstance(item, Mapping) or set(item.get("input", {})) - allowed_model_fields:
-            raise BlockingPlanError("sync plan contains an invalid create input")
-    for item in plan["updates"]:
-        if not isinstance(item, Mapping) or set(item.get("input", {})) - allowed_update_fields:
-            raise BlockingPlanError("sync plan contains an invalid model update input")
-        if not item.get("beforeFingerprint"):
-            raise BlockingPlanError("sync plan model update has no before fingerprint")
-    for item in plan["deletes"]:
-        if (
-            not isinstance(item, Mapping)
-            or not item.get("modelID")
-            or not item.get("internalID")
-            or not item.get("reason")
-            or not item.get("beforeFingerprint")
-        ):
-            raise BlockingPlanError("sync plan contains an invalid model deletion")
-    for item in plan["channelUpdates"]:
-        if not isinstance(item, Mapping) or set(item.get("input", {})) != {"supportedModels"}:
-            raise BlockingPlanError("sync plan contains an invalid channel update input")
-
-
-def validate_source_files(
-    plan: Mapping[str, Any],
-    source_path: Path,
-    decisions_path: Path,
-) -> None:
-    expected = plan.get("sourceFingerprints")
-    if not isinstance(expected, Mapping):
-        raise BlockingPlanError("sync plan has no source fingerprints")
-    actual_source = file_sha256(source_path)
-    actual_decisions = file_sha256(decisions_path)
-    if (
-        expected.get("source") != actual_source
-        or expected.get("decisions") != actual_decisions
-    ):
-        raise BlockingPlanError("sync sources changed after review; regenerate the plan")
 
 
 def plan_summary(plan: Mapping[str, Any]) -> dict[str, Any]:
     return {
-        "provider": plan.get("provider"),
-        "channel": plan.get("channel"),
-        "sourceCount": plan.get("sourceCount", 0),
-        "enabledChannels": plan.get("enabledChannels", []),
-        "warningCount": len(plan.get("warnings") or []),
-        "excludedCount": len(plan.get("excluded") or []),
-        "externallyRetainedCount": len(plan.get("externallyRetained") or []),
-        "errorCount": len(plan.get("errors") or []),
-        "createCount": len(plan.get("creates") or []),
-        "updateCount": len(plan.get("updates") or []),
-        "deleteCount": len(plan.get("deletes") or []),
-        "channelUpdateCount": len(plan.get("channelUpdates") or []),
+        "channels": {
+            channel: len(entry["supportedModels"])
+            for channel, entry in sorted(plan["channels"].items())
+        },
+        "modelCount": len(plan["models"]),
+        "removalCount": len(plan["removals"]),
+        "warningCount": len(plan["warnings"]),
     }
 
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Plan provider catalogs from source JSONs for AxonHub (read-only)",
+        description="Plan managed channel catalogs offline from source JSONs (read-only)",
     )
     parser.add_argument(
         "--source",
@@ -1133,14 +643,7 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         help="write the change report (added/removed models, price changes) here",
     )
-    parser.add_argument("--axonhub-url", default=os.environ.get("AXONHUB_URL", "https://axon.jasonqin.site"))
-    parser.add_argument(
-        "--token",
-        default=os.environ.get("AXONHUB_JWT"),
-        help="read-only-capable JWT for querying AxonHub state (prefer AXONHUB_JWT; never print it)",
-    )
     parser.add_argument("--plan-output", type=Path)
-    parser.add_argument("--page-size", type=int, default=100)
     return parser
 
 
@@ -1185,12 +688,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             document = load_json(source_path)
             provider = _resolve_provider(document, source_path, None)
             sources.append((source_path, provider, managed_channel(provider, scope)))
-        if not args.token:
-            print(
-                "a JWT is required to read AxonHub state: set AXONHUB_JWT or pass --token",
-                file=sys.stderr,
-            )
-            return 2
         if args.change_report_output:
             report = change_report(args.all_models, args.sources)
             write_json(args.change_report_output, report)
@@ -1204,29 +701,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                     sort_keys=True,
                 )
             )
-        client = GraphQLClient(args.axonhub_url, args.token)
-        plan = build_plan(
-            sources,
-            client,
-            decisions_path=args.model_decisions,
-            page_size=args.page_size,
-        )
+        plan = build_plan(sources, decisions_path=args.model_decisions)
         if args.plan_output:
             write_json(args.plan_output, plan)
         print(json.dumps(plan_summary(plan), ensure_ascii=False, indent=2, sort_keys=True))
-        if plan.get("errors") or plan.get("decisionRequired"):
-            print(
-                json.dumps(
-                    {
-                        "errors": plan.get("errors", []),
-                        "decisionRequired": plan.get("decisionRequired", []),
-                    },
-                    ensure_ascii=False,
-                    indent=2,
-                ),
-                file=sys.stderr,
-            )
-            return 2
         return 0
     except SyncError as exc:
         print(str(exc), file=sys.stderr)
