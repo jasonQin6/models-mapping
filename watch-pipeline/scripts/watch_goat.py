@@ -218,7 +218,7 @@ def build_goat_fields(
     upstream_patch contains only GOAT-channel fields that should appear at
     models.<model_id> top level (id, name, cost). goat_extra is nested
     under extra: {rp5h, usage_quota, tok_s} — the subset with downstream
-    consumers (remark fields in axonhub-catalog-sync; tok/s is GOAT-only).
+    consumers (remark fields in models-mapping sync_models.py; tok/s is GOAT-only).
     Monthly credits map to usage_quota; intelligence scoring is not stored.
     Tok/s is in the main table; limit/context is NOT here — it belongs to
     the upstream static schema and is filled via fallback, not scraped.
