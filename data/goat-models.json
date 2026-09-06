@@ -56,9 +56,7 @@
         },
         "extra": {
           "rp5h": 18200,
-          "retention": null,
-          "intelligence": "52",
-          "note": "官方评分",
+          "usage_quota": null,
           "tok_s": 129
         }
       },
@@ -95,9 +93,7 @@
         },
         "extra": {
           "rp5h": 6080,
-          "retention": null,
-          "intelligence": "52*",
-          "note": "继承自 DeepSeek V4 Flash (latest)（not yet scored）",
+          "usage_quota": null,
           "tok_s": null
         }
       },
@@ -182,9 +178,7 @@
         },
         "extra": {
           "rp5h": 1980,
-          "retention": null,
-          "intelligence": "53.2",
-          "note": "官方评分",
+          "usage_quota": null,
           "tok_s": 61
         }
       },
@@ -276,9 +270,7 @@
         },
         "extra": {
           "rp5h": 784,
-          "retention": 40.0,
-          "intelligence": "56.0",
-          "note": "官方评分",
+          "usage_quota": 40.0,
           "tok_s": 366
         }
       },
@@ -318,9 +310,7 @@
         },
         "extra": {
           "rp5h": 784,
-          "retention": 40.0,
-          "intelligence": "56.0*",
-          "note": "继承自 Gemini 3.7 Flash（not yet scored）",
+          "usage_quota": 40.0,
           "tok_s": null
         }
       },
@@ -390,9 +380,7 @@
         },
         "extra": {
           "rp5h": null,
-          "retention": null,
-          "intelligence": "40.6",
-          "note": "官方评分",
+          "usage_quota": null,
           "tok_s": null
         }
       },
@@ -466,9 +454,7 @@
         },
         "extra": {
           "rp5h": null,
-          "retention": null,
-          "intelligence": "41.0",
-          "note": "官方评分",
+          "usage_quota": null,
           "tok_s": null
         }
       },
@@ -656,9 +642,7 @@
         },
         "extra": {
           "rp5h": 947,
-          "retention": 70.0,
-          "intelligence": "52.6",
-          "note": "官方评分",
+          "usage_quota": 70.0,
           "tok_s": 69
         }
       },
@@ -694,9 +678,7 @@
         },
         "extra": {
           "rp5h": 271,
-          "retention": 20.0,
-          "intelligence": "59.5",
-          "note": "官方评分",
+          "usage_quota": 20.0,
           "tok_s": 81
         }
       },
@@ -735,9 +717,7 @@
         },
         "extra": {
           "rp5h": 4720,
-          "retention": 40.0,
-          "intelligence": "57.5",
-          "note": "官方评分",
+          "usage_quota": 40.0,
           "tok_s": 42
         }
       },
@@ -874,9 +854,7 @@
         },
         "extra": {
           "rp5h": 2960,
-          "retention": null,
-          "intelligence": "52.3",
-          "note": "官方评分",
+          "usage_quota": null,
           "tok_s": 124
         }
       },
@@ -1013,9 +991,7 @@
         },
         "extra": {
           "rp5h": 414,
-          "retention": null,
-          "intelligence": "60.9",
-          "note": "官方评分",
+          "usage_quota": null,
           "tok_s": 70
         }
       },
@@ -1100,9 +1076,7 @@
         },
         "extra": {
           "rp5h": 144,
-          "retention": 20.0,
-          "intelligence": "55.8",
-          "note": "官方评分",
+          "usage_quota": 20.0,
           "tok_s": 49
         }
       },
@@ -1140,9 +1114,7 @@
         },
         "extra": {
           "rp5h": 144,
-          "retention": null,
-          "intelligence": "60.9",
-          "note": "官方评分",
+          "usage_quota": null,
           "tok_s": 61
         }
       },
@@ -1177,9 +1149,7 @@
         },
         "extra": {
           "rp5h": 1220,
-          "retention": 20.0,
-          "intelligence": "50",
-          "note": "无前代分数，默认赋 50",
+          "usage_quota": 20.0,
           "tok_s": null
         }
       },
@@ -1223,9 +1193,7 @@
         },
         "extra": {
           "rp5h": 396,
-          "retention": 20.0,
-          "intelligence": "42.3",
-          "note": "官方评分",
+          "usage_quota": 20.0,
           "tok_s": 51
         }
       },
@@ -1269,9 +1237,7 @@
         },
         "extra": {
           "rp5h": 709,
-          "retention": 20.0,
-          "intelligence": "41.2",
-          "note": "官方评分",
+          "usage_quota": 20.0,
           "tok_s": 116
         }
       },
@@ -1345,9 +1311,7 @@
         },
         "extra": {
           "rp5h": null,
-          "retention": null,
-          "intelligence": "36.0",
-          "note": "官方评分",
+          "usage_quota": null,
           "tok_s": null
         }
       },
@@ -1430,9 +1394,7 @@
         },
         "extra": {
           "rp5h": null,
-          "retention": null,
-          "intelligence": "45.1",
-          "note": "官方评分",
+          "usage_quota": null,
           "tok_s": null
         }
       },
@@ -1524,9 +1486,7 @@
         },
         "extra": {
           "rp5h": 1080,
-          "retention": 60.0,
-          "intelligence": "43.0",
-          "note": "官方评分",
+          "usage_quota": 60.0,
           "tok_s": 40
         }
       },
@@ -1571,9 +1531,7 @@
         },
         "extra": {
           "rp5h": 181,
-          "retention": 20.0,
-          "intelligence": "43.0*",
-          "note": "继承自 Kimi K2.7 Code（not yet scored）",
+          "usage_quota": 20.0,
           "tok_s": null
         }
       },
@@ -1729,9 +1687,7 @@
         },
         "extra": {
           "rp5h": 196,
-          "retention": 20.0,
-          "intelligence": "59.7",
-          "note": "官方评分",
+          "usage_quota": 20.0,
           "tok_s": 38
         }
       },
@@ -1776,9 +1732,7 @@
         },
         "extra": {
           "rp5h": 19500,
-          "retention": 30.0,
-          "intelligence": "38.0",
-          "note": "官方评分",
+          "usage_quota": 30.0,
           "tok_s": 64
         }
       },
@@ -1842,9 +1796,7 @@
         },
         "extra": {
           "rp5h": 5700,
-          "retention": 20.0,
-          "intelligence": "42.9",
-          "note": "官方评分",
+          "usage_quota": 20.0,
           "tok_s": 43
         }
       },
@@ -1884,9 +1836,7 @@
         },
         "extra": {
           "rp5h": 428,
-          "retention": 20.0,
-          "intelligence": "56.8",
-          "note": "官方评分",
+          "usage_quota": 20.0,
           "tok_s": null
         }
       },
@@ -1926,9 +1876,7 @@
         },
         "extra": {
           "rp5h": 428,
-          "retention": 20.0,
-          "intelligence": "56.8*",
-          "note": "继承自 Muse Spark 1.2（not yet scored）",
+          "usage_quota": 20.0,
           "tok_s": null
         }
       },
@@ -2048,9 +1996,7 @@
         },
         "extra": {
           "rp5h": 575,
-          "retention": 20.0,
-          "intelligence": "38.3",
-          "note": "官方评分",
+          "usage_quota": 20.0,
           "tok_s": 174
         }
       },
@@ -2087,9 +2033,7 @@
         },
         "extra": {
           "rp5h": null,
-          "retention": null,
-          "intelligence": "41.1",
-          "note": "官方评分",
+          "usage_quota": null,
           "tok_s": null
         }
       },
@@ -2127,9 +2071,7 @@
         },
         "extra": {
           "rp5h": 1100,
-          "retention": null,
-          "intelligence": "40.5",
-          "note": "官方评分",
+          "usage_quota": null,
           "tok_s": null
         }
       },
@@ -2169,9 +2111,7 @@
         },
         "extra": {
           "rp5h": null,
-          "retention": null,
-          "intelligence": "50",
-          "note": "无前代分数，默认赋 50",
+          "usage_quota": null,
           "tok_s": null
         }
       },
@@ -2273,9 +2213,7 @@
         },
         "extra": {
           "rp5h": 232,
-          "retention": 33.0,
-          "intelligence": "46.7",
-          "note": "官方评分",
+          "usage_quota": 33.0,
           "tok_s": null
         }
       },
@@ -2314,9 +2252,7 @@
         },
         "extra": {
           "rp5h": 1420,
-          "retention": null,
-          "intelligence": "39.4",
-          "note": "官方评分",
+          "usage_quota": null,
           "tok_s": 56
         }
       },
@@ -2368,9 +2304,7 @@
         },
         "extra": {
           "rp5h": 4790,
-          "retention": 70.0,
-          "intelligence": "52.0",
-          "note": "官方评分",
+          "usage_quota": 70.0,
           "tok_s": 51
         }
       },
@@ -2407,9 +2341,7 @@
         },
         "extra": {
           "rp5h": 3910,
-          "retention": 20.0,
-          "intelligence": "50",
-          "note": "无前代分数，默认赋 50",
+          "usage_quota": 20.0,
           "tok_s": null
         }
       },
@@ -2448,9 +2380,7 @@
         },
         "extra": {
           "rp5h": 261,
-          "retention": 20.0,
-          "intelligence": "58.1",
-          "note": "官方评分",
+          "usage_quota": 20.0,
           "tok_s": 24
         }
       },
@@ -2488,9 +2418,7 @@
         },
         "extra": {
           "rp5h": 261,
-          "retention": 20.0,
-          "intelligence": "58.1*",
-          "note": "继承自 Qwen 3.8 Max（not yet scored）",
+          "usage_quota": 20.0,
           "tok_s": null
         }
       },
@@ -2561,9 +2489,7 @@
         },
         "extra": {
           "rp5h": 3510,
-          "retention": 20.0,
-          "intelligence": "26.5",
-          "note": "官方评分",
+          "usage_quota": 20.0,
           "tok_s": null
         }
       },
@@ -2689,9 +2615,7 @@
         },
         "extra": {
           "rp5h": 1670,
-          "retention": 20.0,
-          "intelligence": "30.9",
-          "note": "官方评分",
+          "usage_quota": 20.0,
           "tok_s": 94
         }
       }
