@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for the GOAT JSON watcher."""
+"""Tests for the GOAT JSON watcher (updates models_extra.json from the plan page)."""
 
 import json
 import sys
@@ -14,7 +14,6 @@ from watch_goat import (
     build_goat_fields,
     col_index,
     load_expected_count,
-    load_upstream_lookup,
     main,
     parse_price,
     parse_tables,
@@ -22,13 +21,6 @@ from watch_goat import (
 )
 
 FIXTURE = Path(__file__).parent / "fixtures" / "goat-sample.html"
-
-
-def _all_models_doc() -> dict:
-    return {
-        "qwen/qwen3.30b": {"id": "qwen/qwen3.30b", "name": "Qwen3 30B", "family": "qwen"},
-        "qwen/qwen3.32b": {"id": "qwen/qwen3.32b", "name": "Qwen3 32B", "family": "qwen"},
-    }
 
 
 def _write_reference(tmp_path: Path, *, minimum: int = 1, maximum: int = 10) -> Path:
@@ -77,8 +69,8 @@ def test_parse_price_deal_cell_keeps_effective_price() -> None:
     assert parse_price("$0.22<button>+</button>") == 0.22
 
 
-def test_build_goat_fields_splits_channel_and_extra() -> None:
-    patch, extra = build_goat_fields(
+def test_build_goat_fields_keeps_channel_declared_facts_only() -> None:
+    record = build_goat_fields(
         "Qwen3 30B",
         "qwen3-30b",
         price_input_raw="$0.20",
@@ -90,15 +82,12 @@ def test_build_goat_fields_splits_channel_and_extra() -> None:
         tok_s_raw="120",
     )
 
-    assert patch == {
-        "id": "qwen3.30b",
+    assert record == {
         "name": "Qwen3 30B",
-        "cost": {"input": 0.2, "output": 1.2, "cache_read": 0.05},
-    }
-    assert extra == {
         "rp5h": 1000,
         "usage_quota": 5.0,
         "tok_s": 120,
+        "cost": {"input": 0.2, "output": 1.2, "cache_read": 0.05},
     }
 
 
@@ -116,20 +105,16 @@ def test_load_expected_count_gate(tmp_path: Path) -> None:
     assert load_expected_count(reference) is None
 
 
-def test_main_html_to_tmp_keeps_goat_only_variant(tmp_path: Path) -> None:
-    all_models = tmp_path / "all.json"
-    all_models.write_text(json.dumps(_all_models_doc()), encoding="utf-8")
-    out = tmp_path / "out.json"
+def test_main_html_writes_channel_section_and_skips_claude(tmp_path: Path) -> None:
+    out = tmp_path / "models_extra.json"
 
     assert (
         main(
             [
                 "--html",
                 str(FIXTURE),
-                "--output",
+                "--extra",
                 str(out),
-                "--all-models",
-                str(all_models),
                 "--reference",
                 str(_write_reference(tmp_path, minimum=1, maximum=10)),
                 "--dump-html",
@@ -139,39 +124,41 @@ def test_main_html_to_tmp_keeps_goat_only_variant(tmp_path: Path) -> None:
         == 0
     )
 
-    payload = json.loads(out.read_text(encoding="utf-8"))
-    models = payload["commandcode-goat"]["models"]
+    document = json.loads(out.read_text(encoding="utf-8"))
+    assert document["schema_version"] == 1
+    models = document["channels"]["commandcode-goat"]
+    # Channel-provided claude models are not collected (ADR 0012).
     assert set(models) == {"qwen3.30b", "qwen3.32b", "deepseek-v4-flash-fast"}
-    assert models["qwen3.30b"]["extra"]["rp5h"] == 1000
-    assert models["qwen3.30b"]["extra"]["usage_quota"] == 5.0
+    assert models["qwen3.30b"]["rp5h"] == 1000
+    assert models["qwen3.30b"]["usage_quota"] == 5.0
 
     goat_only = models["deepseek-v4-flash-fast"]
-    assert goat_only["id"] == "deepseek-v4-flash-fast"
     assert goat_only["name"] == "DeepSeek V4 Flash Fast"
     assert goat_only["cost"] == {"input": 0.1, "output": 0.5}
-    assert goat_only["extra"] == {"rp5h": 500, "usage_quota": None, "tok_s": 90}
-    assert "family" not in goat_only
+    assert goat_only == {
+        "name": "DeepSeek V4 Flash Fast",
+        "rp5h": 500,
+        "usage_quota": None,
+        "tok_s": 90,
+        "cost": {"input": 0.1, "output": 0.5},
+    }
 
-    assert not list(tmp_path.glob(".out.json.*.tmp"))
+    assert not list(tmp_path.glob(".models_extra.json.*.tmp"))
 
 
 def test_main_count_outside_expected_range_fails(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     errors = _silence_error_state(monkeypatch)
-    all_models = tmp_path / "all.json"
-    all_models.write_text(json.dumps(_all_models_doc()), encoding="utf-8")
-    out = tmp_path / "out.json"
+    out = tmp_path / "models_extra.json"
 
     assert (
         main(
             [
                 "--html",
                 str(FIXTURE),
-                "--output",
+                "--extra",
                 str(out),
-                "--all-models",
-                str(all_models),
                 "--reference",
                 str(_write_reference(tmp_path, minimum=10, maximum=20)),
                 "--dump-html",
@@ -197,19 +184,15 @@ def test_main_short_main_table_row_fails(
         ),
         encoding="utf-8",
     )
-    all_models = tmp_path / "all.json"
-    all_models.write_text(json.dumps(_all_models_doc()), encoding="utf-8")
-    out = tmp_path / "out.json"
+    out = tmp_path / "models_extra.json"
 
     assert (
         main(
             [
                 "--html",
                 str(drifted),
-                "--output",
+                "--extra",
                 str(out),
-                "--all-models",
-                str(all_models),
                 "--reference",
                 str(_write_reference(tmp_path)),
                 "--dump-html",
@@ -238,19 +221,15 @@ def test_main_model_id_collision_fails(
         ),
         encoding="utf-8",
     )
-    all_models = tmp_path / "all.json"
-    all_models.write_text(json.dumps(_all_models_doc()), encoding="utf-8")
-    out = tmp_path / "out.json"
+    out = tmp_path / "models_extra.json"
 
     assert (
         main(
             [
                 "--html",
                 str(collided),
-                "--output",
+                "--extra",
                 str(out),
-                "--all-models",
-                str(all_models),
                 "--reference",
                 str(_write_reference(tmp_path)),
                 "--dump-html",
@@ -275,19 +254,15 @@ def test_main_empty_models_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
         "</table></body></html>",
         encoding="utf-8",
     )
-    all_models = tmp_path / "all.json"
-    all_models.write_text(json.dumps(_all_models_doc()), encoding="utf-8")
-    out = tmp_path / "out.json"
+    out = tmp_path / "models_extra.json"
 
     assert (
         main(
             [
                 "--html",
                 str(empty),
-                "--output",
+                "--extra",
                 str(out),
-                "--all-models",
-                str(all_models),
                 "--reference",
                 str(_write_reference(tmp_path)),
                 "--dump-html",
@@ -306,18 +281,14 @@ def test_main_missing_tables_returns_one(
     _silence_error_state(monkeypatch)
     bad = tmp_path / "bad.html"
     bad.write_text("<html><body><table><tr><th>Other</th></tr></table></body></html>", encoding="utf-8")
-    all_models = tmp_path / "all.json"
-    all_models.write_text("{}", encoding="utf-8")
 
     assert (
         main(
             [
                 "--html",
                 str(bad),
-                "--output",
-                str(tmp_path / "out.json"),
-                "--all-models",
-                str(all_models),
+                "--extra",
+                str(tmp_path / "models_extra.json"),
                 "--dump-html",
                 str(tmp_path / "failed.html"),
             ]
@@ -325,12 +296,3 @@ def test_main_missing_tables_returns_one(
         == 1
     )
     assert (tmp_path / "failed.html").exists()
-
-
-def test_load_upstream_lookup_indexes_bare_id(tmp_path: Path) -> None:
-    all_models = tmp_path / "all.json"
-    all_models.write_text(json.dumps(_all_models_doc()), encoding="utf-8")
-
-    lookup = load_upstream_lookup(all_models)
-
-    assert lookup["qwen3.30b"]["family"] == "qwen"

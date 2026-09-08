@@ -1,0 +1,938 @@
+{
+  "channels": {
+    "commandcode-goat": {
+      "deepseek-v4-flash": {
+        "cost": {
+          "cache_read": 0.007,
+          "input": 0.22,
+          "output": 0.66
+        },
+        "name": "DeepSeek V4 Flash (latest)",
+        "rp5h": 18200,
+        "tok_s": 129,
+        "usage_quota": 60.0
+      },
+      "deepseek-v4-flash-fast": {
+        "cost": {
+          "cache_read": 0.07,
+          "input": 0.28,
+          "output": 0.56
+        },
+        "name": "DeepSeek V4 Flash Fast",
+        "rp5h": 1040,
+        "tok_s": null,
+        "usage_quota": 20.0
+      },
+      "deepseek-v4-flash-vision-exp": {
+        "cost": {
+          "cache_read": 0.007,
+          "input": 0.22,
+          "output": 0.66
+        },
+        "name": "DeepSeek V4 Flash Vision (exp)",
+        "rp5h": 6080,
+        "tok_s": null,
+        "usage_quota": 20.0
+      },
+      "deepseek-v4-pro": {
+        "cost": {
+          "cache_read": 0.022,
+          "input": 0.66,
+          "output": 1.98
+        },
+        "name": "DeepSeek V4 Pro (latest)",
+        "rp5h": 1980,
+        "tok_s": 61,
+        "usage_quota": 20.0
+      },
+      "gemini-3.7-flash": {
+        "cost": {
+          "cache_read": 0.15,
+          "cache_write": 0.08334,
+          "input": 1.5,
+          "output": 7.5
+        },
+        "name": "Gemini 3.7 Flash",
+        "rp5h": 784,
+        "tok_s": 366,
+        "usage_quota": 40.0
+      },
+      "gemini-3.8-flash": {
+        "cost": {
+          "cache_read": 0.15,
+          "input": 1.5,
+          "output": 7.5
+        },
+        "name": "Gemini 3.8 Flash",
+        "rp5h": 784,
+        "tok_s": null,
+        "usage_quota": 40.0
+      },
+      "glm-5": {
+        "cost": {
+          "cache_read": 0.2,
+          "input": 1.0,
+          "output": 3.2
+        },
+        "name": "GLM-5",
+        "rp5h": null,
+        "tok_s": null,
+        "usage_quota": null
+      },
+      "glm-5.1": {
+        "cost": {
+          "cache_read": 0.26,
+          "input": 1.4,
+          "output": 4.4
+        },
+        "name": "GLM-5.1",
+        "rp5h": null,
+        "tok_s": null,
+        "usage_quota": null
+      },
+      "glm-5.2": {
+        "cost": {
+          "cache_read": 0.26,
+          "input": 1.4,
+          "output": 4.4
+        },
+        "name": "GLM-5.2",
+        "rp5h": 947,
+        "tok_s": 69,
+        "usage_quota": 70.0
+      },
+      "glm-5.2-fast": {
+        "cost": {
+          "cache_read": 0.5,
+          "input": 3.0,
+          "output": 10.25
+        },
+        "name": "GLM-5.2 Fast",
+        "rp5h": 138,
+        "tok_s": null,
+        "usage_quota": 20.0
+      },
+      "glm-5.3": {
+        "cost": {
+          "cache_read": 0.26,
+          "input": 1.4,
+          "output": 4.4
+        },
+        "name": "GLM-5.3",
+        "rp5h": 271,
+        "tok_s": 81,
+        "usage_quota": 20.0
+      },
+      "glm-5.3-flash": {
+        "cost": {
+          "cache_read": 0.03,
+          "input": 0.15,
+          "output": 0.5
+        },
+        "name": "GLM-5.3 Flash",
+        "rp5h": 4720,
+        "tok_s": 42,
+        "usage_quota": 40.0
+      },
+      "gpt-5.6-luna": {
+        "cost": {
+          "cache_read": 0.02,
+          "cache_write": 0.25,
+          "input": 0.2,
+          "output": 1.2
+        },
+        "name": "GPT-5.6 Luna",
+        "rp5h": 2960,
+        "tok_s": 124,
+        "usage_quota": 20.0
+      },
+      "gpt-5.6-sol": {
+        "cost": {
+          "cache_read": 0.5,
+          "cache_write": 6.25,
+          "input": 5.0,
+          "output": 30.0
+        },
+        "name": "GPT-5.6 Sol",
+        "rp5h": 414,
+        "tok_s": 70,
+        "usage_quota": 70.0
+      },
+      "grok-4.5": {
+        "cost": {
+          "cache_read": 0.5,
+          "input": 2.0,
+          "output": 6.0
+        },
+        "name": "Grok 4.5",
+        "rp5h": 144,
+        "tok_s": 49,
+        "usage_quota": 20.0
+      },
+      "grok-4.6": {
+        "cost": {
+          "cache_read": 0.5,
+          "input": 2.0,
+          "output": 6.0
+        },
+        "name": "Grok 4.6",
+        "rp5h": 144,
+        "tok_s": 61,
+        "usage_quota": 20.0
+      },
+      "hy4-preview": {
+        "cost": {
+          "cache_read": 0.042,
+          "input": 0.834,
+          "output": 2.501
+        },
+        "name": "Tencent Hy4 Preview",
+        "rp5h": 1220,
+        "tok_s": null,
+        "usage_quota": 20.0
+      },
+      "inkling": {
+        "cost": {
+          "cache_read": 0.17,
+          "input": 1.0,
+          "output": 4.05
+        },
+        "name": "Inkling",
+        "rp5h": 396,
+        "tok_s": 51,
+        "usage_quota": 20.0
+      },
+      "inkling-small": {
+        "cost": {
+          "cache_read": 0.1,
+          "input": 0.5,
+          "output": 1.2
+        },
+        "name": "Inkling Small",
+        "rp5h": 709,
+        "tok_s": 116,
+        "usage_quota": 20.0
+      },
+      "kimi-k2.5": {
+        "cost": {
+          "cache_read": 0.1,
+          "input": 0.6,
+          "output": 3.0
+        },
+        "name": "Kimi K2.5",
+        "rp5h": null,
+        "tok_s": null,
+        "usage_quota": null
+      },
+      "kimi-k2.6": {
+        "cost": {
+          "cache_read": 0.16,
+          "input": 0.95,
+          "output": 4.0
+        },
+        "name": "Kimi K2.6",
+        "rp5h": null,
+        "tok_s": null,
+        "usage_quota": null
+      },
+      "kimi-k2.7-code": {
+        "cost": {
+          "cache_read": 0.19,
+          "input": 0.95,
+          "output": 4.0
+        },
+        "name": "Kimi K2.7 Code",
+        "rp5h": 1080,
+        "tok_s": 40,
+        "usage_quota": 60.0
+      },
+      "kimi-k2.7-code-highspeed": {
+        "cost": {
+          "cache_read": 0.38,
+          "input": 1.9,
+          "output": 8.0
+        },
+        "name": "Kimi K2.7 Code HighSpeed",
+        "rp5h": 181,
+        "tok_s": null,
+        "usage_quota": 20.0
+      },
+      "kimi-k3": {
+        "cost": {
+          "cache_read": 0.3,
+          "input": 3.0,
+          "output": 15.0
+        },
+        "name": "Kimi K3",
+        "rp5h": 196,
+        "tok_s": 38,
+        "usage_quota": 20.0
+      },
+      "laguna-s-2.1-free": {
+        "cost": {
+          "cache_read": 0.0,
+          "input": 0.0,
+          "output": 0.0
+        },
+        "name": "Laguna S 2.1",
+        "rp5h": null,
+        "tok_s": null,
+        "usage_quota": null
+      },
+      "longcat-2.0-free": {
+        "cost": {
+          "cache_read": 0.0,
+          "input": 0.0,
+          "output": 0.0
+        },
+        "name": "LongCat 2.0",
+        "rp5h": null,
+        "tok_s": null,
+        "usage_quota": null
+      },
+      "mimo-v2.5": {
+        "cost": {
+          "cache_read": 0.0028,
+          "input": 0.14,
+          "output": 0.28
+        },
+        "name": "MiMo V2.5",
+        "rp5h": 19500,
+        "tok_s": 64,
+        "usage_quota": 30.0
+      },
+      "mimo-v2.5-pro": {
+        "cost": {
+          "cache_read": 0.0036,
+          "input": 0.435,
+          "output": 0.87
+        },
+        "name": "MiMo V2.5 Pro",
+        "rp5h": 5700,
+        "tok_s": 43,
+        "usage_quota": 20.0
+      },
+      "minimax-m2.5": {
+        "cost": {
+          "cache_read": 0.03,
+          "input": 0.3,
+          "output": 1.2
+        },
+        "name": "MiniMax M2.5",
+        "rp5h": null,
+        "tok_s": null,
+        "usage_quota": null
+      },
+      "minimax-m2.7": {
+        "cost": {
+          "cache_read": 0.06,
+          "input": 0.3,
+          "output": 1.2
+        },
+        "name": "MiniMax M2.7",
+        "rp5h": null,
+        "tok_s": null,
+        "usage_quota": null
+      },
+      "minimax-m3": {
+        "cost": {
+          "cache_read": 0.06,
+          "input": 0.3,
+          "output": 1.2
+        },
+        "name": "MiniMax M3",
+        "rp5h": 2770,
+        "tok_s": 111,
+        "usage_quota": 47.0
+      },
+      "muse-spark-1.2": {
+        "cost": {
+          "cache_read": 0.15,
+          "input": 1.25,
+          "output": 4.25
+        },
+        "name": "Muse Spark 1.2",
+        "rp5h": 428,
+        "tok_s": null,
+        "usage_quota": 20.0
+      },
+      "muse-spark-1.2-contributor": {
+        "cost": {
+          "cache_read": 0.002,
+          "input": 0.1,
+          "output": 0.2
+        },
+        "name": "Muse Spark 1.2 Contributor",
+        "rp5h": 18200,
+        "tok_s": null,
+        "usage_quota": 20.0
+      },
+      "muse-spark-1.3": {
+        "cost": {
+          "cache_read": 0.15,
+          "input": 1.25,
+          "output": 4.25
+        },
+        "name": "Muse Spark 1.3",
+        "rp5h": 428,
+        "tok_s": null,
+        "usage_quota": 20.0
+      },
+      "muse-spark-1.3-contributor": {
+        "cost": {
+          "cache_read": 0.002,
+          "input": 0.1,
+          "output": 0.2
+        },
+        "name": "Muse Spark 1.3 Contributor",
+        "rp5h": 18200,
+        "tok_s": null,
+        "usage_quota": 20.0
+      },
+      "nemotron-3-ultra-550b-a55b": {
+        "cost": {
+          "cache_read": 0.12,
+          "input": 0.6,
+          "output": 2.4
+        },
+        "name": "Nemotron 3 Ultra",
+        "rp5h": 575,
+        "tok_s": 174,
+        "usage_quota": 20.0
+      },
+      "qwen3.6-max-preview": {
+        "cost": {
+          "cache_read": 0.26,
+          "cache_write": 1.63,
+          "input": 1.3,
+          "output": 7.8
+        },
+        "name": "Qwen 3.6 Max Preview",
+        "rp5h": null,
+        "tok_s": null,
+        "usage_quota": null
+      },
+      "qwen3.6-plus": {
+        "cost": {
+          "cache_read": 0.1,
+          "input": 0.5,
+          "output": 3.0
+        },
+        "name": "Qwen 3.6 Plus",
+        "rp5h": 1100,
+        "tok_s": null,
+        "usage_quota": 33.0
+      },
+      "qwen3.7-flash": {
+        "cost": {
+          "cache_read": 0.006,
+          "cache_write": 0.038,
+          "input": 0.03,
+          "output": 0.13
+        },
+        "name": "Qwen 3.7 Flash",
+        "rp5h": null,
+        "tok_s": null,
+        "usage_quota": null
+      },
+      "qwen3.7-max": {
+        "cost": {
+          "cache_read": 0.5,
+          "cache_write": 3.13,
+          "input": 2.5,
+          "output": 7.5
+        },
+        "name": "Qwen 3.7 Max",
+        "rp5h": 232,
+        "tok_s": null,
+        "usage_quota": 33.0
+      },
+      "qwen3.7-plus": {
+        "cost": {
+          "cache_read": 0.08,
+          "cache_write": 0.5,
+          "input": 0.4,
+          "output": 1.6
+        },
+        "name": "Qwen 3.7 Plus",
+        "rp5h": 1420,
+        "tok_s": 56,
+        "usage_quota": 33.0
+      },
+      "qwen3.8-27b": {
+        "cost": {
+          "cache_read": 0.04,
+          "input": 0.4,
+          "output": 3.0
+        },
+        "name": "Qwen 3.8 27B",
+        "rp5h": 4790,
+        "tok_s": 51,
+        "usage_quota": 70.0
+      },
+      "qwen3.8-flash": {
+        "cost": {
+          "cache_read": 0.016,
+          "input": 0.16,
+          "output": 0.47
+        },
+        "name": "Qwen 3.8 Flash",
+        "rp5h": 3910,
+        "tok_s": null,
+        "usage_quota": 20.0
+      },
+      "qwen3.8-max": {
+        "cost": {
+          "cache_read": 0.25,
+          "cache_write": 2.5,
+          "input": 2.0,
+          "output": 6.0
+        },
+        "name": "Qwen 3.8 Max",
+        "rp5h": 261,
+        "tok_s": 24,
+        "usage_quota": 20.0
+      },
+      "qwen3.8-max-0902": {
+        "cost": {
+          "cache_read": 0.25,
+          "input": 2.0,
+          "output": 6.0
+        },
+        "name": "Qwen 3.8 Max 0902",
+        "rp5h": 261,
+        "tok_s": null,
+        "usage_quota": 20.0
+      },
+      "step-3.5-flash": {
+        "cost": {
+          "cache_read": 0.02,
+          "input": 0.1,
+          "output": 0.3
+        },
+        "name": "Step 3.5 Flash",
+        "rp5h": 3510,
+        "tok_s": null,
+        "usage_quota": 20.0
+      },
+      "step-3.7-flash": {
+        "cost": {
+          "cache_read": 0.04,
+          "input": 0.2,
+          "output": 1.15
+        },
+        "name": "Step 3.7 Flash",
+        "rp5h": 1670,
+        "tok_s": 94,
+        "usage_quota": 20.0
+      },
+      "tencent-hy3": {
+        "cost": {
+          "cache_read": 0.035,
+          "input": 0.14,
+          "output": 0.58
+        },
+        "name": "Tencent Hy3",
+        "rp5h": 7080,
+        "tok_s": 69,
+        "usage_quota": 70.0
+      }
+    },
+    "opencode-go": {
+      "deepseek-v4-flash": {
+        "context_threshold": null,
+        "cost": {
+          "cache_read": 0.007,
+          "cache_write": null,
+          "input": 0.22,
+          "output": 0.66
+        },
+        "name": "DeepSeek V4 Flash",
+        "peak_hours": "01:00-04:00 and 06:00-10:00 UTC",
+        "retention": 0,
+        "rp5h": 7600,
+        "usage_quota": 30.0
+      },
+      "deepseek-v4-flash-vision-exp": {
+        "context_threshold": null,
+        "cost": {
+          "cache_read": 0.007,
+          "cache_write": null,
+          "input": 0.22,
+          "output": 0.66
+        },
+        "name": "DeepSeek V4 Flash Vision Exp",
+        "peak_hours": "01:00-04:00 and 06:00-10:00 UTC",
+        "retention": 0,
+        "rp5h": 3800,
+        "usage_quota": 15.0
+      },
+      "deepseek-v4-pro": {
+        "context_threshold": null,
+        "cost": {
+          "cache_read": 0.022,
+          "cache_write": null,
+          "input": 0.66,
+          "output": 1.98
+        },
+        "name": "DeepSeek V4 Pro",
+        "peak_hours": "01:00-04:00 and 06:00-10:00 UTC",
+        "retention": 0,
+        "rp5h": 1050,
+        "usage_quota": 15.0
+      },
+      "glm-5.1": {
+        "context_threshold": null,
+        "cost": {
+          "cache_read": 0.26,
+          "cache_write": null,
+          "input": 1.4,
+          "output": 4.4
+        },
+        "name": "GLM-5.1",
+        "peak_hours": null,
+        "retention": 0,
+        "rp5h": 880,
+        "usage_quota": 60.0
+      },
+      "glm-5.2": {
+        "context_threshold": null,
+        "cost": {
+          "cache_read": 0.26,
+          "cache_write": null,
+          "input": 1.4,
+          "output": 4.4
+        },
+        "name": "GLM-5.2",
+        "peak_hours": null,
+        "retention": 0,
+        "rp5h": 880,
+        "usage_quota": 60.0
+      },
+      "glm-5.3": {
+        "context_threshold": null,
+        "cost": {
+          "cache_read": 0.26,
+          "cache_write": null,
+          "input": 1.4,
+          "output": 4.4
+        },
+        "name": "GLM-5.3",
+        "peak_hours": null,
+        "retention": 0,
+        "rp5h": 220,
+        "usage_quota": 15.0
+      },
+      "glm-5.3-flash": {
+        "context_threshold": null,
+        "cost": {
+          "cache_read": 0.03,
+          "cache_write": null,
+          "input": 0.15,
+          "output": 0.5
+        },
+        "name": "GLM-5.3-Flash",
+        "peak_hours": null,
+        "retention": 0,
+        "rp5h": 1580,
+        "usage_quota": 15.0
+      },
+      "gpt-5.6-luna": {
+        "context_threshold": "272K",
+        "cost": {
+          "cache_read": 0.02,
+          "cache_write": 0.25,
+          "input": 0.2,
+          "output": 1.2
+        },
+        "name": "GPT 5.6 Luna",
+        "peak_hours": null,
+        "retention": 30,
+        "rp5h": 2050,
+        "usage_quota": 15.0
+      },
+      "grok-4.6": {
+        "context_threshold": "200K",
+        "cost": {
+          "cache_read": 0.5,
+          "cache_write": null,
+          "input": 2.0,
+          "output": 6.0
+        },
+        "name": "Grok 4.6",
+        "peak_hours": null,
+        "retention": 30,
+        "rp5h": 169,
+        "usage_quota": 15.0
+      },
+      "hy3": {
+        "context_threshold": null,
+        "cost": {
+          "cache_read": 0.035,
+          "cache_write": null,
+          "input": 0.14,
+          "output": 0.58
+        },
+        "name": "Hy3",
+        "peak_hours": null,
+        "retention": 0,
+        "rp5h": 4300,
+        "usage_quota": 60.0
+      },
+      "hy4-preview": {
+        "context_threshold": null,
+        "cost": {
+          "cache_read": 0.042,
+          "cache_write": null,
+          "input": 0.834,
+          "output": 2.501
+        },
+        "name": "Hy4 preview",
+        "peak_hours": null,
+        "retention": 0,
+        "rp5h": 1350,
+        "usage_quota": 30.0
+      },
+      "kimi-k2.6": {
+        "context_threshold": null,
+        "cost": {
+          "cache_read": 0.16,
+          "cache_write": null,
+          "input": 0.95,
+          "output": 4.0
+        },
+        "name": "Kimi K2.6",
+        "peak_hours": null,
+        "retention": 0,
+        "rp5h": 1150,
+        "usage_quota": 60.0
+      },
+      "kimi-k2.7-code": {
+        "context_threshold": null,
+        "cost": {
+          "cache_read": 0.19,
+          "cache_write": null,
+          "input": 0.95,
+          "output": 4.0
+        },
+        "name": "Kimi K2.7 Code",
+        "peak_hours": null,
+        "retention": 0,
+        "rp5h": 1350,
+        "usage_quota": 60.0
+      },
+      "kimi-k3": {
+        "context_threshold": null,
+        "cost": {
+          "cache_read": 0.3,
+          "cache_write": null,
+          "input": 3.0,
+          "output": 15.0
+        },
+        "name": "Kimi K3",
+        "peak_hours": null,
+        "retention": 0,
+        "rp5h": 110,
+        "usage_quota": 15.0
+      },
+      "longcat-2.0": {
+        "context_threshold": null,
+        "cost": {
+          "cache_read": 0.006,
+          "cache_write": null,
+          "input": 0.3,
+          "output": 1.2
+        },
+        "name": "LongCat-2.0",
+        "peak_hours": null,
+        "retention": 0,
+        "rp5h": 11400,
+        "usage_quota": 60.0
+      },
+      "mimo-v2.5": {
+        "context_threshold": null,
+        "cost": {
+          "cache_read": 0.0028,
+          "cache_write": null,
+          "input": 0.14,
+          "output": 0.28
+        },
+        "name": "MiMo-V2.5",
+        "peak_hours": null,
+        "retention": 0,
+        "rp5h": 30100,
+        "usage_quota": 60.0
+      },
+      "mimo-v2.5-pro": {
+        "context_threshold": null,
+        "cost": {
+          "cache_read": 0.003625,
+          "cache_write": null,
+          "input": 0.435,
+          "output": 0.87
+        },
+        "name": "MiMo-V2.5-Pro",
+        "peak_hours": null,
+        "retention": 0,
+        "rp5h": 3250,
+        "usage_quota": 15.0
+      },
+      "minimax-m2.5": {
+        "context_threshold": null,
+        "cost": {
+          "cache_read": 0.06,
+          "cache_write": 0.375,
+          "input": 0.3,
+          "output": 1.2
+        },
+        "name": "MiniMax M2.5",
+        "peak_hours": null,
+        "retention": null,
+        "rp5h": null,
+        "usage_quota": 60.0
+      },
+      "minimax-m2.7": {
+        "context_threshold": null,
+        "cost": {
+          "cache_read": 0.06,
+          "cache_write": 0.375,
+          "input": 0.3,
+          "output": 1.2
+        },
+        "name": "MiniMax M2.7",
+        "peak_hours": null,
+        "retention": 0,
+        "rp5h": 3400,
+        "usage_quota": 60.0
+      },
+      "minimax-m3": {
+        "context_threshold": null,
+        "cost": {
+          "cache_read": 0.06,
+          "cache_write": null,
+          "input": 0.3,
+          "output": 1.2
+        },
+        "name": "MiniMax M3",
+        "peak_hours": null,
+        "retention": 0,
+        "rp5h": 3200,
+        "usage_quota": 60.0
+      },
+      "muse-spark-1.2-contributor": {
+        "context_threshold": null,
+        "cost": {
+          "cache_read": 0.002,
+          "cache_write": null,
+          "input": 0.1,
+          "output": 0.2
+        },
+        "name": "Muse Spark 1.2 Contributor",
+        "peak_hours": null,
+        "retention": 999,
+        "rp5h": 45300,
+        "usage_quota": 60.0
+      },
+      "muse-spark-1.3-contributor": {
+        "context_threshold": null,
+        "cost": {
+          "cache_read": 0.002,
+          "cache_write": null,
+          "input": 0.1,
+          "output": 0.2
+        },
+        "name": "Muse Spark 1.3 Contributor",
+        "peak_hours": null,
+        "retention": 999,
+        "rp5h": 45300,
+        "usage_quota": 60.0
+      },
+      "omen-alpha": {
+        "context_threshold": null,
+        "cost": {
+          "cache_read": 0.04,
+          "cache_write": null,
+          "input": 0.2,
+          "output": 0.66
+        },
+        "name": "Omen Alpha",
+        "peak_hours": null,
+        "retention": 0,
+        "rp5h": 11600,
+        "usage_quota": 100.0
+      },
+      "qwen3.6-plus": {
+        "context_threshold": "256K",
+        "cost": {
+          "cache_read": 0.05,
+          "cache_write": 0.625,
+          "input": 0.5,
+          "output": 3.0
+        },
+        "name": "Qwen3.6 Plus",
+        "peak_hours": null,
+        "retention": 0,
+        "rp5h": 3300,
+        "usage_quota": 60.0
+      },
+      "qwen3.7-max": {
+        "context_threshold": null,
+        "cost": {
+          "cache_read": 0.5,
+          "cache_write": 3.125,
+          "input": 2.5,
+          "output": 7.5
+        },
+        "name": "Qwen3.7 Max",
+        "peak_hours": null,
+        "retention": 0,
+        "rp5h": 170,
+        "usage_quota": 30.0
+      },
+      "qwen3.7-plus": {
+        "context_threshold": "256K",
+        "cost": {
+          "cache_read": 0.04,
+          "cache_write": 0.5,
+          "input": 0.4,
+          "output": 1.6
+        },
+        "name": "Qwen3.7 Plus",
+        "peak_hours": null,
+        "retention": 0,
+        "rp5h": 4300,
+        "usage_quota": 60.0
+      },
+      "qwen3.8-flash": {
+        "context_threshold": null,
+        "cost": {
+          "cache_read": 0.016,
+          "cache_write": 0.2,
+          "input": 0.15,
+          "output": 0.47
+        },
+        "name": "Qwen3.8 Flash",
+        "peak_hours": null,
+        "retention": 0,
+        "rp5h": 5400,
+        "usage_quota": 30.0
+      },
+      "qwen3.8-max": {
+        "context_threshold": null,
+        "cost": {
+          "cache_read": 0.25,
+          "cache_write": 2.5,
+          "input": 2.0,
+          "output": 6.0
+        },
+        "name": "Qwen3.8 Max",
+        "peak_hours": null,
+        "retention": 0,
+        "rp5h": 160,
+        "usage_quota": 15.0
+      }
+    }
+  },
+  "schema_version": 1,
+  "updated_at": "2026-09-08T10:39:35Z"
+}

@@ -2,28 +2,18 @@
   "channel": "goat",
   "script": "watch-pipeline/scripts/watch_goat.py",
   "upstream": "https://commandcode.ai/docs/plans/goat",
-  "snapshot": "data/goat-models.json",
-  "description": "Fields scraped from the Command Code GOAT plan page (three HTML tables) and where they land in the snapshot. Only fields with a downstream consumer are stored.",
+  "snapshot": "data/models_extra.json (channels.commandcode-goat)",
+  "description": "Channel-declared facts scraped from the Command Code GOAT plan page (three HTML tables) into the commandcode-goat section of the shared models_extra store. The section keys are the entitlement facts of the commandcode channel.",
   "targets": {
-    "models.<id>.cost": {
-      "note": "GOAT deal pricing; differs from any upstream cost in all_models.json. Omitted when every column is empty. Discounted cells quote the struck 'was' price (in <s>) before the bare deal price; the deal price is stored.",
+    "channels.commandcode-goat.<id>": {
+      "note": "id comes from the /models/<slug> anchor (dotted version restored, e.g. qwen3-8-27b -> qwen3.8-27b). Channel-provided claude-* models are not collected (ADR 0012). No card fields are stored here: the plan fills cards from data/all_models.json, so GOAT-exclusive ids plan with an empty card.",
       "fields": {
-        "input": {"source_column": "Input", "table": "main", "type": "float|null", "parse": "drop struck 'was' price and footnote buttons, then strip $ and commas; 'free' -> 0.0"},
-        "output": {"source_column": "Output", "table": "main", "type": "float|null", "parse": "drop struck 'was' price and footnote buttons, then strip $ and commas"},
-        "cache_read": {"source_column": "Cache Read", "table": "main", "type": "float|null", "parse": "drop struck 'was' price and footnote buttons, then strip $ and commas"},
-        "cache_write": {"source_column": "Cache Write", "table": "main", "type": "float|null", "parse": "strip $ and commas"}
+        "name": {"source": "model link text", "type": "string", "consumer": "plan name fallback when all_models.json has no card for the id"},
+        "rp5h": {"source_column": "Requests / 5 hours", "table": "quota", "type": "int|null", "consumer": "remark rp5h"},
+        "usage_quota": {"source_column": "Monthly credits", "table": "credits", "type": "float|null", "consumer": "remark usage_quota", "note": "Monthly credits stored under the remark-consumed name usage_quota"},
+        "tok_s": {"source_column": "tok/s", "table": "main", "type": "int|null", "consumer": "GOAT-only throughput, no models.dev equivalent"},
+        "cost": {"source_columns": "Input / Output / Cache Read / Cache Write", "table": "main", "type": "object {input, output, cache_read, cache_write} of float|null", "consumer": "plan modelCard cost", "note": "GOAT deal pricing; differs from any upstream cost in all_models.json. Discounted cells quote the struck 'was' price (in <s>) before the bare deal price; the deal price is stored."}
       }
-    },
-    "models.<id>.extra": {
-      "fields": {
-        "rp5h": {"source_column": "Requests / 5 hours", "table": "quota", "type": "int|null", "consumer": "axonhub-catalog-sync remark"},
-        "usage_quota": {"source_column": "Monthly credits", "table": "credits", "type": "float|null", "consumer": "axonhub-catalog-sync remark", "note": "Monthly credits stored under the remark-consumed name usage_quota"},
-        "tok_s": {"source_column": "tok/s", "table": "main", "type": "int|null", "consumer": "GOAT-only throughput, no models.dev equivalent"}
-      }
-    },
-    "models.<id>.{id,name}": {
-      "note": "id comes from the /models/<slug> anchor (dotted version restored, e.g. qwen3-8-27b -> qwen3.8-27b); name from the anchor text. Static fields (limit, modalities, ...) are NOT scraped here — they are fallback-merged from data/all_models.json.",
-      "fields": {}
     }
   },
   "not_collected": {
@@ -31,6 +21,6 @@
     "fields": ["intelligence", "note"]
   },
   "expected_count": {"min": 25, "max": 60},
-  "gates": "The snapshot's models keys are the authoritative entitlement allowlist pushed to AxonHub verbatim (ADR 0010), so any of these fails the run with no snapshot write: a main-table row skipped for missing columns; a to_model_id collision; zero models resolved; model count outside expected_count.",
-  "goat_only_rule": "GOAT-exclusive model ids with no bare-id record in data/all_models.json are kept with GOAT-claimed fields only (id, name, cost, extra) — the GOAT page is the entitlement fact source, and no upstream base exists to merge."
+  "gates": "The section keys are the authoritative entitlement facts of the commandcode channel, so any of these fails the run with no write: a main-table row skipped for missing columns; a to_model_id collision; zero models resolved; model count outside expected_count.",
+  "write_rule": "Read-modify-write via watch-pipeline/scripts/models_extra.py: only channels.commandcode-goat is rewritten. Writers must serialize (CI orders this job after the go job)."
 }

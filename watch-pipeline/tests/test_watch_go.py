@@ -1,130 +1,95 @@
 #!/usr/bin/env python3
-"""Tests for the OpenCode Go watcher (builds opencode-go-models.json from go.mdx)."""
+"""Tests for the OpenCode Go watcher (updates models_extra.json from go.mdx)."""
 
 import json
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 
-from watch_go import (
-    build_opencode_go_snapshot,
-    fix_free_models,
-    load_models_dev_provider,
-    parse_go_mdx,
-    write_json_atomic,
-)
+from models_extra import ExtraStoreError, is_excluded_model, load_document, update_channel
+from watch_go import build_go_section, main
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
-def test_fix_free_uses_largest_quota_and_zero_prices() -> None:
-    models = {
-        "paid": {"rp5h": 900, "usage_quota": 60, "price_output": 2},
-        "ox-alpha-free": {"rp5h": None, "usage_quota": None},
-    }
-
-    fixed = fix_free_models(models)
-
-    assert fixed["ox-alpha-free"]["rp5h"] == 900
-    assert fixed["ox-alpha-free"]["usage_quota"] == 60
-    assert fixed["ox-alpha-free"]["price_output"] == 0
+def _fixture_content() -> str:
+    return (FIXTURES / "go-sample.mdx").read_text(encoding="utf-8")
 
 
-def test_parse_go_mdx_fixture_yields_model_ids_and_quotas() -> None:
-    models = parse_go_mdx((FIXTURES / "go-sample.mdx").read_text(encoding="utf-8"))
+def test_build_go_section_fixture_yields_channel_facts() -> None:
+    models = build_go_section(_fixture_content())
 
+    # go.mdx owns the list: exactly its ids, the channel claude model dropped.
     assert set(models) == {"grok-4.6", "sample-bot", "freebie"}
-    assert models["grok-4.6"]["rp5h"] == 169
-    assert models["sample-bot"]["usage_quota"] == 60
-    assert models["sample-bot"]["price_cached_write"] == 0.375
-    # Free model: quotas filled from the largest non-free value, prices zero.
-    assert models["freebie"]["rp5h"] == 1000
-    assert models["freebie"]["usage_quota"] == 60
-    assert models["freebie"]["price_input"] == 0
-
-
-def test_build_snapshot_go_mdx_owns_the_model_list() -> None:
-    go_models = {
-        "grok-4.6": {"model_id": "grok-4.6", "name": "Grok 4.6", "rp5h": 169, "usage_quota": 20},
-        "sample-bot": {"model_id": "sample-bot", "name": "Sample Bot", "rp5h": 1000, "usage_quota": 60},
+    grok = models["grok-4.6"]
+    assert grok["name"] == "Grok 4.6"
+    assert grok["rp5h"] == 169
+    assert grok["usage_quota"] == 20
+    # The four mdx price columns assemble into cost with models.dev key names.
+    assert grok["cost"] == {
+        "input": 0.2,
+        "output": 0.8,
+        "cache_read": 0.02,
+        "cache_write": 0.1,
     }
-    models_dev = {
-        "grok-4.6": {
-            "id": "grok-4.6",
-            "name": "Grok 4.6 (latest)",
-            "description": "upstream card",
-            "cost": {"input": 0.2},
-            "limit": {"context": 128000},
-        },
-        "modelsdev-only": {"id": "modelsdev-only", "name": "Undocumented"},
-    }
-    previous = {"opencode-go": {"id": "opencode-go", "api": "https://example.test", "models": {}}}
+    assert grok["context_threshold"] is None
+    assert grok["peak_hours"] is None
 
-    payload, enriched = build_opencode_go_snapshot(go_models, models_dev, previous)
-    provider = payload["opencode-go"]
-
-    # The list is exactly go.mdx ids: the models.dev-only id is never added.
-    assert set(provider["models"]) == {"grok-4.6", "sample-bot"}
-    assert enriched == 1
-    # The provider envelope survives from the previous snapshot.
-    assert provider["id"] == "opencode-go"
-    assert provider["api"] == "https://example.test"
-
-    card = provider["models"]["grok-4.6"]
-    assert card["description"] == "upstream card"
-    assert card["cost"] == {"input": 0.2}
-    assert card["limit"] == {"context": 128000}
-    # go.mdx owns the quota fields, mirrored under extra in goat shape.
-    assert card["rp5h"] == 169
-    assert card["usage_quota"] == 20
-    assert card["extra"] == {"rp5h": 169, "usage_quota": 20}
-
-    # go-exclusive id: go.mdx-claimed fields only, no invented card data.
-    exclusive = provider["models"]["sample-bot"]
-    assert exclusive["name"] == "Sample Bot"
-    assert "description" not in exclusive
-    assert "cost" not in exclusive
-    assert exclusive["extra"] == {"rp5h": 1000, "usage_quota": 60}
+    bot = models["sample-bot"]
+    assert bot["rp5h"] == 1000
+    assert bot["usage_quota"] == 60
+    assert bot["cost"]["cache_write"] == 0.375
 
 
-def test_build_snapshot_without_previous_creates_envelope() -> None:
-    go_models = {"solo": {"model_id": "solo", "name": "Solo", "rp5h": None, "usage_quota": None}}
+def test_free_model_keeps_zero_prices_and_parser_quota_backfill() -> None:
+    models = build_go_section(_fixture_content())
 
-    payload, enriched = build_opencode_go_snapshot(go_models, None, None)
-
-    provider = payload["opencode-go"]
-    assert provider["id"] == "opencode-go"
-    assert provider["models"]["solo"]["rp5h"] is None
-    assert enriched == 0
-
-
-def test_load_models_dev_provider_accepts_three_shapes(tmp_path: Path) -> None:
-    provider_node = {"models": {"a": {"id": "a"}}}
-
-    full = tmp_path / "api.json"
-    full.write_text(json.dumps({"opencode-go": provider_node, "other": {}}), encoding="utf-8")
-    extract = tmp_path / "extract.json"
-    extract.write_text(json.dumps({"opencode-go": provider_node}), encoding="utf-8")
-    bare = tmp_path / "bare.json"
-    bare.write_text(json.dumps(provider_node), encoding="utf-8")
-
-    assert load_models_dev_provider(None) == {}
-    for path in (full, extract, bare):
-        assert load_models_dev_provider(path) == {"a": {"id": "a"}}
-
-    broken = tmp_path / "broken.json"
-    broken.write_text(json.dumps({"unrelated": True}), encoding="utf-8")
-    try:
-        load_models_dev_provider(broken)
-    except ValueError as exc:
-        assert "opencode-go provider" in str(exc)
-    else:
-        raise AssertionError("expected ValueError for shapeless models.dev source")
+    freebie = models["freebie"]
+    # parse_mdx backfills blank free quotas from the largest non-free values;
+    # planning re-derives them against the model's owning channel.
+    assert freebie["rp5h"] == 1000
+    assert freebie["usage_quota"] == 60
+    assert freebie["cost"] == {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0}
 
 
-def test_write_json_atomic_round_trips(tmp_path: Path) -> None:
-    path = tmp_path / "out.json"
-    payload = {"a": 1}
-    write_json_atomic(path, payload)
-    assert json.loads(path.read_text(encoding="utf-8")) == payload
+def test_channel_claude_models_are_not_collected() -> None:
+    models = build_go_section(_fixture_content())
+
+    assert "claude-sonnet-5" not in models
+    assert is_excluded_model("claude-sonnet-5")
+    assert is_excluded_model("Claude-Opus-4")
+    assert not is_excluded_model("grok-4.6")
+
+
+def test_update_channel_merges_into_shared_store(tmp_path: Path) -> None:
+    path = tmp_path / "models_extra.json"
+
+    update_channel(path, "opencode-go", {"grok-4.6": {"rp5h": 169}})
+    update_channel(path, "commandcode-goat", {"deepseek-v4-flash": {"rp5h": 18200}})
+
+    document = load_document(path)
+    assert document["schema_version"] == 1
+    assert set(document["channels"]) == {"opencode-go", "commandcode-goat"}
+    assert document["channels"]["opencode-go"] == {"grok-4.6": {"rp5h": 169}}
+    assert document["updated_at"]
+
+
+def test_update_channel_rejects_unknown_schema_version(tmp_path: Path) -> None:
+    path = tmp_path / "models_extra.json"
+    path.write_text(json.dumps({"schema_version": 99, "channels": {}}), encoding="utf-8")
+
+    with pytest.raises(ExtraStoreError):
+        update_channel(path, "opencode-go", {})
+
+
+def test_main_writes_section_from_local_fixture(tmp_path: Path) -> None:
+    out = tmp_path / "models_extra.json"
+
+    rc = main(["--extra", str(out), str(FIXTURES / "go-sample.mdx")])
+
+    assert rc == 0
+    document = json.loads(out.read_text(encoding="utf-8"))
+    assert set(document["channels"]["opencode-go"]) == {"grok-4.6", "sample-bot", "freebie"}

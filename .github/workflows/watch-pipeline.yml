@@ -2,7 +2,7 @@ name: Watch Pipeline
 
 on:
   schedule:
-    - cron: '0 0 * * *'  # UTC 00:00 = CST 08:00
+    - cron: '0 0 */3 * *'  # every 3rd day, UTC 00:00 = CST 08:00
   workflow_dispatch:
 
 permissions:
@@ -68,32 +68,24 @@ jobs:
             -o "$RUNNER_TEMP/go.mdx"
           echo "commit=$latest_hash" >> "$GITHUB_OUTPUT"
 
-      - name: Fetch models.dev card data
-        run: |
-          set -euo pipefail
-          curl -fsSL --max-time 60 https://models.dev/api.json -o /tmp/api.json
-          jq '{ "opencode-go": .["opencode-go"] }' /tmp/api.json > "$RUNNER_TEMP/models-dev-go.json"
-          echo "models.dev opencode-go cards: $(jq '.["opencode-go"].models | length' "$RUNNER_TEMP/models-dev-go.json")"
-
-      - name: Build opencode-go snapshot from go.mdx
+      - name: Update opencode-go section of models_extra
         run: |
           python3 watch-pipeline/scripts/watch_go.py "$RUNNER_TEMP/go.mdx" \
             --url "https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/web/src/content/docs/go.mdx" \
             --source-commit "${{ steps.source.outputs.commit }}" \
-            --models-dev "$RUNNER_TEMP/models-dev-go.json" \
-            --opencode-go data/opencode-go-models.json
+            --extra data/models_extra.json
 
-      - name: Commit opencode-go snapshot
+      - name: Commit models_extra
         id: commit
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "40985853+github-actions[bot]@users.noreply.github.com"
-          git add data/opencode-go-models.json
+          git add data/models_extra.json
           if git diff --cached --quiet; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "No opencode-go changes"
           else
-            git commit -m "data: update opencode-go snapshot"
+            git commit -m "data: update opencode-go section of models_extra"
             git pull --rebase origin "$GITHUB_REF_NAME"
             git push
             echo "changed=true" >> "$GITHUB_OUTPUT"
@@ -112,7 +104,9 @@ jobs:
           fi
 
   watch-goat-models:
-    needs: fetch-all-models
+    # Both jobs rewrite their own section of data/models_extra.json, so the
+    # writes must serialize: goat always runs after go.
+    needs: [fetch-all-models, fetch-opencode-go]
     runs-on: ubuntu-latest
     outputs:
       changed: ${{ steps.commit.outputs.changed }}
@@ -123,23 +117,22 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Build goat-models.json
+      - name: Update commandcode-goat section of models_extra
         run: |
           python3 watch-pipeline/scripts/watch_goat.py \
-            --all-models data/all_models.json \
-            --output data/goat-models.json
+            --extra data/models_extra.json
 
-      - name: Commit goat snapshot
+      - name: Commit models_extra
         id: commit
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "40985853+github-actions[bot]@users.noreply.github.com"
-          git add data/goat-models.json
+          git add data/models_extra.json
           if git diff --cached --quiet; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "No goat snapshot changes"
+            echo "No goat changes"
           else
-            git commit -m "data: update GOAT snapshot"
+            git commit -m "data: update commandcode-goat section of models_extra"
             git pull --rebase origin "$GITHUB_REF_NAME"
             git push
             echo "changed=true" >> "$GITHUB_OUTPUT"
@@ -158,8 +151,9 @@ jobs:
           fi
 
   watch-arena:
-    needs: fetch-opencode-go
-    if: needs.fetch-opencode-go.outputs.changed == 'true'
+    # Ordered after the models_extra writers only to serialize commits; the
+    # arena crawl is independent of channel snapshot drift and always runs.
+    needs: watch-goat-models
     runs-on: ubuntu-latest
     outputs:
       changed: ${{ steps.commit.outputs.changed }}

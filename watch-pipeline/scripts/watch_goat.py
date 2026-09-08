@@ -1,56 +1,43 @@
 #!/usr/bin/env python3
-"""Scrape https://commandcode.ai/docs/plans/goat and emit data/goat-models.json.
+"""Scrape https://commandcode.ai/docs/plans/goat and update ``data/models_extra.json``.
 
-Output: single provider envelope ``{"commandcode-goat": {id, name, api, npm, env, doc, models}}``
-shaped like data/opencode-go-models.json. Each model is keyed by model_id (id).
+``watch-goat`` is the source watcher for the commandcode-goat channel.  The
+section's keys are the authoritative entitlement allowlist of the commandcode
+channel (ADR 0010): a partial parse must fail the run instead of publishing a
+shrunken list.  The section carries channel-declared facts only (quotas,
+GOAT deal prices, tok/s); public card data is filled at planning time from
+``data/all_models.json``, never here.
 
-The snapshot's ``models`` keys are the authoritative entitlement allowlist of
-the commandcode channel (ADR 0010): a server-side timer pushes them to AxonHub
-verbatim, with no intersection fallback. Structural drift must therefore fail
-the run instead of publishing a partial list.
-
-Hard gates (any hit -> no snapshot write, last-error.json persisted):
+Hard gates (any hit -> no write, last-error.json persisted):
 - a main-table row is skipped for missing columns (page layout drifted);
 - two rows normalize to the same model_id (to_model_id collision);
 - zero models resolve;
 - the model count falls outside ``expected_count`` in the reference contract.
 
-Per-model contract
-- GOAT-claimed: id, name, cost (GOAT deal pricing) and extra: {rp5h,
-  usage_quota (==Monthly credits), tok_s}. cost/rp5h/usage_quota are the
-  GOAT channel. Intelligence scoring drives model selection only and is
-  not stored.
-- Enriched by fallback merge: if a model_id exists in data/all_models.json,
-  the record is filled with that upstream's static fields (attachment,
-  description, family, limit, modalities, reasoning, etc.). If absent, only
-  the GOAT-claimed fields remain — GOAT-exclusive variants are kept because
-  the GOAT page is the entitlement fact source.
-- Never duplicate model_id as both ``id`` and ``model_id``; canonical key is
-  ``id``. All discrimination is by model_id.
+Channel-provided ``claude-*`` models are not collected (ADR 0012): Claude
+requests are served by self-built AxonHub models mapped by arena score.
+Intelligence scoring drives model selection only and is not stored.
 
 Stdlib only. Pipeline entrypoint; see .github/workflows/watch-pipeline.yml.
-Usage: watch_goat.py [--url URL] [--html FILE] [--all-models PATH] [--output PATH] [--reference PATH]
+Usage: watch_goat.py [--url URL] [--html FILE] [--extra PATH] [--reference PATH]
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 import sys
-import tempfile
 import urllib.request
 from pathlib import Path
 from typing import Any, Iterator, Mapping, Optional
 
 from error_state import clear_error, error_dump_path, persist_error
+from models_extra import DEFAULT_EXTRA_PATH, is_excluded_model, update_channel
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_ALL_MODELS = REPO_ROOT / "data" / "all_models.json"
-DEFAULT_OUT = REPO_ROOT / "data" / "goat-models.json"
 DEFAULT_REFERENCE = REPO_ROOT / "watch-pipeline" / "reference" / "goat" / "extra.json"
 URL = "https://commandcode.ai/docs/plans/goat"
 CHANNEL = "goat"
@@ -217,10 +204,6 @@ def fetch_html(url: str, html_path: Optional[str]) -> str:
         return resp.read().decode("utf-8")
 
 
-def _norm_key(name: str) -> str:
-    return norm_name(name)
-
-
 def build_goat_fields(
     name: str,
     slug: str,
@@ -232,18 +215,14 @@ def build_goat_fields(
     rp5h_val: Optional[int],
     usage_quota_val: Optional[float],
     tok_s_raw: Optional[str],
-) -> tuple[dict, dict]:
-    """Return (upstream_patch, goat_extra) for one model.
+) -> dict:
+    """Return the models_extra record for one GOAT model.
 
-    upstream_patch contains only GOAT-channel fields that should appear at
-    models.<model_id> top level (id, name, cost). goat_extra is nested
-    under extra: {rp5h, usage_quota, tok_s} — the subset with downstream
-    consumers (remark fields in models-mapping sync_models.py; tok/s is GOAT-only).
-    Monthly credits map to usage_quota; intelligence scoring is not stored.
-    Tok/s is in the main table; limit/context is NOT here — it belongs to
-    the upstream static schema and is filled via fallback, not scraped.
+    Only channel-declared facts are kept: display name, GOAT deal pricing
+    (cost), rp5h, usage_quota (== Monthly credits) and tok_s (GOAT-only
+    throughput).  Monthly credits map to usage_quota; intelligence scoring is
+    not stored.
     """
-    mid = to_model_id(slug)
     price_in = parse_price(price_input_raw or "") if price_input_raw is not None else None
     price_out = parse_price(price_output_raw or "") if price_output_raw is not None else None
     cache_r = parse_price(cache_read_raw or "") if cache_read_raw is not None else None
@@ -258,10 +237,6 @@ def build_goat_fields(
     if cache_w is not None:
         cost["cache_write"] = cache_w
 
-    patch: dict = {"id": mid, "name": name}
-    if cost:
-        patch["cost"] = cost
-    # tok_s: GOAT-only, not in models.dev
     tok_s: Optional[int] = None
     if tok_s_raw is not None:
         raw_t = strip_tags(tok_s_raw) if "<" in tok_s_raw else str(tok_s_raw).strip()
@@ -270,52 +245,19 @@ def build_goat_fields(
                 tok_s = int(float(raw_t))
             except ValueError:
                 tok_s = None
-    extra: dict = {
+    return {
+        "name": name,
         "rp5h": rp5h_val,
         "usage_quota": usage_quota_val,
         "tok_s": tok_s,
+        "cost": cost,
     }
-    return patch, extra
-
-
-def load_upstream_lookup(all_models: Path) -> dict[str, dict]:
-    """Return bare model_id -> record from data/all_models.json only (single source).
-
-    all_models keys are vendor/model_id (e.g. deepseek/deepseek-v4-flash);
-    index by bare id (rec["id"]) for GOAT lookup. If a GOAT variant has no
-    bare-id entry (e.g. deepseek-v4-flash-fast without deepseek-v4-flash),
-    it is already filtered before calling this — no variant fallback needed.
-    """
-    path = all_models
-    if not path.exists():
-        return {}
-    try:
-        doc = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
-    lookup: dict[str, dict] = {}
-    if not isinstance(doc, dict):
-        return lookup
-    for key, rec in doc.items():
-        if not isinstance(rec, dict):
-            continue
-        vendor_mid = rec.get("id") or key
-        if not isinstance(vendor_mid, str) or not vendor_mid.strip():
-            continue
-        vendor_mid = vendor_mid.strip()
-        bare = vendor_mid.split("/")[-1]
-        if bare and bare not in lookup:
-            lookup[bare] = dict(rec)
-        # also index by full vendor/mid for completeness
-        if vendor_mid not in lookup:
-            lookup[vendor_mid] = dict(rec)
-    return lookup
 
 
 def load_expected_count(reference: Path) -> Optional[tuple[int, int]]:
     """Return the (min, max) model-count gate from the channel reference contract.
 
-    The snapshot is the authoritative allowlist, so a partial parse must fail
+    The section is the authoritative allowlist, so a partial parse must fail
     the run instead of publishing a shrunken list. A missing file or a
     malformed ``expected_count`` disables the gate.
     """
@@ -335,38 +277,17 @@ def load_expected_count(reference: Path) -> Optional[tuple[int, int]]:
     return lo, hi
 
 
-def write_json_atomic(path: Path, payload: Mapping[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            json.dump(payload, fh, ensure_ascii=False, indent=2, sort_keys=False)
-            fh.write("\n")
-        os.replace(tmp, str(path))
-    except Exception:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
-        raise
-
-
 def main(argv: Optional[list[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="Scrape GOAT plan and emit data/goat-models.json (api.json-shaped)")
+    ap = argparse.ArgumentParser(
+        description="Scrape the GOAT plan page and update the commandcode-goat section of data/models_extra.json"
+    )
     ap.add_argument("--url", default=URL)
     ap.add_argument("--html", help="read HTML from local file instead of fetching (for testing)")
     ap.add_argument(
-        "--all-models",
+        "--extra",
         type=Path,
-        default=DEFAULT_ALL_MODELS,
-        help="Path to data/all_models.json upstream snapshot",
-    )
-    ap.add_argument(
-        "--output",
-        "-o",
-        type=Path,
-        default=DEFAULT_OUT,
-        help="Output JSON path (default: data/goat-models.json)",
+        default=DEFAULT_EXTRA_PATH,
+        help="Path to data/models_extra.json (default: data/models_extra.json)",
     )
     ap.add_argument(
         "--dump-html",
@@ -413,8 +334,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         qmi = col_index(quota_rows[0], {"model"})
         qi = col_index(quota_rows[0], {"requests / 5 hours"})
 
-        # Monthly credits table == retention
-        retention_by_norm: dict[str, Optional[float]] = {}
+        # Monthly credits table == usage_quota
+        credits_by_norm: dict[str, Optional[float]] = {}
         for rows in tables:
             hdr = rows[0] if rows else []
             if col_index(hdr, {"monthly credits"}) is not None and col_index(hdr, {"input"}) is not None:
@@ -433,14 +354,14 @@ def main(argv: Optional[list[str]] = None) -> int:
                         # Some cells wrap the whole name in a tooltip button;
                         # stripping buttons then loses the name entirely.
                         name = strip_tags(row[cmi][2])
-                    retention_by_norm[_norm_key(name)] = parse_credits(row[crd_i][0])
+                    credits_by_norm[norm_name(name)] = parse_credits(row[crd_i][0])
 
         quota_by_norm: dict[str, Optional[int]] = {}
         for row in quota_rows[1:]:
             if len(row) <= max(qmi or 0, qi or 0):
                 continue
             qname = strip_tags(row[qmi][0]) if qmi is not None else ""
-            quota_by_norm[_norm_key(qname)] = parse_quota(row[qi][0]) if qi is not None else None
+            quota_by_norm[norm_name(qname)] = parse_quota(row[qi][0]) if qi is not None else None
 
         universe: dict[str, tuple[str, str]] = {}
         main_by_norm: dict[str, dict] = {}
@@ -453,7 +374,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             slug = row[mi][1] or slugify(name)
             score = row[ii][0]
             universe[name] = (slug, score)
-            main_by_norm[_norm_key(name)] = {
+            main_by_norm[norm_name(name)] = {
                 "name": name,
                 "slug": slug,
                 "score": score,
@@ -466,47 +387,42 @@ def main(argv: Optional[list[str]] = None) -> int:
 
         idx = build_score_index(universe)
         score_by_canonical = {c: s for c, s in idx.values()}
-        kept: list[tuple[str, str, str, str]] = []
+        kept: list[tuple[str, str, str]] = []
         for name, (slug, score) in universe.items():
             if re.fullmatch(r"\d+(?:\.\d+)?", score.strip()):
-                kept.append((name, slug, score.strip(), "官方评分"))
+                kept.append((name, slug, score.strip()))
             else:
                 inherited = None
                 for base in base_candidates(name, idx):
                     inherited = (base, score_by_canonical[base])
                     break
                 if inherited:
-                    kept.append((name, slug, inherited[1] + "*", f"继承自 {inherited[0]}（not yet scored）"))
+                    kept.append((name, slug, inherited[1] + "*"))
                 else:
-                    kept.append((name, slug, "50", "无前代分数，默认赋 50"))
-
-        upstream = load_upstream_lookup(args.all_models)
+                    kept.append((name, slug, "50"))
 
         models: dict[str, dict] = {}
-        for name, slug, _score_text, _remark in kept:
-            nk = _norm_key(name)
-            raw = main_by_norm.get(nk, {})
-            patch, extra_fields = build_goat_fields(
+        for name, slug, _score_text in kept:
+            mid = to_model_id(slug)
+            if is_excluded_model(mid):
+                continue
+            raw = main_by_norm.get(norm_name(name), {})
+            record = build_goat_fields(
                 name, slug,
                 price_input_raw=raw.get("input_raw"),
                 price_output_raw=raw.get("output_raw"),
                 cache_read_raw=raw.get("cache_read_raw"),
                 cache_write_raw=raw.get("cache_write_raw"),
-                rp5h_val=quota_by_norm.get(nk),
-                usage_quota_val=retention_by_norm.get(nk),
+                rp5h_val=quota_by_norm.get(norm_name(name)),
+                usage_quota_val=credits_by_norm.get(norm_name(name)),
                 tok_s_raw=raw.get("tok_raw"),
             )
-            mid = patch["id"]
             if mid in models:
                 raise ValueError(
                     f"model id collision after normalization: {mid!r} "
                     f"({models[mid]['name']!r} vs {name!r})"
                 )
-            base = upstream.get(mid)
-            merged = dict(base) if base else {}
-            merged.update(patch)
-            merged["extra"] = extra_fields
-            models[mid] = merged
+            models[mid] = record
 
         if skipped_rows:
             raise ValueError(
@@ -522,17 +438,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                     f"model count {len(models)} outside expected range [{lo}, {hi}]"
                 )
 
-        provider = {
-            "id": "commandcode-goat",
-            "name": "Command Code GOAT",
-            "api": "https://api.commandcode.ai",
-            "npm": "@ai-sdk/openai-compatible",
-            "env": ["COMMANDCODE_API_KEY"],
-            "doc": "https://commandcode.ai/docs/plans/goat",
-            "models": dict(sorted(models.items())),
-        }
-
-        write_json_atomic(args.output, {"commandcode-goat": provider})
+        update_channel(args.extra, "commandcode-goat", models)
     except (OSError, ValueError) as exc:
         dump_ref = error_dump_path(CHANNEL) if error_dump_path(CHANNEL).exists() else None
         persist_error(CHANNEL, "watch_goat.py", str(exc), dump_ref)
@@ -540,7 +446,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         return 1
 
     clear_error(CHANNEL)
-    print(f"watch-goat: {len(models)} models -> {args.output}")
+    print(f"watch-goat: {len(models)} models -> {args.extra}")
     return 0
 
 
