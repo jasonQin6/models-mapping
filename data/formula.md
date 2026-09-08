@@ -63,10 +63,13 @@ The candidate universe starts from every record in `data/models_extra.json`
   with a review warning and is only ineligible for target selection.
 - **Manual excludes** in `config/model-decisions.json`.
 
-A non-free model with no Arena match gets a default score of 1500 (warning)
+Scores come from the leaderboard, hand assignments (`manual: true` records
+in `data/arena.json`, preserved across collection runs), or the defaults
+below. A non-free model with no Arena match gets a default score of 1500
+(warning)
 so beta models stay in the pool. A free model inherits its base variant's
 Arena score when the board lists it (`longcat-2.0-free` <- `longcat-2.0`,
-warning `arena_inherited`) and defaults to 1550 when it does not; free
+warning `arena_inherited`) and defaults to 1500 when it does not; free
 models are always reachable through baseline routing regardless of score. A
 free candidate has its `rp5h` re-derived from its owning channel's largest
 non-free `rp5h`; missing `usage_quota` becomes 60. Arena ids keep the
