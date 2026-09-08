@@ -50,5 +50,5 @@ Claude 全局模型（claude-opus-5、claude-sonnet-5 等）是 AxonHub 中一�
 
 - `watch-pipeline`：维护 watch-pipeline.yml、采集脚本（`watch-pipeline/scripts/watch_*.py`、`models_extra.py`）与全部采集渠道；每渠道字段契约在 `watch-pipeline/reference/<channel>/extra.json`，脚本失败留痕于 `reference/<channel>/last-error.json`（成功后自删），修复流程见其 `SKILL.md`。
 - `model-registry`：把 `data/*.json` 离线变换为去重后的模型登记与 AxonHub 写入材料——`models.csv` 映射建议、catalog plan；只读规划，不联网，不写 AxonHub，详见其 `SKILL.md`。
-- `axonhub-admin`：唯一面向 AxonHub 写入、持有其凭据的 skill；按其 `SKILL.md` 的交互式执行程序（确认 → 读远端 → 逐项写入 → 回读验证 → 汇报）落地确认后的 catalog plan 与 `models.csv` 映射表；通用 channel 运维（quota tags、ordering weights、非固定模型 `channel_model` associations）经 `configure_channels.py`/`configure_models.py` dry-run 展示 diff 后由用户确认执行。
+- `axonhub-admin`：唯一面向 AxonHub 写入、持有其凭据的 skill；按其 `SKILL.md` 的交互式执行程序（确认 → 读远端 → 逐项写入 → 回读验证 → 汇报）落地确认后的 catalog plan 与 `models.csv` 映射表，以及日常 channel/model 运维。渠道的 tags/weights 等期望状态以 AxonHub 系统内现状为准，不在仓库中另存副本。
 - `scripts/{csv_io,name_matching,parse_opencode_mdx}` 为共享库，无独立 skill 归属，由 `model-registry/scripts` 与 `watch-pipeline/scripts` 使用。

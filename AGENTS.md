@@ -9,7 +9,7 @@
 - 术语、映射判断、门禁分级 → [`CONTEXT.md`](CONTEXT.md)
 - 数据归属、流程、skills 分工、产物表 → [`README.md`](README.md)
 - 凭据、workflow 安全、AxonHub 写入、事件响应 → [`SECURITY.md`](SECURITY.md)
-- 改变拥有或写入边界 → [`docs/adr/`](docs/adr)（当前 0005–0012，0012 为现行架构），再改本文
+- 改变拥有或写入边界 → [`docs/adr/`](docs/adr)（当前 0005–0013，0012 为现行架构），再改本文
 
 ## 命令
 
@@ -23,7 +23,7 @@ python3 -m pytest -q
 ## 约束
 
 - Python 3.12+，只用标准库；公开函数带类型注解。
-- `data/models_extra.json` 各渠道节由对应采集脚本独占写入；模型卡只来自 `data/all_models.json`，渠道 `cost` 逐字段优先；仅 Arena 允许使用文档化的 fallback 链。
+- `data/models_extra.json` 各渠道节由对应采集脚本独占写入；例外：`ant`、`sensenova` 为人工维护静态节（ADR 0013），任何 watcher 不得触碰。模型卡只来自 `data/all_models.json`，渠道 `cost` 逐字段优先；仅 Arena 允许使用文档化的 fallback 链。
 - 渠道自带的 `claude-*` 模型不采集：Claude 由 AxonHub 自建全局模型 + Arena 映射供给（ADR 0012）；GPT 按名透传，不参与映射。
 - 外部抓取只发生在 watch-pipeline；model-registry 只消费仓库内快照做离线计算；AxonHub 写入只由 axonhub-admin 在交互会话执行，CI 永不写 AxonHub。
 - `data/arena.json` 的 `manual: true` 记录与 `models_extra.json` 的 `aliases` 是手工维护数据，采集/重生成必须保留（脚本已保证，不得绕过脚本直写文件）。

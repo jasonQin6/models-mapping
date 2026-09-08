@@ -3,6 +3,56 @@
     "tencent-hy3": "hy3"
   },
   "channels": {
+    "ant": {
+      "ling-3.0-flash-fin": {
+        "context_threshold": null,
+        "cost": {
+          "input": 0,
+          "output": 0
+        },
+        "name": "Ling 3.0 Flash Fin",
+        "peak_hours": null,
+        "retention": null,
+        "rp5h": null,
+        "tok_s": null,
+        "usage_quota": null
+      },
+      "ling-3.0-flash-sante": {
+        "context_threshold": null,
+        "cost": {
+          "input": 0,
+          "output": 0
+        },
+        "name": "Ling 3.0 Flash Sante",
+        "peak_hours": null,
+        "retention": null,
+        "rp5h": null,
+        "tok_s": null,
+        "usage_quota": null
+      },
+      "ling-3.0-flash-vl": {
+        "context_threshold": null,
+        "cost": {
+          "input": 0,
+          "output": 0
+        },
+        "name": "Ling 3.0 Flash VL",
+        "peak_hours": null,
+        "retention": null,
+        "rp5h": null,
+        "tok_s": null,
+        "usage_quota": null
+      },
+      "qwen3.8-flash": {
+        "context_threshold": null,
+        "name": "Qwen3.8 Flash",
+        "peak_hours": null,
+        "retention": null,
+        "rp5h": null,
+        "tok_s": null,
+        "usage_quota": null
+      }
+    },
     "commandcode-goat": {
       "deepseek-v4-flash": {
         "cost": {
@@ -937,8 +987,72 @@
         "rp5h": 160,
         "usage_quota": 15.0
       }
+    },
+    "sensenova": {
+      "deepseek-v4-flash": {
+        "context_threshold": null,
+        "name": "DeepSeek V4 Flash (latest)",
+        "peak_hours": null,
+        "retention": null,
+        "rp5h": null,
+        "tok_s": null,
+        "usage_quota": null
+      },
+      "deepseek-v4-pro": {
+        "context_threshold": null,
+        "name": "DeepSeek V4 Pro (latest)",
+        "peak_hours": null,
+        "retention": null,
+        "rp5h": null,
+        "tok_s": null,
+        "usage_quota": null
+      },
+      "glm-5.2": {
+        "context_threshold": null,
+        "name": "GLM-5.2",
+        "peak_hours": null,
+        "retention": null,
+        "rp5h": null,
+        "tok_s": null,
+        "usage_quota": null
+      },
+      "kimi-k3": {
+        "context_threshold": null,
+        "name": "Kimi K3",
+        "peak_hours": null,
+        "retention": null,
+        "rp5h": null,
+        "tok_s": null,
+        "usage_quota": null
+      },
+      "sensenova-6.8-flash-lite": {
+        "context_threshold": null,
+        "cost": {
+          "input": 0,
+          "output": 0
+        },
+        "name": "SenseNova 6.8 Flash Lite",
+        "peak_hours": null,
+        "retention": null,
+        "rp5h": null,
+        "tok_s": null,
+        "usage_quota": null
+      },
+      "sensenova-v1-fast": {
+        "context_threshold": null,
+        "cost": {
+          "input": 0,
+          "output": 0
+        },
+        "name": "SenseNova V1 Fast",
+        "peak_hours": null,
+        "retention": null,
+        "rp5h": null,
+        "tok_s": null,
+        "usage_quota": null
+      }
     }
   },
   "schema_version": 1,
-  "updated_at": "2026-09-08T13:00:01Z"
+  "updated_at": "2026-09-08T17:08:13Z"
 }

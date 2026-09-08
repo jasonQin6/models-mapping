@@ -1,6 +1,6 @@
 ---
 name: axonhub-admin
-description: Operate AxonHub (AI gateway) over its admin GraphQL API — interactively execute confirmed catalog plans and mapping tables (channel supportedModels, model cards, removals, request-model routing), view/change channels and models, manage API-key templates, and tune channel tags, weights, and non-fixed-model routing. Use when the user asks to view or change anything in AxonHub without the web UI.
+description: Operate AxonHub (AI gateway) over its admin GraphQL API — interactively execute confirmed catalog plans and mapping tables (channel supportedModels, model cards, removals, request-model routing) and view or change channels, models, and API-key templates. Use when the user asks to view or change anything in AxonHub without the web UI.
 ---
 
 # AxonHub Admin
@@ -9,11 +9,12 @@ Operate AxonHub over HTTP as an agent. All management operations live on one end
 
 ## Step 1 — Obtain the token
 
-The convention: the live JWT is read from the user's logged-in AxonHub browser tab and exported as `AXONHUB_JWT` for the rest of the run.
+The live JWT is read from a logged-in AxonHub browser session via the
+**browser-use skill**, then used for the rest of the run:
 
-1. Check `AXONHUB_JWT` in the environment — if non-empty, use it (a token is valid for 7 days from sign-in).
-2. Otherwise claim the user's AxonHub browser tab and read the token from page context: `localStorage.getItem('axonhub_access_token')`, then export it as `AXONHUB_JWT`.
-3. If no logged-in tab exists, ask the user to sign in at the server (or supply credentials for `POST /admin/auth/signin` with `{email, password}` — the response contains the token). Then export it as `AXONHUB_JWT`.
+1. Check `AXONHUB_JWT` in the environment — if non-empty, use it (valid for 7 days from sign-in).
+2. Otherwise open `https://axon.jasonqin.site/` with the browser-use skill and read the token from page context: `localStorage.getItem('axonhub_access_token')`. GraphQL calls can then be issued directly from page context (`fetch("/admin/graphql", …)`, same-origin) or exported as `AXONHUB_JWT` for curl.
+3. If no logged-in session exists, ask the user to sign in first (or supply credentials for `POST /admin/auth/signin` with `{email, password}` — the response contains the token).
 
 Verify before proceeding:
 
@@ -87,17 +88,6 @@ AxonHub's hourly upstream sync overwrites a channel's `supportedModels` with `ma
 
 After all items: a per-item report — written+verified, unchanged (already correct), retained (external reference found), skipped (declined or blocked, with reason), failed (with the exact error). Failed and retained items are never silently dropped; the final state of every managed channel is echoed as the exact `supportedModels` list now live.
 
-## Channel tags & non-fixed routing → `configure_channels.py` / `configure_models.py`
-
-General channel maintenance (quota tags, ordering weights) and `channel_model` associations for models outside the fixed Claude/GPT request set. Channels are matched by exact name; server-assigned IDs are never the join key. Run with `--dry-run` first and show the user the diff; apply only after they confirm, then re-read channels/models and check the change landed only on the intended objects:
-
-```bash
-AXONHUB_JWT=<jwt> python3 axonhub-admin/scripts/configure_channels.py --dry-run
-AXONHUB_JWT=<jwt> python3 axonhub-admin/scripts/configure_models.py --dry-run
-```
-
-`configure_models.py` skips the fixed Claude/GPT request models — their routing belongs to the mapping table above. Desired channel state lives in `CHANNELS` (`scripts/common.py`); tag/weight semantics and priority scoring are printed by the scripts themselves.
-
 ## Channel lists are interactive-only
 
 Every managed channel's `supportedModels` is written through the interactive
@@ -125,5 +115,5 @@ Association types: `channel_model` (pinned channel + exact ID), `model` (exact I
 ### Known facts about this deployment
 
 - Server: `https://axon.jasonqin.site` — the built-in default of every script; override with `AXONHUB_URL`.
-- `AXONHUB_JWT` is the agreed env-var name for the live JWT. It is a credential: use it in Authorization headers, never write it into files, commits, or logs. Credentials live only in this skill — planning (`models-mapping`) is offline and needs none.
+- `AXONHUB_JWT` is the agreed env-var name for the live JWT. It is a credential: use it in Authorization headers, never write it into files, commits, or logs. Credentials live only in this skill — planning (`model-registry`) is offline and needs none.
 - The full admin schema to consult for exact field names: `internal/server/gql/*.graphql` in the axonhub repo.
