@@ -154,8 +154,11 @@ def test_claude_mapping_uses_formula_and_baseline_routing() -> None:
     request_rows = _request_rows(rows)
     # Baseline = lowest arena request (haiku): routes to the free candidate.
     assert request_rows["claude-haiku-4.5"]["mapping"] == "freebie"
-    # Non-baseline uses the formula: closest score wins over the far-above one.
-    assert request_rows["claude-opus-5"]["mapping"] == "qwen3.8-max"
+    # Non-baseline uses the formula: closest score wins. freebie carries the
+    # free-default 1550 (no base variant to inherit) plus the top rp5h, and
+    # 1550 sits closer to opus than qwen's 1600 is far above it with a tiny
+    # rp5h.
+    assert request_rows["claude-opus-5"]["mapping"] == "freebie"
     mapping_by_request = {m["request_model"]: m for m in plan["report"]["mappings"]}
     assert mapping_by_request["claude-haiku-4.5"]["match_confidence"] == "baseline"
     # Candidates are listed for review with their matched arena score.

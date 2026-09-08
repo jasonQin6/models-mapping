@@ -772,6 +772,10 @@
       "organization": "Upstage",
       "effort": null
     },
+    "step-3.7-flash": {
+      "arena_score": 1479,
+      "manual": true
+    },
     "trinity-large-thinking": {
       "arena_score": 1236.42,
       "arena_rank": 117,

@@ -59,10 +59,14 @@ The candidate universe starts from every record in `data/models_extra.json`
 - **Manual excludes** in `config/model-decisions.json`.
 
 A non-free model with no Arena match gets a default score of 1500 (warning)
-so beta models stay in the pool; free models keep the free-default 0 and are
-reached through baseline routing instead. A free candidate has its `rp5h`
-re-derived from its owning channel's largest non-free `rp5h`; missing
-`usage_quota` becomes 60. Request models may pin `arena_score` directly in
+so beta models stay in the pool. A free model inherits its base variant's
+Arena score when the board lists it (`longcat-2.0-free` <- `longcat-2.0`,
+warning `arena_inherited`) and defaults to 1550 when it does not; free
+models are always reachable through baseline routing regardless of score. A
+free candidate has its `rp5h` re-derived from its owning channel's largest
+non-free `rp5h`; missing `usage_quota` becomes 60. Channel ids carrying a
+parameter size the leaderboard omits (`qwen3.8-27b` <- `qwen3.8`) match via
+the size-suffix fallback at medium confidence. Request models may pin `arena_score` directly in
 `config/request-models.json` instead of relying on the Arena snapshot.
 Arena direct matches are high confidence; contributor-suffix and
 version-downgrade matches are medium confidence; prefix matches and free

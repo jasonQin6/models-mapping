@@ -262,6 +262,7 @@ def load_decisions(path: Path) -> dict[str, Any]:
 VARIANT_SUFFIXES = ("-free", "-contributor")
 _VARIANT_PRIORITY = {"-free": 0, "-contributor": 1}
 DEFAULT_ARENA_SCORE = 1500.0
+FREE_DEFAULT_ARENA_SCORE = 1550.0
 RP5H_MISSING_EXCLUDE_THRESHOLD = 1500.0
 
 
@@ -619,7 +620,7 @@ def compute_mapping_for_request_model(
 def _confidence(match_type: str) -> str:
     if match_type == "direct_match":
         return "high"
-    if match_type in ("contributor_suffix", "version_downgrade"):
+    if match_type in ("contributor_suffix", "version_downgrade", "size_suffix", "free_inherited"):
         return "medium"
     if match_type in ("prefix_match", "free_default"):
         return "low"
@@ -732,9 +733,26 @@ def plan_from(
         entry = registry[canonical]
         record = entry["record"]
         is_free = "free" in canonical.lower()
-        match, match_type = find_best_match(canonical, dict(arena_models), is_free=is_free)
+        # is_free=False keeps the free_default 0-score fallback out of the
+        # way: free models inherit their base variant's score instead.
+        match, match_type = find_best_match(canonical, dict(arena_models))
         arena_score = _number((match or {}).get("rating"))
-        if match_type == "no_match":
+        if match_type == "no_match" and is_free:
+            base = _variant_base(canonical)
+            base_entry = arena_models.get(base)
+            if isinstance(base_entry, Mapping) and _number(base_entry.get("rating")) is not None:
+                arena_score = _number(base_entry.get("rating"))
+                match_type = "free_inherited"
+                warnings.append(
+                    {"type": "arena_inherited", "model": canonical, "from": base, "score": arena_score}
+                )
+            else:
+                arena_score = FREE_DEFAULT_ARENA_SCORE
+                match_type = "free_defaulted"
+                warnings.append(
+                    {"type": "arena_defaulted", "model": canonical, "score": FREE_DEFAULT_ARENA_SCORE}
+                )
+        elif match_type == "no_match":
             arena_score = DEFAULT_ARENA_SCORE
             warnings.append(
                 {"type": "arena_defaulted", "model": canonical, "score": DEFAULT_ARENA_SCORE}
