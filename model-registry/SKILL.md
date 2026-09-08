@@ -35,23 +35,40 @@ python3 model-registry/scripts/models_mapping.py \
 
 Pipeline, in order:
 
-1. **Dedupe** — a model id listed by several channels belongs to the channel
+1. **Alias normalisation** — the hand-maintained `aliases` map in
+   `data/models_extra.json` (e.g. `tencent-hy3` -> `hy3`) merges
+   cross-channel spellings. Channel lists keep native ids; the registry and
+   `plan.models[]` use the canonical id, with `channelAliases` describing
+   per-channel exposure for routing.
+2. **Collector excludes** — records stamped `exclude`
+   (`-fast`/`-highspeed` speed variants) are skipped with a warning.
+3. **Dedupe** — a model id listed by several channels belongs to the channel
    with the highest `rp5h` (null loses to a value, ties keep the
    alphabetically first channel); every resolution reports
    `duplicate_model_across_sources`.
-2. **Free fill** — per owning channel, a free model's `rp5h` is re-derived
+4. **Variant grouping** — within a base model, `-free` beats `-contributor`
+   beats the plain original; superseded variants leave with
+   `variant_superseded`.
+5. **Free fill** — per owning channel, a free model's `rp5h` is re-derived
    from the channel's largest non-free `rp5h` and a missing `usage_quota`
    becomes 60 (`free_default_filled`).
-3. **Cards** — filled from `data/all_models.json` only; channel `cost` wins
+6. **Cards** — filled from `data/all_models.json` only; channel `cost` wins
    field-by-field. A model with no card keeps channel-claimed data and
    reports `card_missing` (no data is invented).
-4. **Claude mapping** — baseline routing (lowest-arena request of the claude
+7. **Arena + rp5h triage** — a non-free model without an Arena match gets a
+   default score of 1500 (`arena_defaulted`) so beta models stay in the
+   pool; a non-free model missing `rp5h` is excluded below an Arena score of
+   1500 (`rp5h_missing_excluded`) and kept with a review warning at or above
+   it (`rp5h_missing_review`, ineligible for target selection only).
+8. **Claude mapping** — baseline routing (lowest-arena request of the claude
    series maps to the free candidate with the highest `rp5h`) plus the
-   Arena/RP5H/proximity formula (weights in `data/formula.md`);
+   Arena/RP5H/proximity formula (weights in `data/formula.md`); request
+   models may pin `arena_score` in `config/request-models.json`;
    `mapping_overrides` win last.
-5. **Outputs** — `models.csv` (reviewable: candidates for context, one
+9. **Outputs** — `models.csv` (reviewable: candidates for context, one
    `mapping` per `claude-*` request row) and the schema-2 plan (per-channel
-   exact `supportedModels`, model-card targets, removals, warnings).
+   exact `supportedModels` with native ids, canonical model cards with
+   `channelAliases`, removals, warnings).
 
 Missing request Arena evidence, unknown override targets, or source schema
 drift are blocking errors; with `--fail-on-errors` the run exits non-zero and

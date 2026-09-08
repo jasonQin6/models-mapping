@@ -11,11 +11,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 
 from models_mapping import (
     PlanningError,
-    dedupe_channels,
+    dedupe_registry,
     extract_series,
     main,
     plan_from,
     score_match,
+    supersede_variants,
 )
 
 REPO = Path(__file__).resolve().parents[2]
@@ -69,17 +70,19 @@ def test_extract_series_only_matches_claude_gpt() -> None:
 
 def test_dedupe_keeps_highest_rp5h_channel_and_reports() -> None:
     warnings: list[dict] = []
-    chosen = dedupe_channels(
+    registry = dedupe_registry(
         {
             "opencode-go": {"deepseek-v4-flash": _rec(rp5h=7600)},
             "commandcode-goat": {"deepseek-v4-flash": _rec(rp5h=18200)},
         },
+        {},
         warnings,
     )
 
-    channel, record = chosen["deepseek-v4-flash"]
-    assert channel == "commandcode-goat"
-    assert record["rp5h"] == 18200
+    entry = registry["deepseek-v4-flash"]
+    assert entry["channel"] == "commandcode-goat"
+    assert entry["record"]["rp5h"] == 18200
+    assert entry["channel_aliases"] == {}
     assert warnings == [
         {"type": "duplicate_model_across_sources", "model": "deepseek-v4-flash",
          "kept": "commandcode-goat", "dropped": "opencode-go"}
@@ -88,17 +91,18 @@ def test_dedupe_keeps_highest_rp5h_channel_and_reports() -> None:
 
 def test_dedupe_null_loses_to_value_and_ties_keep_first_channel() -> None:
     warnings: list[dict] = []
-    chosen = dedupe_channels(
+    registry = dedupe_registry(
         {
             "opencode-go": {"minimax-m2.5": _rec(rp5h=None), "solo": _rec(rp5h=None)},
             "commandcode-goat": {"minimax-m2.5": _rec(rp5h=100), "solo": _rec(rp5h=None)},
         },
+        {},
         warnings,
     )
 
-    assert chosen["minimax-m2.5"][0] == "commandcode-goat"
+    assert registry["minimax-m2.5"]["channel"] == "commandcode-goat"
     # Both null: the alphabetically first channel keeps the model.
-    assert chosen["solo"][0] == "commandcode-goat"
+    assert registry["solo"]["channel"] == "commandcode-goat"
 
 
 def test_plan_moves_model_between_channels_in_supported_lists() -> None:
@@ -239,6 +243,137 @@ def test_request_without_arena_score_is_blocking() -> None:
 
     assert any(e["code"] == "request_arena_missing" for e in plan["report"]["errors"])
     assert plan["report"]["counts"]["errors"] >= 1
+
+
+def test_alias_merges_cross_channel_naming() -> None:
+    aliases = {"tencent-hy3": "hy3"}
+    sections = {
+        "opencode-go": {"hy3": _rec(rp5h=4300)},
+        "commandcode-goat": {"tencent-hy3": _rec(rp5h=7080)},
+    }
+
+    rows, plan = plan_from(
+        sections,
+        aliases=aliases,
+        cards={},
+        arena_models={},
+        request_models=[],
+        decisions=_decisions(),
+    )
+
+    # One canonical model, owned by the goat channel (7080 > 4300).
+    models = {m["modelID"]: m for m in plan["models"]}
+    assert set(models) == {"hy3"}
+    assert models["hy3"]["channel"] == "commandcode"
+    assert models["hy3"]["channelAliases"] == {"commandcode-goat": "tencent-hy3"}
+    # Channel lists keep the native id each channel actually exposes.
+    assert plan["channels"]["commandcode"]["supportedModels"] == ["tencent-hy3"]
+    assert plan["channels"]["opencode-go"]["supportedModels"] == []
+
+
+def test_collector_excluded_records_are_skipped() -> None:
+    sections = {
+        "commandcode-goat": {
+            "glm-5.2-fast": _rec(rp5h=138, exclude="speed-variant (fast/highspeed)"),
+            "kimi-k2.5": _rec(rp5h=None),
+        },
+    }
+
+    _rows, plan = plan_from(sections, cards={}, arena_models={}, request_models=[], decisions=_decisions())
+
+    assert all(m["modelID"] != "glm-5.2-fast" for m in plan["models"])
+    assert plan["channels"]["commandcode"]["supportedModels"] == ["kimi-k2.5"]
+    assert any(w["type"] == "collector_excluded" and w["model"] == "glm-5.2-fast" for w in plan["warnings"])
+
+
+def test_free_variant_supersedes_plain_original() -> None:
+    sections = {
+        "opencode-go": {"longcat-2.0": _rec(rp5h=11400)},
+        "commandcode-goat": {"longcat-2.0-free": _rec(rp5h=None)},
+    }
+
+    _rows, plan = plan_from(sections, cards={}, arena_models={}, request_models=[], decisions=_decisions())
+
+    models = {m["modelID"]: m for m in plan["models"]}
+    assert set(models) == {"longcat-2.0-free"}
+    assert any(
+        w["type"] == "variant_superseded" and w["model"] == "longcat-2.0" and w["replaced_by"] == "longcat-2.0-free"
+        for w in plan["warnings"]
+    )
+    assert plan["channels"]["opencode-go"]["supportedModels"] == []
+    assert plan["channels"]["commandcode"]["supportedModels"] == ["longcat-2.0-free"]
+
+
+def test_contributor_variant_supersedes_plain_original() -> None:
+    sections = {
+        "commandcode-goat": {
+            "muse-spark-1.2": _rec(rp5h=428),
+            "muse-spark-1.2-contributor": _rec(rp5h=18200),
+        },
+    }
+
+    _rows, plan = plan_from(sections, cards={}, arena_models={}, request_models=[], decisions=_decisions())
+
+    models = {m["modelID"] for m in plan["models"]}
+    assert models == {"muse-spark-1.2-contributor"}
+    assert any(w["type"] == "variant_superseded" and w["model"] == "muse-spark-1.2" for w in plan["warnings"])
+
+
+def test_rp5h_missing_low_arena_excluded_high_arena_review() -> None:
+    sections = {
+        "commandcode-goat": {
+            "glm-5": _rec(rp5h=None),          # arena 1435 < 1500 -> excluded
+            "kimi-k2.5": _rec(rp5h=None),      # no arena -> defaulted 1500 -> review
+        },
+    }
+    arena = {"glm-5": 1435.72}
+
+    _rows, plan = plan_from(sections, cards={}, arena_models=_arena_doc(arena)["models"], request_models=[], decisions=_decisions())
+
+    models = {m["modelID"] for m in plan["models"]}
+    assert models == {"kimi-k2.5"}
+    assert any(w["type"] == "rp5h_missing_excluded" and w["model"] == "glm-5" for w in plan["warnings"])
+    assert any(w["type"] == "rp5h_missing_review" and w["model"] == "kimi-k2.5" for w in plan["warnings"])
+    assert any(w["type"] == "arena_defaulted" and w["model"] == "kimi-k2.5" for w in plan["warnings"])
+    assert {"modelID": "kimi-k2.5", "reason": "missing_rp5h"} in plan["report"]["ineligible"]
+
+
+def test_missing_arena_defaults_to_1500_and_enters_scoring() -> None:
+    sections = {"opencode-go": {"omen-alpha": _rec(rp5h=11600)}}
+    requests = [{"model_id": "claude-sonnet-5", "enabled": True}]
+    arena = {"claude-sonnet-5": 1536.91, "muse-spark-1.3-contributor": 1622.48}
+    sections["opencode-go"]["muse-spark-1.3-contributor"] = _rec(rp5h=45300)
+
+    rows, plan = plan_from(
+        sections,
+        cards={},
+        arena_models=_arena_doc(arena)["models"],
+        request_models=requests,
+        decisions=_decisions(),
+    )
+
+    assert any(w["type"] == "arena_defaulted" and w["model"] == "omen-alpha" for w in plan["warnings"])
+    candidate_by_id = {row["model_id"]: row for row in rows if row["role"] == "candidate"}
+    # The defaulted model participates in scoring (no hard-coded mapping).
+    assert candidate_by_id["omen-alpha"]["arena_score"] == "1500"
+
+
+def test_request_pinned_arena_score_skips_lookup() -> None:
+    sections = {"opencode-go": {"omen-alpha": _rec(rp5h=11600)}}
+    requests = [{"model_id": "claude-sonnet-5", "arena_score": 1536.91, "enabled": True}]
+
+    rows, plan = plan_from(
+        sections,
+        cards={},
+        arena_models={},
+        request_models=requests,
+        decisions=_decisions(),
+    )
+
+    request_rows = _request_rows(rows)
+    assert request_rows["claude-sonnet-5"]["arena_score"] == "1536.91"
+    assert request_rows["claude-sonnet-5"]["mapping"] == "omen-alpha"
+    assert plan["report"]["errors"] == []
 
 
 def test_score_formula_ignores_price_and_quota() -> None:

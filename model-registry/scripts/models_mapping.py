@@ -259,52 +259,144 @@ def load_decisions(path: Path) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Dedupe + completion
 
+VARIANT_SUFFIXES = ("-free", "-contributor")
+_VARIANT_PRIORITY = {"-free": 0, "-contributor": 1}
+DEFAULT_ARENA_SCORE = 1500.0
+RP5H_MISSING_EXCLUDE_THRESHOLD = 1500.0
+
 
 def _rp5h_of(record: Mapping[str, Any]) -> Optional[float]:
     return _number(record.get("rp5h"))
 
 
-def dedupe_channels(
-    sections: Mapping[str, Mapping[str, dict[str, Any]]],
-    warnings: list[dict[str, Any]],
-) -> dict[str, tuple[str, dict[str, Any]]]:
-    """Keep one channel per model id: the one with the highest rp5h.
+def canonical_id(model_id: str, aliases: Mapping[str, str]) -> str:
+    """Map a channel-native id onto its registry-canonical form."""
 
-    A null rp5h loses to a value; ties (including both null) keep the
-    alphabetically first channel, so the result is deterministic.
+    return aliases.get(model_id, model_id)
+
+
+def _variant_base(model_id: str) -> str:
+    for suffix in VARIANT_SUFFIXES:
+        if model_id.lower().endswith(suffix):
+            return model_id[: -len(suffix)]
+    return model_id
+
+
+def _variant_rank(model_id: str) -> int:
+    lowered = model_id.lower()
+    for suffix, rank in _VARIANT_PRIORITY.items():
+        if lowered.endswith(suffix):
+            return rank
+    return len(_VARIANT_PRIORITY)
+
+
+def group_by_canonical(
+    sections: Mapping[str, Mapping[str, dict[str, Any]]],
+    aliases: Mapping[str, str],
+) -> dict[str, dict[str, tuple[str, dict[str, Any]]]]:
+    """Group channel records by canonical id: canonical -> channel -> (native_id, record)."""
+
+    groups: dict[str, dict[str, tuple[str, dict[str, Any]]]] = {}
+    for channel in sorted(sections):
+        for native_id, record in sections[channel].items():
+            canonical = canonical_id(native_id, aliases)
+            groups.setdefault(canonical, {})[channel] = (native_id, record)
+    return groups
+
+
+def _pick_channel(members: Mapping[str, tuple[str, dict[str, Any]]]) -> str:
+    """Cross-channel dedupe: highest rp5h wins; null loses to a value; ties
+    (including both null) keep the alphabetically first channel."""
+
+    winner: Optional[str] = None
+    winner_rp5h: Optional[float] = None
+    for channel in sorted(members):
+        rp5h = _rp5h_of(members[channel][1])
+        if winner is None:
+            winner, winner_rp5h = channel, rp5h
+            continue
+        if (winner_rp5h is None and rp5h is not None) or (
+            winner_rp5h is not None and rp5h is not None and rp5h > winner_rp5h
+        ):
+            winner, winner_rp5h = channel, rp5h
+    assert winner is not None
+    return winner
+
+
+def dedupe_registry(
+    sections: Mapping[str, Mapping[str, dict[str, Any]]],
+    aliases: Mapping[str, str],
+    warnings: list[dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Build the registry: one winning record per canonical id.
+
+    Records the collector stamped with ``exclude`` never represent their
+    model; among the rest the highest-rp5h channel wins (duplicate warning).
+    Each entry carries the channel's native id plus the alias map needed to
+    route channel-exposed ids back to the canonical model.
     """
 
-    chosen: dict[str, tuple[str, dict[str, Any]]] = {}
-    for channel in sorted(sections):
-        for model_id, record in sections[channel].items():
-            if model_id not in chosen:
-                chosen[model_id] = (channel, record)
+    registry: dict[str, dict[str, Any]] = {}
+    for canonical, members in sorted(group_by_canonical(sections, aliases).items()):
+        active: dict[str, tuple[str, dict[str, Any]]] = {}
+        for channel, (native_id, record) in members.items():
+            reason = record.get("exclude")
+            if reason:
+                warnings.append(
+                    {"type": "collector_excluded", "model": native_id, "reason": reason}
+                )
                 continue
-            kept_channel, kept_record = chosen[model_id]
-            kept_rp5h, candidate_rp5h = _rp5h_of(kept_record), _rp5h_of(record)
-            if (kept_rp5h is None and candidate_rp5h is not None) or (
-                kept_rp5h is not None
-                and candidate_rp5h is not None
-                and candidate_rp5h > kept_rp5h
-            ):
-                winner = channel
-            else:
-                winner = kept_channel
+            active[channel] = (native_id, record)
+        if not active:
+            continue
+        winner_channel = _pick_channel(active)
+        native_id, record = active[winner_channel]
+        if len(active) > 1:
             warnings.append(
                 {
                     "type": "duplicate_model_across_sources",
-                    "model": model_id,
-                    "kept": winner,
-                    "dropped": channel if winner == kept_channel else kept_channel,
+                    "model": canonical,
+                    "kept": winner_channel,
+                    "dropped": ", ".join(sorted(c for c in active if c != winner_channel)),
                 }
             )
-            if winner == channel:
-                chosen[model_id] = (channel, record)
-    return chosen
+        registry[canonical] = {
+            "channel": winner_channel,
+            "native_id": native_id,
+            "record": record,
+            "channel_aliases": {
+                channel: nid for channel, (nid, _rec) in active.items() if nid != canonical
+            },
+        }
+    return registry
+
+
+def supersede_variants(
+    registry: dict[str, dict[str, Any]], warnings: list[dict[str, Any]]
+) -> dict[str, dict[str, Any]]:
+    """Within a base-model variant group, -free beats -contributor beats plain.
+
+    Superseded variants leave the registry with a warning; the surviving
+    variant keeps its own id — it is what the winning channel actually
+    exposes, and free detection relies on the suffix.
+    """
+
+    groups: dict[str, list[str]] = {}
+    for canonical in registry:
+        groups.setdefault(_variant_base(canonical), []).append(canonical)
+    for base, members in sorted(groups.items()):
+        if len(members) < 2:
+            continue
+        ranked = sorted(members, key=lambda m: (_variant_rank(m), m))
+        survivor = ranked[0]
+        for member in ranked[1:]:
+            del registry[member]
+            warnings.append({"type": "variant_superseded", "model": member, "replaced_by": survivor})
+    return registry
 
 
 def fill_free_records(
-    owned: Mapping[str, Mapping[str, dict[str, Any]]],
+    registry: dict[str, dict[str, Any]],
     warnings: list[dict[str, Any]],
 ) -> None:
     """Re-derive free-model quotas per owning channel, in place.
@@ -313,7 +405,10 @@ def fill_free_records(
     collector pre-filled it, so the rule has exactly one owning channel.
     """
 
-    for channel, records in sorted(owned.items()):
+    per_channel: dict[str, dict[str, dict[str, Any]]] = {}
+    for canonical, entry in registry.items():
+        per_channel.setdefault(entry["channel"], {})[canonical] = entry["record"]
+    for channel, records in sorted(per_channel.items()):
         non_free = [
             _number(record.get("rp5h"), 0.0) or 0.0
             for model_id, record in records.items()
@@ -535,6 +630,20 @@ def _confidence(match_type: str) -> str:
 # Main pipeline
 
 
+def load_extra_aliases(path: Path) -> dict[str, str]:
+    """Load the hand-maintained ``aliases`` map (channel-native -> canonical)."""
+
+    payload = load_json(path)
+    if not isinstance(payload, Mapping):
+        return {}
+    aliases = payload.get("aliases")
+    if aliases is None:
+        return {}
+    if not isinstance(aliases, Mapping):
+        raise PlanningError(f"{path} aliases must be an object")
+    return {str(alias): str(canonical) for alias, canonical in aliases.items()}
+
+
 def build_plan(
     *,
     extra_path: Path,
@@ -546,12 +655,14 @@ def build_plan(
     """Load the snapshots and run the planning pipeline."""
 
     sections = load_extra_sections(extra_path)
+    aliases = load_extra_aliases(extra_path)
     cards = load_cards(cards_path)
     arena_models = load_arena(arena_path)
     request_models = load_request_models(request_models_path)
     decisions = load_decisions(decisions_path)
     return plan_from(
         sections,
+        aliases=aliases,
         cards=cards,
         arena_models=arena_models,
         request_models=request_models,
@@ -562,6 +673,7 @@ def build_plan(
 def plan_from(
     sections: Mapping[str, Mapping[str, dict[str, Any]]],
     *,
+    aliases: Mapping[str, str] | None = None,
     cards: Mapping[str, Mapping[str, Any]],
     arena_models: Mapping[str, Mapping[str, Any]],
     request_models: Sequence[Mapping[str, Any]],
@@ -569,6 +681,7 @@ def plan_from(
 ) -> tuple[list[dict[str, str]], dict[str, Any]]:
     """Run the offline planning pipeline; return (csv rows, plan)."""
 
+    aliases = aliases or {}
     warnings: list[dict[str, Any]] = []
     errors: list[dict[str, Any]] = []
     ineligible: list[dict[str, Any]] = []
@@ -579,16 +692,25 @@ def plan_from(
             f"models_extra channels {unknown} are not in scope.channels {sorted(decisions['channels'])}"
         )
 
-    chosen = dedupe_channels(sections, warnings)
-    owned: dict[str, dict[str, dict[str, Any]]] = {channel: {} for channel in sections}
-    for model_id, (channel, record) in sorted(chosen.items()):
-        owned[channel][model_id] = record
-    fill_free_records(owned, warnings)
+    # Registry: alias-normalised groups, collector excludes dropped, one
+    # winning channel per canonical id, then variant groups resolved.
+    registry = dedupe_registry(sections, aliases, warnings)
+    registry = supersede_variants(registry, warnings)
+    fill_free_records(registry, warnings)
+
+    def _find(model_id: str, provider: str | None = None) -> Optional[str]:
+        for key, entry in registry.items():
+            if provider is not None and entry["channel"] != provider:
+                continue
+            if model_id in (key, entry["native_id"]):
+                return key
+        return None
 
     for provider, per_provider in sorted(decisions["excluded"].items()):
         for model_id in sorted(per_provider):
-            if provider in owned and model_id in owned[provider]:
-                del owned[provider][model_id]
+            key = _find(model_id, provider)
+            if key is not None:
+                del registry[key]
     excluded_rows = [
         {"modelID": model_id, "reason": reason, "note": REMOVAL_NOTE}
         for provider, per_provider in sorted(decisions["excluded"].items())
@@ -596,38 +718,63 @@ def plan_from(
     ]
     for provider, per_provider in sorted(decisions["supplements"].items()):
         for model_id, fields in sorted(per_provider.items()):
-            if provider in owned and model_id in owned[provider]:
-                owned[provider][model_id].update(fields)
+            key = _find(model_id, provider)
+            if key is not None:
+                registry[key]["record"].update(fields)
             else:
                 warnings.append({"type": "supplement_unknown_model", "model": model_id})
 
-    # Candidate pool with arena matches (every surviving model, any channel).
+    # Candidate pool: arena match (no match defaults to 1500 for non-free
+    # models so beta models stay reviewable), then rp5h-missing triage.
     candidates: list[dict[str, Any]] = []
-    for channel in sorted(owned):
-        for model_id in sorted(owned[channel]):
-            record = owned[channel][model_id]
-            is_free = "free" in model_id.lower()
-            match, match_type = find_best_match(model_id, dict(arena_models), is_free=is_free)
-            candidate = {
-                "model_id": model_id,
-                "channel": channel,
-                "rp5h": _number(record.get("rp5h")),
-                "arena_score": _number((match or {}).get("rating")),
-                "match_type": match_type,
-            }
-            candidates.append(candidate)
-            if match is None:
-                ineligible.append({"modelID": model_id, "reason": "missing_arena"})
-            elif match_type not in ("direct_match",):
+    rp5h_excluded: list[str] = []
+    for canonical in sorted(registry):
+        entry = registry[canonical]
+        record = entry["record"]
+        is_free = "free" in canonical.lower()
+        match, match_type = find_best_match(canonical, dict(arena_models), is_free=is_free)
+        arena_score = _number((match or {}).get("rating"))
+        if match_type == "no_match":
+            arena_score = DEFAULT_ARENA_SCORE
+            warnings.append(
+                {"type": "arena_defaulted", "model": canonical, "score": DEFAULT_ARENA_SCORE}
+            )
+        elif match_type not in ("direct_match", "free_default"):
+            warnings.append(
+                {"type": "candidate_arena_fallback", "model": canonical, "match_type": match_type}
+            )
+        rp5h = _number(record.get("rp5h"))
+        if not is_free and rp5h is None:
+            reference = arena_score if arena_score is not None else 0.0
+            if reference < RP5H_MISSING_EXCLUDE_THRESHOLD:
                 warnings.append(
                     {
-                        "type": "candidate_arena_fallback",
-                        "model": model_id,
-                        "match_type": match_type,
+                        "type": "rp5h_missing_excluded",
+                        "model": canonical,
+                        "arena_score": reference,
                     }
                 )
-            if candidate["rp5h"] is None:
-                ineligible.append({"modelID": model_id, "reason": "missing_rp5h"})
+                rp5h_excluded.append(canonical)
+                continue
+            warnings.append(
+                {
+                    "type": "rp5h_missing_review",
+                    "model": canonical,
+                    "arena_score": reference,
+                }
+            )
+            ineligible.append({"modelID": canonical, "reason": "missing_rp5h"})
+        candidates.append(
+            {
+                "model_id": canonical,
+                "channel": entry["channel"],
+                "rp5h": rp5h,
+                "arena_score": arena_score,
+                "match_type": match_type,
+            }
+        )
+    for canonical in rp5h_excluded:
+        del registry[canonical]
 
     # Claude request mapping (baseline routing + formula + overrides).
     mappings: list[dict[str, Any]] = []
@@ -635,22 +782,26 @@ def plan_from(
     scored_requests: list[dict[str, Any]] = []
     for request in request_models:
         model_id = str(request.get("model_id") or "").strip()
-        arena_key = str(request.get("arena_model_id") or model_id)
-        match, match_type = find_best_match(arena_key, dict(arena_models))
-        score = _number((match or {}).get("rating"))
-        if match is None or score is None:
-            errors.append(
-                _report_item(
-                    "request_arena_missing",
-                    f"request model {model_id} has no arena score",
-                    model=model_id,
+        pinned = _number(request.get("arena_score"))
+        if pinned is not None:
+            score = pinned
+        else:
+            arena_key = str(request.get("arena_model_id") or model_id)
+            match, match_type = find_best_match(arena_key, dict(arena_models))
+            score = _number((match or {}).get("rating"))
+            if match is None or score is None:
+                errors.append(
+                    _report_item(
+                        "request_arena_missing",
+                        f"request model {model_id} has no arena score",
+                        model=model_id,
+                    )
                 )
-            )
-            continue
-        if match_type != "direct_match":
-            warnings.append(
-                {"type": "request_arena_fallback", "model": model_id, "match_type": match_type}
-            )
+                continue
+            if match_type != "direct_match":
+                warnings.append(
+                    {"type": "request_arena_fallback", "model": model_id, "match_type": match_type}
+                )
         scored_requests.append({**request, "arena_score": score})
     if not scored_requests:
         warnings.append({"type": "empty_claude_series", "message": "no enabled claude-* request models"})
@@ -732,45 +883,56 @@ def plan_from(
         )
     ]
 
-    # Plan: channel lists + model card targets.
+    # Plan: channel lists keep native ids (routing); global models use the
+    # canonical id with channelAliases describing per-channel exposure.
     provider_channels = decisions["channels"]
-    channels: dict[str, dict[str, Any]] = {}
-    for provider in sorted(owned):
-        channel = provider_channels[provider]
-        channels.setdefault(channel, {"supportedModels": []})["supportedModels"] = sorted(owned[provider])
+    channels: dict[str, dict[str, Any]] = {
+        provider_channels[provider]: {"supportedModels": []}
+        for provider in sorted(sections)
+    }
+    for canonical in sorted(registry):
+        entry = registry[canonical]
+        axon_channel = provider_channels[entry["channel"]]
+        channels.setdefault(axon_channel, {"supportedModels": []})
+        if entry["native_id"] not in channels[axon_channel]["supportedModels"]:
+            channels[axon_channel]["supportedModels"].append(entry["native_id"])
+    for channel_node in channels.values():
+        channel_node["supportedModels"] = sorted(channel_node["supportedModels"])
+
     plan_models: list[dict[str, Any]] = []
-    for channel in sorted(owned):
-        axon_channel = provider_channels[channel]
-        for model_id in sorted(owned[channel]):
-            record = owned[channel][model_id]
-            card = cards.get(model_id)
-            if card is None:
-                warnings.append({"type": "card_missing", "model": model_id, "provider": channel})
-            merged = dict(card or {})
-            merged["cost"] = _merge_channel_cost(card or {}, record)
-            developer, icon, group = _model_meta(merged, axon_channel)
-            remark = {"manual": ""}
-            for field in REMARK_FIELDS:
-                remark[field] = record.get(field)
-            missing = [field for field in REMARK_FIELDS if remark[field] is None]
-            if missing:
-                warnings.append({"type": "missing_remark_fields", "model": model_id, "fields": missing})
-            plan_models.append(
-                {
-                    "modelID": model_id,
-                    "channel": axon_channel,
-                    "input": {
-                        "modelID": model_id,
-                        "name": str(merged.get("name") or record.get("name") or model_id),
-                        "developer": developer,
-                        "type": "chat",
-                        "icon": icon,
-                        "group": group,
-                        "modelCard": model_card(merged),
-                        "remark": remark_json(remark),
-                    },
-                }
-            )
+    for canonical in sorted(registry):
+        entry = registry[canonical]
+        record = entry["record"]
+        axon_channel = provider_channels[entry["channel"]]
+        card = cards.get(canonical) or cards.get(entry["native_id"])
+        if card is None:
+            warnings.append({"type": "card_missing", "model": canonical, "provider": entry["channel"]})
+        merged = dict(card or {})
+        merged["cost"] = _merge_channel_cost(card or {}, record)
+        developer, icon, group = _model_meta(merged, axon_channel)
+        remark = {"manual": ""}
+        for field in REMARK_FIELDS:
+            remark[field] = record.get(field)
+        missing = [field for field in REMARK_FIELDS if remark[field] is None]
+        if missing:
+            warnings.append({"type": "missing_remark_fields", "model": canonical, "fields": missing})
+        model_entry = {
+            "modelID": canonical,
+            "channel": axon_channel,
+            "input": {
+                "modelID": canonical,
+                "name": str(merged.get("name") or record.get("name") or canonical),
+                "developer": developer,
+                "type": "chat",
+                "icon": icon,
+                "group": group,
+                "modelCard": model_card(merged),
+                "remark": remark_json(remark),
+            },
+        }
+        if entry["channel_aliases"]:
+            model_entry["channelAliases"] = dict(sorted(entry["channel_aliases"].items()))
+        plan_models.append(model_entry)
 
     plan = {
         "schema_version": PLAN_SCHEMA_VERSION,

@@ -3,12 +3,14 @@
   "script": "watch-pipeline/scripts/watch_goat.py",
   "upstream": "https://commandcode.ai/docs/plans/goat",
   "snapshot": "data/models_extra.json (channels.commandcode-goat)",
+  "aliases": "The store-level `aliases` object is hand-maintained and preserved by collectors (they rewrite only their own channel section); planning consumes it to merge cross-channel spellings.",
   "description": "Channel-declared facts scraped from the Command Code GOAT plan page (three HTML tables) into the commandcode-goat section of the shared models_extra store. The section keys are the entitlement facts of the commandcode channel.",
   "targets": {
     "channels.commandcode-goat.<id>": {
-      "note": "id comes from the /models/<slug> anchor (dotted version restored, e.g. qwen3-8-27b -> qwen3.8-27b). Channel-provided claude-* models are not collected (ADR 0012). No card fields are stored here: the plan fills cards from data/all_models.json, so GOAT-exclusive ids plan with an empty card.",
+      "note": "id comes from the /models/<slug> anchor (dotted version restored, e.g. qwen3-8-27b -> qwen3.8-27b). Channel-provided claude-* models are not collected (ADR 0012). Speed-marketing variants (-fast/-highspeed) are collected but stamped exclude=speed-variant so planning skips them. No card fields are stored here: the plan fills cards from data/all_models.json, so GOAT-exclusive ids plan with an empty card.",
       "fields": {
         "name": {"source": "model link text", "type": "string", "consumer": "plan name fallback when all_models.json has no card for the id"},
+        "exclude": {"derived": "id ends with -fast or -highspeed", "type": "string|null", "consumer": "planning skips the record and reports collector_excluded"},
         "rp5h": {"source_column": "Requests / 5 hours", "table": "quota", "type": "int|null", "consumer": "remark rp5h"},
         "usage_quota": {"source_column": "Monthly credits", "table": "credits", "type": "float|null", "consumer": "remark usage_quota", "note": "Monthly credits stored under the remark-consumed name usage_quota"},
         "tok_s": {"source_column": "tok/s", "table": "main", "type": "int|null", "consumer": "GOAT-only throughput, no models.dev equivalent"},

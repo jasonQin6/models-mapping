@@ -19,5 +19,11 @@
       "reason": "Missing mapping-critical RP5H"
     }
   ],
-  "mapping_overrides": []
+  "mapping_overrides": [
+    {
+      "request_model": "claude-sonnet-5",
+      "target_model": "omen-alpha",
+      "reason": "internal beta, heavy quota, no arena score"
+    }
+  ]
 }

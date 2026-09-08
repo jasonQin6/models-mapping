@@ -1,4 +1,7 @@
 {
+  "aliases": {
+    "tencent-hy3": "hy3"
+  },
   "channels": {
     "commandcode-goat": {
       "deepseek-v4-flash": {
@@ -18,6 +21,7 @@
           "input": 0.28,
           "output": 0.56
         },
+        "exclude": "speed-variant (fast/highspeed)",
         "name": "DeepSeek V4 Flash Fast",
         "rp5h": 1040,
         "tok_s": null,
@@ -107,6 +111,7 @@
           "input": 3.0,
           "output": 10.25
         },
+        "exclude": "speed-variant (fast/highspeed)",
         "name": "GLM-5.2 Fast",
         "rp5h": 138,
         "tok_s": null,
@@ -252,6 +257,7 @@
           "input": 1.9,
           "output": 8.0
         },
+        "exclude": "speed-variant (fast/highspeed)",
         "name": "Kimi K2.7 Code HighSpeed",
         "rp5h": 181,
         "tok_s": null,
@@ -934,5 +940,5 @@
     }
   },
   "schema_version": 1,
-  "updated_at": "2026-09-08T10:39:35Z"
+  "updated_at": "2026-09-08T13:00:01Z"
 }

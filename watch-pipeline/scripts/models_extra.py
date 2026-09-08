@@ -15,7 +15,7 @@ import os
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Optional
 
 SCHEMA_VERSION = 1
 DEFAULT_EXTRA_PATH = Path("data/models_extra.json")
@@ -24,6 +24,12 @@ DEFAULT_EXTRA_PATH = Path("data/models_extra.json")
 # are served by self-built AxonHub models mapped by arena score, never by a
 # channel's own claude list (ADR 0012).
 EXCLUDED_ID_PREFIXES = ("claude",)
+
+# Speed-marketing variants of a base model are never adopted; the record is
+# kept with an ``exclude`` reason so the planning layer can skip it and the
+# omission stays auditable.  Series names like ``-flash`` do not match.
+SPEED_VARIANT_SUFFIXES = ("-fast", "-highspeed")
+SPEED_VARIANT_EXCLUDE_REASON = "speed-variant (fast/highspeed)"
 
 
 class ExtraStoreError(ValueError):
@@ -34,6 +40,16 @@ def is_excluded_model(model_id: str) -> bool:
     """Return True for channel claude models this pipeline must not collect."""
 
     return model_id.strip().lower().startswith(EXCLUDED_ID_PREFIXES)
+
+
+def speed_variant_exclude(model_id: str) -> Optional[str]:
+    """Return the exclude reason for speed-marketing variants, else None."""
+
+    lowered = model_id.strip().lower()
+    for suffix in SPEED_VARIANT_SUFFIXES:
+        if lowered.endswith(suffix):
+            return SPEED_VARIANT_EXCLUDE_REASON
+    return None
 
 
 def load_document(path: Path) -> dict[str, Any]:
@@ -50,11 +66,12 @@ def load_document(path: Path) -> dict[str, Any]:
     channels = payload.get("channels", {})
     if not isinstance(channels, Mapping):
         raise ExtraStoreError(f"{path} channels must be an object")
-    return {
-        "schema_version": SCHEMA_VERSION,
-        "updated_at": payload.get("updated_at"),
-        "channels": dict(channels),
-    }
+    # Preserve hand-maintained keys (e.g. "aliases"): collectors rewrite
+    # only their own channel section.
+    document = dict(payload)
+    document["schema_version"] = SCHEMA_VERSION
+    document["channels"] = dict(channels)
+    return document
 
 
 def update_channel(

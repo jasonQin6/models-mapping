@@ -39,17 +39,32 @@ RP5H.
 
 ## Data quality
 
-The candidate universe is the set of model ids in `data/models_extra.json`
-after cross-channel dedupe — each id belongs to the channel with the highest
-`rp5h` (null loses to a value, ties keep the alphabetically first channel) —
-minus reviewed excludes in `config/model-decisions.json`. Channel-provided
-`claude-*` models are never collected, so they cannot become candidates. A
-free candidate has its `rp5h` re-derived from its owning channel's largest
-non-free `rp5h`; missing `usage_quota` becomes 60.
-Candidates still missing `rp5h` or an Arena score are ineligible for target
-selection and reported with reasons.
-Missing `usage_quota` or price data is reported for catalog review but does
-not affect mapping eligibility. Arena direct matches are high confidence;
-contributor-suffix and version-downgrade matches are medium confidence;
-prefix matches and free defaults are low confidence. Unmatched request
-models are blocking errors for an apply workflow.
+The candidate universe starts from every record in `data/models_extra.json`
+(channel-provided `claude-*` models are never collected) and is reduced by:
+
+- **Alias normalisation** — the hand-maintained `aliases` map in
+  `data/models_extra.json` merges cross-channel spellings (`tencent-hy3` ->
+  `hy3`); channel lists keep the native id, the registry uses the canonical
+  one, and `plan.models[].channelAliases` describes the exposure.
+- **Collector excludes** — records stamped `exclude` (speed-marketing
+  variants: `-fast`/`-highspeed`) never enter the registry.
+- **Cross-channel dedupe** — one winning channel per id: highest `rp5h`
+  (null loses to a value, ties keep the alphabetically first channel).
+- **Variant grouping** — within a base model, `-free` beats
+  `-contributor` beats the plain original; superseded variants leave with a
+  warning.
+- **rp5h triage** — a non-free model missing `rp5h` is excluded when its
+  Arena score is below 1500; at or above 1500 it stays in the channel list
+  with a review warning and is only ineligible for target selection.
+- **Manual excludes** in `config/model-decisions.json`.
+
+A non-free model with no Arena match gets a default score of 1500 (warning)
+so beta models stay in the pool; free models keep the free-default 0 and are
+reached through baseline routing instead. A free candidate has its `rp5h`
+re-derived from its owning channel's largest non-free `rp5h`; missing
+`usage_quota` becomes 60. Request models may pin `arena_score` directly in
+`config/request-models.json` instead of relying on the Arena snapshot.
+Arena direct matches are high confidence; contributor-suffix and
+version-downgrade matches are medium confidence; prefix matches and free
+defaults are low confidence. Unmatched request models without a pinned score
+are blocking errors for an apply workflow.

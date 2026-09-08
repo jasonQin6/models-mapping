@@ -77,6 +77,20 @@ def test_update_channel_merges_into_shared_store(tmp_path: Path) -> None:
     assert document["updated_at"]
 
 
+def test_update_channel_preserves_hand_maintained_aliases(tmp_path: Path) -> None:
+    path = tmp_path / "models_extra.json"
+    update_channel(path, "opencode-go", {"grok-4.6": {"rp5h": 169}})
+    document = load_document(path)
+    document["aliases"] = {"tencent-hy3": "hy3"}
+    path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    update_channel(path, "commandcode-goat", {"deepseek-v4-flash": {"rp5h": 18200}})
+
+    reloaded = load_document(path)
+    assert reloaded["aliases"] == {"tencent-hy3": "hy3"}
+    assert set(reloaded["channels"]) == {"opencode-go", "commandcode-goat"}
+
+
 def test_update_channel_rejects_unknown_schema_version(tmp_path: Path) -> None:
     path = tmp_path / "models_extra.json"
     path.write_text(json.dumps({"schema_version": 99, "channels": {}}), encoding="utf-8")

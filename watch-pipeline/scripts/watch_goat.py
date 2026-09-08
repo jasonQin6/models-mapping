@@ -33,7 +33,12 @@ from pathlib import Path
 from typing import Any, Iterator, Mapping, Optional
 
 from error_state import clear_error, error_dump_path, persist_error
-from models_extra import DEFAULT_EXTRA_PATH, is_excluded_model, update_channel
+from models_extra import (
+    DEFAULT_EXTRA_PATH,
+    is_excluded_model,
+    speed_variant_exclude,
+    update_channel,
+)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -245,13 +250,17 @@ def build_goat_fields(
                 tok_s = int(float(raw_t))
             except ValueError:
                 tok_s = None
-    return {
+    record = {
         "name": name,
         "rp5h": rp5h_val,
         "usage_quota": usage_quota_val,
         "tok_s": tok_s,
         "cost": cost,
     }
+    exclude_reason = speed_variant_exclude(to_model_id(slug))
+    if exclude_reason:
+        record["exclude"] = exclude_reason
+    return record
 
 
 def load_expected_count(reference: Path) -> Optional[tuple[int, int]]:

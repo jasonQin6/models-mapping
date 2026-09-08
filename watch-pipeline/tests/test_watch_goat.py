@@ -135,12 +135,15 @@ def test_main_html_writes_channel_section_and_skips_claude(tmp_path: Path) -> No
     goat_only = models["deepseek-v4-flash-fast"]
     assert goat_only["name"] == "DeepSeek V4 Flash Fast"
     assert goat_only["cost"] == {"input": 0.1, "output": 0.5}
+    # Speed-marketing variants are stamped for the planning layer to skip.
+    assert goat_only["exclude"] == "speed-variant (fast/highspeed)"
     assert goat_only == {
         "name": "DeepSeek V4 Flash Fast",
         "rp5h": 500,
         "usage_quota": None,
         "tok_s": 90,
         "cost": {"input": 0.1, "output": 0.5},
+        "exclude": "speed-variant (fast/highspeed)",
     }
 
     assert not list(tmp_path.glob(".models_extra.json.*.tmp"))
