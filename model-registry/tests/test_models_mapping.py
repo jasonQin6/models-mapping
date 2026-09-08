@@ -302,9 +302,12 @@ def test_main_fail_on_errors_exits_nonzero(tmp_path: Path) -> None:
     cards = tmp_path / "cards.json"
     cards.write_text("{}", encoding="utf-8")
 
+    csv_out = tmp_path / "models.csv"
+
     rc = main([
         "--extra", str(extra), "--cards", str(cards), "--arena", str(arena),
         "--request-models", str(requests), "--model-decisions", str(decisions),
+        "--csv-output", str(csv_out),
         "--fail-on-errors",
     ])
 
