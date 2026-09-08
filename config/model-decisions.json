@@ -5,6 +5,7 @@
       "opencode-go": "opencode-go",
       "commandcode-goat": "commandcode"
     },
+    "external_channel_lists": ["commandcode"],
     "templates": ["stable", "claude", "gpt"]
   },
   "models": [

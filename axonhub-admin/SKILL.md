@@ -98,6 +98,25 @@ AXONHUB_JWT=<jwt> python3 axonhub-admin/scripts/configure_models.py --dry-run
 
 `configure_models.py` skips the fixed Claude/GPT request models — their routing belongs to the mapping table above. Desired channel state lives in `CHANNELS` (`scripts/common.py`); tag/weight semantics and priority scoring are printed by the scripts themselves.
 
+## Unattended push → `apply_channel_models.py` (ADR 0010)
+
+Snapshot-driven channel lists (`config/model-decisions.json` `scope.external_channel_lists`, today `commandcode`) are pushed by a vol-server systemd timer, not by interactive sessions: the timer pulls the raw snapshot (e.g. `data/goat-models.json`) from this repository's `main` branch and runs:
+
+```bash
+AXONHUB_EMAIL=ops-push@example.com \
+AXONHUB_PASSWORD_FILE=/etc/axonhub-push/password \
+  python3 axonhub-admin/scripts/apply_channel_models.py \
+    --source /var/lib/axonhub-push/goat-models.json \
+    --channel commandcode-goat --expected-count 25:60
+```
+
+Boundary rules for this one unattended writer:
+
+- It writes exactly two fields — `supportedModels` (sorted snapshot `models` keys) and `autoSyncSupportedModels: false` — in a single `updateChannel` mutation; it never touches settings, `manualModels`, or anything else.
+- It signs in with a server-local service account for a fresh JWT each run (browser JWTs expire in 7 days); credentials live only on vol-server. Deployment steps and systemd units: `deploy-vol-server-push.md`.
+- Idempotent no-op when in sync; read-before-write, write-then-verify, exit non-zero on any failure so the timer surfaces it. Interactive sessions must not hand-edit these channels' `supportedModels` — the next timer round would revert it; change the entitlement fact source (the snapshot) instead.
+- The catalog plan still carries these channels' model cards, but never their `supportedModels` (`scope.external_channel_lists`), so the interactive flow cannot overwrite the push.
+
 ## Reference
 
 ### The model-ID gotcha (read before touching associations)

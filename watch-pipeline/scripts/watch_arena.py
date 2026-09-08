@@ -17,6 +17,7 @@ import json
 import math
 import os
 import re
+import subprocess
 import sys
 import tempfile
 from datetime import datetime, timezone
@@ -34,14 +35,37 @@ from error_state import clear_error, dump_page, persist_error  # noqa: E402
 ARENA_URL = "https://lmarena.ai/leaderboard/code/webdev"
 SCHEMA_VERSION = 1
 CHANNEL = "arena"
+USER_AGENT = "models-mapping/watch-arena"
+
+
+def _fetch_url_curl(url: str, timeout: int) -> str:
+    """Fetch through a curl subprocess with its own TLS stack."""
+
+    result = subprocess.run(
+        ["curl", "-fsSL", "--max-time", str(timeout), "-A", USER_AGENT, url],
+        capture_output=True,
+        encoding="utf-8",
+    )
+    if result.returncode != 0:
+        raise OSError(
+            f"curl fallback failed (exit {result.returncode}): {result.stderr.strip()}"
+        )
+    return result.stdout
 
 
 def fetch_url(url: str, timeout: int = 30) -> str:
-    """Fetch text over HTTP with the standard library."""
+    """Fetch text over HTTP, falling back to curl when urllib is rejected.
 
-    request = Request(url, headers={"User-Agent": "models-mapping/watch-arena"})
-    with urlopen(request, timeout=timeout) as response:
-        return response.read().decode("utf-8")
+    lmarena.ai terminates the Python TLS handshake (SSL: UNEXPECTED_EOF), so a
+    urllib failure retries once through the curl subprocess before giving up.
+    """
+
+    try:
+        request = Request(url, headers={"User-Agent": USER_AGENT})
+        with urlopen(request, timeout=timeout) as response:
+            return response.read().decode("utf-8")
+    except OSError:
+        return _fetch_url_curl(url, timeout)
 
 
 def _find_entries_array(html: str) -> list[Any]:

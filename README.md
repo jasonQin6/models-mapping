@@ -11,7 +11,7 @@
 | `data/all_models.json` | `watch-pipeline/fetch-all-models` | `models.dev/models.json` 全量 provider 目录快照 |
 | `data/opencode-go-models.json` | `watch-pipeline/fetch-opencode-go` | `models.dev/api.json` 的 `opencode-go` provider 经 `go.mdx` 补充 rp5h、usage quota、价格和限制字段 |
 | `data/arena.json` | `watch-pipeline/watch-arena` | Arena 评分、排名、effort 及名称匹配证据，`schema_version: 1` |
-| `data/goat-models.json` | `watch-pipeline/watch-goat-models` | Command Code GOAT 套餐快照（`commandcode-goat` provider），与 opencode-go 并集构成候选宇宙 |
+| `data/goat-models.json` | `watch-pipeline/watch-goat-models` | Command Code GOAT 套餐快照（`commandcode-goat` provider），与 opencode-go 并集构成候选宇宙；其 `models` 键同时是 commandcode 渠道 entitlement allowlist 的事实源，由 vol-server 定时推送直写 AxonHub（ADR 0010） |
 | `config/request-models.json` | 项目维护者 | 固定的 Claude/GPT request model 集合 |
 | `config/model-decisions.json` | 项目维护者 | 候选 exclude/supplement 和 mapping override |
 | `data/enriched.json` | `build-mapping` | 派生补全字段（free 模型 rp5h/usage_quota）及来源标注，可随时重算 |
@@ -40,20 +40,21 @@ watch-arena ──────→ data/arena.json ───────┘      
 watch-goat-models → data/goat-models.json ┘                         ▼
                       models-mapping 离线规划：补全 + 映射建议 + catalog plan（纯目标态，无指纹，过期直接重生成）
                                                                      │
-                                                                     ▼
-                                        会话内确认：AskUserQuestion，plan 与 models.csv 独立确认
-                                                                     │
-                                                                     ▼
+                                        ┌────────────────────────────┤
+                                        ▼                            ▼
+        vol-server timer：拉 raw goat-models.json          会话内确认：AskUserQuestion，plan 与 models.csv 独立确认
+        → apply_channel_models.py 幂等直写                                    │
+          commandcode 渠道 supportedModels（ADR 0010）                         ▼
                                         axonhub-admin 按执行程序写入并逐项回读验证（ADR 0009）
 ```
 
-采集 jobs 分别写入自己的 JSON；只有 `build-mapping` 写 `models.csv`，避免并行覆盖。采集与规划全程离线：workflow 不连接 AxonHub，models-mapping 不持有凭据，CI 永不写 AxonHub；AxonHub 写入只由 `axonhub-admin` 在交互会话内经用户确认后执行。
+采集 jobs 分别写入自己的 JSON；只有 `build-mapping` 写 `models.csv`，避免并行覆盖。采集与规划全程离线：workflow 不连接 AxonHub，models-mapping 不持有凭据，CI 永不写 AxonHub。AxonHub 写入有两条路径（ADR 0010）：commandcode 渠道的 `supportedModels` 由 vol-server 定时推送（`apply_channel_models.py`，凭据留在服务器，幂等 + 回读验证）；其余一切写入仍由 `axonhub-admin` 在交互会话内经用户确认后执行。catalog plan 对推送渠道只规划模型卡、不规划清单（`scope.external_channel_lists`）。
 
 ## Skills
 
 - `watch-pipeline`：维护 watch-pipeline.yml、采集脚本（`watch-pipeline/scripts/watch_*.py`）与全部采集渠道；每渠道字段契约在 `watch-pipeline/reference/<channel>/extra.json`，脚本失败留痕于 `reference/<channel>/last-error.json`（成功后自删），修复流程见其 `SKILL.md`。原 `commandcode-goat-scraper` 及 models-mapping、opencode-axonhub-sync 中的采集部分已并入。
 - `models-mapping`：把 `data/*.json` 离线变换为 AxonHub 需要的数据格式——free 模型补全（`data/enriched.json`）、Claude/GPT 映射建议（`models.csv`）、目录同步 plan（`sync_models.py`，纯离线无凭据）；只读规划，不联网，不写 AxonHub。
-- `axonhub-admin`：唯一面向 AxonHub 写入、持有其凭据的 skill；按其 `SKILL.md` 的交互式执行程序（确认 → 读远端 → 逐项写入 → 回读验证 → 汇报）落地确认后的 catalog plan 与 `models.csv` 映射表；通用 channel 运维（quota tags、ordering weights、非固定模型 `channel_model` associations）经 `configure_channels.py`/`configure_models.py` dry-run 展示 diff 后由用户确认执行。原 `axonhub-config` 已并入本 skill。
+- `axonhub-admin`：唯一面向 AxonHub 写入、持有其凭据的 skill；按其 `SKILL.md` 的交互式执行程序（确认 → 读远端 → 逐项写入 → 回读验证 → 汇报）落地确认后的 catalog plan 与 `models.csv` 映射表；通用 channel 运维（quota tags、ordering weights、非固定模型 `channel_model` associations）经 `configure_channels.py`/`configure_models.py` dry-run 展示 diff 后由用户确认执行。快照驱动的渠道清单由 vol-server timer 经 `apply_channel_models.py` 无人值守推送（ADR 0010，部署见 `axonhub-admin/deploy-vol-server-push.md`）。原 `axonhub-config` 已并入本 skill。
 - `scripts/{csv_io,name_matching,parse_opencode_mdx}` 为共享库，无独立 skill 归属，由 `models-mapping/scripts` 与 `watch-pipeline/scripts` 使用。
 
 ## 映射规则

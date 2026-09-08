@@ -4,6 +4,17 @@
 Output: single provider envelope ``{"commandcode-goat": {id, name, api, npm, env, doc, models}}``
 shaped like data/opencode-go-models.json. Each model is keyed by model_id (id).
 
+The snapshot's ``models`` keys are the authoritative entitlement allowlist of
+the commandcode channel (ADR 0010): a server-side timer pushes them to AxonHub
+verbatim, with no intersection fallback. Structural drift must therefore fail
+the run instead of publishing a partial list.
+
+Hard gates (any hit -> no snapshot write, last-error.json persisted):
+- a main-table row is skipped for missing columns (page layout drifted);
+- two rows normalize to the same model_id (to_model_id collision);
+- zero models resolve;
+- the model count falls outside ``expected_count`` in the reference contract.
+
 Per-model contract
 - GOAT-claimed: id, name, cost (GOAT deal pricing) and extra: {rp5h,
   usage_quota (==Monthly credits), tok_s}. cost/rp5h/usage_quota are the
@@ -11,13 +22,14 @@ Per-model contract
   not stored.
 - Enriched by fallback merge: if a model_id exists in data/all_models.json,
   the record is filled with that upstream's static fields (attachment,
-  description, family, limit, modalities, reasoning, etc.). If absent,
-  only GOAT fields remain (such GOAT-exclusive variants are dropped).
+  description, family, limit, modalities, reasoning, etc.). If absent, only
+  the GOAT-claimed fields remain — GOAT-exclusive variants are kept because
+  the GOAT page is the entitlement fact source.
 - Never duplicate model_id as both ``id`` and ``model_id``; canonical key is
   ``id``. All discrimination is by model_id.
 
 Stdlib only. Pipeline entrypoint; see .github/workflows/watch-pipeline.yml.
-Usage: watch_goat.py [--url URL] [--html FILE] [--all-models PATH] [--output PATH]
+Usage: watch_goat.py [--url URL] [--html FILE] [--all-models PATH] [--output PATH] [--reference PATH]
 """
 
 from __future__ import annotations
@@ -39,6 +51,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_ALL_MODELS = REPO_ROOT / "data" / "all_models.json"
 DEFAULT_OUT = REPO_ROOT / "data" / "goat-models.json"
+DEFAULT_REFERENCE = REPO_ROOT / "watch-pipeline" / "reference" / "goat" / "extra.json"
 URL = "https://commandcode.ai/docs/plans/goat"
 CHANNEL = "goat"
 
@@ -150,7 +163,14 @@ def base_candidates(
 
 
 def parse_price(raw: str) -> Optional[float]:
-    t = strip_tags(raw) if "<" in raw else raw.strip()
+    t = raw
+    if "<" in t:
+        # Discounted cells quote the struck "was" price in <s> followed by the
+        # bare deal price; footnote triggers live in <button>. Drop both so the
+        # effective GOAT price is the only number left.
+        t = re.sub(r"<s[^>]*>.*?</s>", " ", t, flags=re.DOTALL)
+        t = re.sub(r"<button.*?</button>", " ", t, flags=re.DOTALL)
+        t = strip_tags(t)
     t = t.strip()
     if not t or t in ("—", "-", "–"):
         return None
@@ -292,6 +312,29 @@ def load_upstream_lookup(all_models: Path) -> dict[str, dict]:
     return lookup
 
 
+def load_expected_count(reference: Path) -> Optional[tuple[int, int]]:
+    """Return the (min, max) model-count gate from the channel reference contract.
+
+    The snapshot is the authoritative allowlist, so a partial parse must fail
+    the run instead of publishing a shrunken list. A missing file or a
+    malformed ``expected_count`` disables the gate.
+    """
+    try:
+        doc = json.loads(reference.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    gate = doc.get("expected_count") if isinstance(doc, dict) else None
+    if not isinstance(gate, dict):
+        return None
+    try:
+        lo, hi = int(gate["min"]), int(gate["max"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if lo <= 0 or hi < lo:
+        return None
+    return lo, hi
+
+
 def write_json_atomic(path: Path, payload: Mapping[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
@@ -330,6 +373,12 @@ def main(argv: Optional[list[str]] = None) -> int:
         type=Path,
         default=None,
         help="Where to dump HTML when the page structure changes (default: watch-pipeline/reference/goat/failed-page.html)",
+    )
+    ap.add_argument(
+        "--reference",
+        type=Path,
+        default=DEFAULT_REFERENCE,
+        help="Channel contract JSON carrying the expected_count gate (default: watch-pipeline/reference/goat/extra.json)",
     )
     args = ap.parse_args(argv)
 
@@ -380,6 +429,10 @@ def main(argv: Optional[list[str]] = None) -> int:
                     m = re.search(r'<a href="/models/[^"]+"[^>]*>(.*?)</a>', row[cmi][2], re.DOTALL)
                     if m:
                         name = strip_tags(m.group(1))
+                    elif not name:
+                        # Some cells wrap the whole name in a tooltip button;
+                        # stripping buttons then loses the name entirely.
+                        name = strip_tags(row[cmi][2])
                     retention_by_norm[_norm_key(name)] = parse_credits(row[crd_i][0])
 
         quota_by_norm: dict[str, Optional[int]] = {}
@@ -391,8 +444,10 @@ def main(argv: Optional[list[str]] = None) -> int:
 
         universe: dict[str, tuple[str, str]] = {}
         main_by_norm: dict[str, dict] = {}
+        skipped_rows = 0
         for row in main_rows[1:]:
             if len(row) <= max(mi or 0, ii or 0):
+                skipped_rows += 1
                 continue
             name = cell_model_name(row[mi][2])
             slug = row[mi][1] or slugify(name)
@@ -442,14 +497,30 @@ def main(argv: Optional[list[str]] = None) -> int:
                 tok_s_raw=raw.get("tok_raw"),
             )
             mid = patch["id"]
-            if mid not in upstream:
-                # GOAT-exclusive without base upstream — drop per Q8
-                continue
-            base = dict(upstream[mid])
-            merged = dict(base)
+            if mid in models:
+                raise ValueError(
+                    f"model id collision after normalization: {mid!r} "
+                    f"({models[mid]['name']!r} vs {name!r})"
+                )
+            base = upstream.get(mid)
+            merged = dict(base) if base else {}
             merged.update(patch)
             merged["extra"] = extra_fields
             models[mid] = merged
+
+        if skipped_rows:
+            raise ValueError(
+                f"{skipped_rows} main-table row(s) skipped for missing columns — page structure drifted"
+            )
+        if not models:
+            raise ValueError("no models resolved from the GOAT plan page")
+        expected = load_expected_count(args.reference)
+        if expected is not None:
+            lo, hi = expected
+            if not lo <= len(models) <= hi:
+                raise ValueError(
+                    f"model count {len(models)} outside expected range [{lo}, {hi}]"
+                )
 
         provider = {
             "id": "commandcode-goat",

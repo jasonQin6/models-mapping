@@ -1,11 +1,20 @@
 {
-  "ox-alpha-free": {
-    "source": "opencode-go",
+  "laguna-s-2.1-free": {
+    "source": "commandcode-goat",
     "derived": {
       "rp5h": 0,
-      "usage_quota": 0
+      "usage_quota": 60
     },
     "rp5h": 0,
-    "usage_quota": 0
+    "usage_quota": 60
+  },
+  "longcat-2.0-free": {
+    "source": "commandcode-goat",
+    "derived": {
+      "rp5h": 0,
+      "usage_quota": 60
+    },
+    "rp5h": 0,
+    "usage_quota": 60
   }
 }

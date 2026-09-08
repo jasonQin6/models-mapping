@@ -13,10 +13,19 @@ The managed provider→channel scope comes from ``model-decisions.json``:
 providers route to their configured channel by default, and a source provider
 or ``--provider-channel`` selection outside that scope is rejected.
 
+The AxonHub model list is the union of every ``--source`` channel provider's
+models (ADR 0011); models.dev is never a list source.  Card fields a channel
+record lacks are filled from ``--fill-source`` (the models.dev flat
+vendor/model catalog) when the bare id matches there; channel snapshot values
+always win and every fill is reported as a ``models_dev_filled`` warning.
+
 The plan is pure desired state: per channel an exact bare-ID
 ``supportedModels`` list applied wholesale, target model-card values for every
 included model, and removal candidates annotated for the execution-time
-external-reference check.  It carries no modes, no fingerprints, and no remote
+external-reference check.  Channels listed in ``scope.external_channel_lists``
+are owned by the snapshot push (ADR 0010) and carry model cards only — their
+``supportedModels`` never appears in the plan.  It
+carries no modes, no fingerprints, and no remote
 before-state — regenerate it instead of staleness-checking it (ADR 0009).
 """
 
@@ -43,6 +52,23 @@ REMARK_ALIASES = {
     "peak_hours": ("peak_hours", "peakHours"),
 }
 REMOVAL_NOTE = "执行时核验外部引用与外部渠道使用，再删除全局模型对象"
+
+# Card fields filled from models.dev when a channel record lacks them. Only
+# fields with a downstream consumer in the plan (name/family/model_card) are
+# filled; channel snapshot values always win.
+FILL_FIELDS = (
+    "name",
+    "family",
+    "reasoning",
+    "tool_call",
+    "temperature",
+    "modalities",
+    "limit",
+    "cost",
+    "knowledge",
+    "release_date",
+    "last_updated",
+)
 
 
 class SyncError(RuntimeError):
@@ -102,6 +128,51 @@ def _model_records(provider_node: Mapping[str, Any]) -> list[dict[str, Any]]:
     raise SyncError("provider models must be an object or list")
 
 
+def load_fill_models(path: Path | None) -> dict[str, dict[str, Any]]:
+    """Load the models.dev filler catalog (models.json flat vendor/model map)."""
+
+    if path is None:
+        return {}
+    payload = load_json(path)
+    if not isinstance(payload, Mapping):
+        raise SyncError("fill source must be a JSON object")
+    fill: dict[str, dict[str, Any]] = {}
+    for key, value in payload.items():
+        if not isinstance(value, Mapping):
+            continue
+        bare_id = str(key).rsplit("/", 1)[-1].strip()
+        if bare_id and bare_id not in fill:
+            fill[bare_id] = dict(value)
+    return fill
+
+
+def _apply_models_dev_fill(
+    records: dict[str, dict[str, Any]],
+    fill_models: Mapping[str, Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Fill missing card fields from models.dev; channel values always win."""
+
+    warnings: list[dict[str, Any]] = []
+    for model_id, model in records.items():
+        filler = fill_models.get(model_id)
+        if not isinstance(filler, Mapping):
+            continue
+        filled_fields = []
+        for field in FILL_FIELDS:
+            if model.get(field) is None and filler.get(field) is not None:
+                model[field] = filler[field]
+                filled_fields.append(field)
+        if filled_fields:
+            warnings.append(
+                {
+                    "type": "models_dev_filled",
+                    "model": model_id,
+                    "fields": sorted(filled_fields),
+                }
+            )
+    return warnings
+
+
 def write_json(path: Path, value: Any) -> None:
     """Write JSON atomically without exposing a partially written snapshot."""
 
@@ -125,6 +196,9 @@ def load_managed_scope(path: Path) -> dict[str, Any]:
 
     The scope is the single source of truth for which channels this project
     plans; scripts default to it and CLI selections may only stay within it.
+    ``external_channel_lists`` names channels whose ``supportedModels`` is
+    owned by the snapshot push (ADR 0010): the plan still carries their model
+    cards but never their channel list.
     """
 
     document = load_json(path)
@@ -158,7 +232,25 @@ def load_managed_scope(path: Path) -> dict[str, Any]:
         raise SyncError(
             "model-decisions.json scope.templates must be a list of strings"
         )
-    return {"channels": managed, "templates": list(templates)}
+    external = scope.get("external_channel_lists", [])
+    if not isinstance(external, list) or not all(
+        isinstance(item, str) and item.strip() for item in external
+    ):
+        raise SyncError(
+            "model-decisions.json scope.external_channel_lists must be a list of strings"
+        )
+    external = [item.strip() for item in external]
+    unknown = sorted(set(external) - set(managed.values()))
+    if unknown:
+        raise SyncError(
+            "model-decisions.json scope.external_channel_lists must name channels "
+            f"from scope.channels, got {unknown}"
+        )
+    return {
+        "channels": managed,
+        "templates": list(templates),
+        "external_channel_lists": external,
+    }
 
 
 def managed_channel(provider: str, scope: Mapping[str, Any]) -> str:
@@ -458,6 +550,7 @@ def build_plan(
     sources: Sequence[tuple[Path, str, str]],
     *,
     decisions_path: Path,
+    fill_models: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Build the offline desired-state plan for the managed channels.
 
@@ -515,6 +608,8 @@ def build_plan(
     if not records:
         raise SyncError("source providers have no models")
 
+    warnings.extend(_apply_models_dev_fill(records, fill_models or {}))
+
     remark_values = {model_id: _remark_values(model) for model_id, model in records.items()}
     for provider, supplements in sorted(provider_supplements.items()):
         for model_id, fields in sorted(supplements.items()):
@@ -546,8 +641,13 @@ def build_plan(
                 {"type": "missing_remark_fields", "model": model_id, "fields": missing}
             )
 
+    external_lists = set(scope["external_channel_lists"])
     channels: dict[str, dict[str, Any]] = {}
     for channel in sorted(set(provider_channel.values())):
+        if channel in external_lists:
+            # supportedModels is owned by the snapshot push (ADR 0010); the
+            # plan still carries this channel's model cards, never its list.
+            continue
         channels[channel] = {
             "supportedModels": sorted(
                 model_id
@@ -639,6 +739,15 @@ def _parser() -> argparse.ArgumentParser:
         help="all_models snapshot used by the change report (added/removed models)",
     )
     parser.add_argument(
+        "--fill-source",
+        type=Path,
+        default=None,
+        help=(
+            "models.dev/models.json flat catalog used to fill card fields "
+            "missing from the channel snapshots (never a list source)"
+        ),
+    )
+    parser.add_argument(
         "--change-report-output",
         type=Path,
         help="write the change report (added/removed models, price changes) here",
@@ -701,7 +810,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                     sort_keys=True,
                 )
             )
-        plan = build_plan(sources, decisions_path=args.model_decisions)
+        plan = build_plan(
+            sources,
+            decisions_path=args.model_decisions,
+            fill_models=load_fill_models(args.fill_source),
+        )
         if args.plan_output:
             write_json(args.plan_output, plan)
         print(json.dumps(plan_summary(plan), ensure_ascii=False, indent=2, sort_keys=True))

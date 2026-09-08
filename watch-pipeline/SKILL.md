@@ -40,7 +40,8 @@ Each script persists failures to `watch-pipeline/reference/<channel>/last-error.
 ## Snapshot invariants
 
 - `goat-models.json` / `opencode-go-models.json` are api.json-shaped provider envelopes (`{"commandcode-goat": {...}}` / `{"opencode-go": {...}}`); `arena.json` is flat `{schema_version, source, models}`.
-- GOAT enriches from the single source `data/all_models.json` (never from `opencode-go-models.json`); GOAT-exclusive ids without an upstream base are dropped.
+- GOAT enriches from the single source `data/all_models.json` (never from `opencode-go-models.json`); GOAT-exclusive ids without an upstream base are **kept** with GOAT-claimed fields only (`id`, `name`, `cost`, `extra`) — the snapshot's `models` keys are the channel's entitlement allowlist, pushed verbatim (ADR 0010).
+- GOAT hard gates: main-table rows skipped for missing columns, `to_model_id` collisions, zero models, or a count outside `expected_count` in `reference/goat/extra.json` fail the run with no snapshot write (partial lists must never publish).
 - `watch_go.py` enriches `data/opencode-go-models.json` in place — no separate `go.json`; Go-only ids are skipped, stale Go fields are cleared.
 - `watch_arena.py` owns only `data/arena.json`; joining Arena ids to OpenCode ids happens in `models-mapping`, never here.
 - Success messages: `watch-arena: wrote N models ...` / `watch-go: enriched N Go records ...` / `watch-goat: N models -> ...`.

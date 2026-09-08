@@ -65,15 +65,17 @@ def decisions_file(
     path: Path,
     models: list[dict] | None = None,
     scope: dict[str, str] | None = None,
+    external: list[str] | None = None,
 ) -> Path:
+    scope_block: dict = {"channels": scope or DEFAULT_SCOPE}
+    if external is not None:
+        scope_block["external_channel_lists"] = external
+    scope_block["templates"] = ["stable", "claude", "gpt"]
     write_json(
         path,
         {
             "schema_version": 1,
-            "scope": {
-                "channels": scope or DEFAULT_SCOPE,
-                "templates": ["stable", "claude", "gpt"],
-            },
+            "scope": scope_block,
             "models": models or [],
             "mapping_overrides": [],
         },
@@ -103,6 +105,7 @@ def run_main(
     provider_channels: list[str] | None = None,
     plan_output: Path | None = None,
     change_report_output: Path | None = None,
+    fill_source: Path | None = None,
 ) -> int:
     argv: list[str] = []
     for source in sources:
@@ -115,6 +118,8 @@ def run_main(
         argv += ["--plan-output", str(plan_output)]
     if change_report_output is not None:
         argv += ["--change-report-output", str(change_report_output)]
+    if fill_source is not None:
+        argv += ["--fill-source", str(fill_source)]
     return sync_models.main(argv)
 
 
@@ -231,6 +236,50 @@ def test_main_output_is_deterministic_byte_for_byte(tmp_path: Path) -> None:
     assert run_main(tmp_path, opengo, goat, decisions=decisions, plan_output=second) == 0
 
     assert first.read_bytes() == second.read_bytes()
+
+
+def test_main_fills_missing_card_fields_from_models_dev(tmp_path: Path) -> None:
+    goat_doc = raw_source("commandcode-goat", "model-a")
+    del goat_doc["commandcode-goat"]["models"]["model-a"]["cost"]
+    opengo_doc = raw_source("opencode-go", "model-b")
+    opengo_doc["opencode-go"]["models"]["model-b"]["limit"] = {"context": 12345, "output": 678}
+    opengo = tmp_path / "opengo.json"
+    goat = tmp_path / "goat.json"
+    decisions = decisions_file(tmp_path / "decisions.json")
+    write_json(goat, goat_doc)
+    write_json(opengo, opengo_doc)
+    fill = tmp_path / "all-models.json"
+    write_json(
+        fill,
+        {
+            "vendor/model-a": {
+                "cost": {"input": 0.5, "output": 1.5, "cache_read": 0.05},
+                "limit": {"context": 99000, "output": 8000},
+            },
+            "vendor/model-b": {"limit": {"context": 1, "output": 2}},
+        },
+    )
+    plan_output = tmp_path / "plan.json"
+
+    rc = run_main(
+        tmp_path,
+        opengo,
+        goat,
+        decisions=decisions,
+        plan_output=plan_output,
+        fill_source=fill,
+    )
+
+    assert rc == 0
+    plan = json.loads(plan_output.read_text(encoding="utf-8"))
+    by_id = {item["modelID"]: item for item in plan["models"]}
+    filled = by_id["model-a"]["input"]["modelCard"]
+    assert filled["cost"] == {"input": 0.5, "output": 1.5, "cacheRead": 0.05, "cacheWrite": 0}
+    assert filled["limit"] == {"context": 99000, "output": 8000}
+    # Channel snapshot values win over the models.dev filler.
+    assert by_id["model-b"]["input"]["modelCard"]["limit"] == {"context": 12345, "output": 678}
+    fills = [w for w in plan["warnings"] if w["type"] == "models_dev_filled"]
+    assert fills == [{"type": "models_dev_filled", "model": "model-a", "fields": ["cost", "limit"]}]
 
 
 def test_planner_has_no_network_or_jwt_surface() -> None:
@@ -434,6 +483,37 @@ def test_build_plan_rejects_malformed_scope(tmp_path: Path) -> None:
         sync_models.build_plan(
             [(source, "opencode-go", "opencode-go")], decisions_path=decisions
         )
+
+
+def test_build_plan_omits_external_list_channels_but_keeps_cards(tmp_path: Path) -> None:
+    decisions = decisions_file(
+        tmp_path / "decisions.json",
+        scope={"p": "pushed", "q": "planned"},
+        external=["pushed"],
+    )
+    source_p = tmp_path / "p.json"
+    source_q = tmp_path / "q.json"
+    write_json(source_p, raw_source("p", "model-a"))
+    write_json(source_q, raw_source("q", "model-b"))
+
+    plan = sync_models.build_plan(
+        [(source_p, "p", "pushed"), (source_q, "q", "planned")], decisions_path=decisions
+    )
+
+    # pushed 渠道的 supportedModels 由快照推送持有（ADR 0010），plan 不再携带其清单
+    assert set(plan["channels"]) == {"planned"}
+    assert plan["channels"]["planned"]["supportedModels"] == ["model-b"]
+    assert [entry["modelID"] for entry in plan["models"]] == ["model-a", "model-b"]
+    assert plan["models"][0]["channel"] == "pushed"
+
+
+def test_load_managed_scope_rejects_unknown_external_channel(tmp_path: Path) -> None:
+    decisions = decisions_file(
+        tmp_path / "decisions.json", scope={"p": "p"}, external=["elsewhere"]
+    )
+
+    with pytest.raises(sync_models.SyncError, match="external_channel_lists"):
+        sync_models.load_managed_scope(decisions)
 
 
 def test_main_rejects_provider_channel_outside_scope(

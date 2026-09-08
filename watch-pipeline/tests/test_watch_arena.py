@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
 """Tests for watch_arena parse_arena_html function."""
 
+import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 # Add scripts/ to path so we can import watch_arena
 sys.path.insert(0, str(Path(__file__).parent.parent / 'scripts'))
 
 from watch_arena import (
     build_arena_snapshot,
+    fetch_url,
     parse_arena_html,
     preserve_timestamp_when_unchanged,
     write_json_atomic,
@@ -107,6 +111,40 @@ def test_unchanged_snapshot_preserves_timestamp(tmp_path):
     stable = preserve_timestamp_when_unchanged(path, new)
 
     assert stable["source"]["fetched_at"] == "2026-01-01T00:00:00+00:00"
+
+
+def _refuse_urlopen(*args, **kwargs):
+    raise OSError("SSL: UNEXPECTED_EOF_WHILE_READING")
+
+
+def test_fetch_url_falls_back_to_curl(monkeypatch):
+    import watch_arena
+
+    captured = {}
+
+    def fake_run(cmd, capture_output, encoding):
+        captured["cmd"] = cmd
+        return subprocess.CompletedProcess(cmd, 0, stdout="<html>ok</html>", stderr="")
+
+    monkeypatch.setattr(watch_arena, "urlopen", _refuse_urlopen)
+    monkeypatch.setattr(watch_arena.subprocess, "run", fake_run)
+
+    assert fetch_url("https://example.test/leaderboard") == "<html>ok</html>"
+    assert captured["cmd"][:4] == ["curl", "-fsSL", "--max-time", "30"]
+    assert captured["cmd"][-1] == "https://example.test/leaderboard"
+
+
+def test_fetch_url_raises_when_curl_also_fails(monkeypatch):
+    import watch_arena
+
+    failed = subprocess.CompletedProcess(
+        [], 6, stdout="", stderr="curl: (6) Could not resolve host"
+    )
+    monkeypatch.setattr(watch_arena, "urlopen", _refuse_urlopen)
+    monkeypatch.setattr(watch_arena.subprocess, "run", lambda *args, **kwargs: failed)
+
+    with pytest.raises(OSError, match="curl fallback failed"):
+        fetch_url("https://example.test/leaderboard")
 
 
 if __name__ == "__main__":

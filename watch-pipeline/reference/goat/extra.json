@@ -6,11 +6,11 @@
   "description": "Fields scraped from the Command Code GOAT plan page (three HTML tables) and where they land in the snapshot. Only fields with a downstream consumer are stored.",
   "targets": {
     "models.<id>.cost": {
-      "note": "GOAT deal pricing; differs from any upstream cost in all_models.json. Omitted when every column is empty.",
+      "note": "GOAT deal pricing; differs from any upstream cost in all_models.json. Omitted when every column is empty. Discounted cells quote the struck 'was' price (in <s>) before the bare deal price; the deal price is stored.",
       "fields": {
-        "input": {"source_column": "Input", "table": "main", "type": "float|null", "parse": "strip $ and commas; 'free' -> 0.0"},
-        "output": {"source_column": "Output", "table": "main", "type": "float|null", "parse": "strip $ and commas"},
-        "cache_read": {"source_column": "Cache Read", "table": "main", "type": "float|null", "parse": "strip $ and commas"},
+        "input": {"source_column": "Input", "table": "main", "type": "float|null", "parse": "drop struck 'was' price and footnote buttons, then strip $ and commas; 'free' -> 0.0"},
+        "output": {"source_column": "Output", "table": "main", "type": "float|null", "parse": "drop struck 'was' price and footnote buttons, then strip $ and commas"},
+        "cache_read": {"source_column": "Cache Read", "table": "main", "type": "float|null", "parse": "drop struck 'was' price and footnote buttons, then strip $ and commas"},
         "cache_write": {"source_column": "Cache Write", "table": "main", "type": "float|null", "parse": "strip $ and commas"}
       }
     },
@@ -30,5 +30,7 @@
     "note": "Intelligence column drives which models are kept (scored / inherited / default-50) but is not stored: no downstream consumer. Likewise the derived note.",
     "fields": ["intelligence", "note"]
   },
-  "drop_rule": "GOAT-exclusive model ids with no bare-id record in data/all_models.json are dropped (no upstream base to merge)."
+  "expected_count": {"min": 25, "max": 60},
+  "gates": "The snapshot's models keys are the authoritative entitlement allowlist pushed to AxonHub verbatim (ADR 0010), so any of these fails the run with no snapshot write: a main-table row skipped for missing columns; a to_model_id collision; zero models resolved; model count outside expected_count.",
+  "goat_only_rule": "GOAT-exclusive model ids with no bare-id record in data/all_models.json are kept with GOAT-claimed fields only (id, name, cost, extra) — the GOAT page is the entitlement fact source, and no upstream base exists to merge."
 }

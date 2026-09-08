@@ -43,8 +43,9 @@ jobs:
           fi
 
   fetch-opencode-go:
+    # Ordered after fetch-all-models only to serialize commits; the go.mdx
+    # list is independent of models.dev drift, so this job is never gated on it.
     needs: fetch-all-models
-    if: needs.fetch-all-models.outputs.changed == 'true'
     runs-on: ubuntu-latest
     outputs:
       changed: ${{ steps.commit.outputs.changed }}
@@ -54,13 +55,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-
-      - name: Fetch opencode-go snapshot from models.dev
-        run: |
-          set -euo pipefail
-          curl -fsSL --max-time 60 https://models.dev/api.json -o /tmp/api.json
-          jq -S '{ "opencode-go": .["opencode-go"] }' /tmp/api.json > data/opencode-go-models.json
-          echo "opencode-go models: $(jq '.["opencode-go"].models | length' data/opencode-go-models.json)"
 
       - name: Fetch source document
         id: source
@@ -74,11 +68,19 @@ jobs:
             -o "$RUNNER_TEMP/go.mdx"
           echo "commit=$latest_hash" >> "$GITHUB_OUTPUT"
 
-      - name: Enrich opencode-go with Go fields
+      - name: Fetch models.dev card data
+        run: |
+          set -euo pipefail
+          curl -fsSL --max-time 60 https://models.dev/api.json -o /tmp/api.json
+          jq '{ "opencode-go": .["opencode-go"] }' /tmp/api.json > "$RUNNER_TEMP/models-dev-go.json"
+          echo "models.dev opencode-go cards: $(jq '.["opencode-go"].models | length' "$RUNNER_TEMP/models-dev-go.json")"
+
+      - name: Build opencode-go snapshot from go.mdx
         run: |
           python3 watch-pipeline/scripts/watch_go.py "$RUNNER_TEMP/go.mdx" \
             --url "https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/web/src/content/docs/go.mdx" \
             --source-commit "${{ steps.source.outputs.commit }}" \
+            --models-dev "$RUNNER_TEMP/models-dev-go.json" \
             --opencode-go data/opencode-go-models.json
 
       - name: Commit opencode-go snapshot

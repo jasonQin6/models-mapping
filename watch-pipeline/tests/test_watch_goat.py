@@ -5,11 +5,15 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 
+import watch_goat
 from watch_goat import (
     build_goat_fields,
     col_index,
+    load_expected_count,
     load_upstream_lookup,
     main,
     parse_price,
@@ -25,6 +29,24 @@ def _all_models_doc() -> dict:
         "qwen/qwen3.30b": {"id": "qwen/qwen3.30b", "name": "Qwen3 30B", "family": "qwen"},
         "qwen/qwen3.32b": {"id": "qwen/qwen3.32b", "name": "Qwen3 32B", "family": "qwen"},
     }
+
+
+def _write_reference(tmp_path: Path, *, minimum: int = 1, maximum: int = 10) -> Path:
+    reference = tmp_path / "extra.json"
+    reference.write_text(
+        json.dumps({"expected_count": {"min": minimum, "max": maximum}}),
+        encoding="utf-8",
+    )
+    return reference
+
+
+def _silence_error_state(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Keep failure-path tests from writing the repo's reference/goat state."""
+    errors: list[str] = []
+    monkeypatch.setattr(
+        watch_goat, "persist_error", lambda *args, **kwargs: errors.append(str(args[2]))
+    )
+    return errors
 
 
 def test_parse_tables_finds_three_tables() -> None:
@@ -46,6 +68,13 @@ def test_parse_price_covers_dash_free_and_suffix() -> None:
     assert parse_price("—") is None
     assert parse_price("free") == 0.0
     assert parse_price("$0.10+5") == 0.10
+
+
+def test_parse_price_deal_cell_keeps_effective_price() -> None:
+    struck = '<s class="mr-1 text-[10px]">$0.60</s>$0.30'
+    assert parse_price(f"{struck}<button>+</button>") == 0.30
+    assert parse_price("<s>$0.16</s>$0.0028") == 0.0028
+    assert parse_price("$0.22<button>+</button>") == 0.22
 
 
 def test_build_goat_fields_splits_channel_and_extra() -> None:
@@ -73,7 +102,21 @@ def test_build_goat_fields_splits_channel_and_extra() -> None:
     }
 
 
-def test_main_html_to_tmp_drops_variant_without_base(tmp_path: Path) -> None:
+def test_load_expected_count_gate(tmp_path: Path) -> None:
+    reference = tmp_path / "extra.json"
+
+    assert load_expected_count(tmp_path / "missing.json") is None
+    reference.write_text("{}", encoding="utf-8")
+    assert load_expected_count(reference) is None
+    reference.write_text(json.dumps({"expected_count": {"min": 25, "max": 60}}), encoding="utf-8")
+    assert load_expected_count(reference) == (25, 60)
+    reference.write_text(json.dumps({"expected_count": {"min": 60, "max": 25}}), encoding="utf-8")
+    assert load_expected_count(reference) is None
+    reference.write_text(json.dumps({"expected_count": {"min": "x", "max": 25}}), encoding="utf-8")
+    assert load_expected_count(reference) is None
+
+
+def test_main_html_to_tmp_keeps_goat_only_variant(tmp_path: Path) -> None:
     all_models = tmp_path / "all.json"
     all_models.write_text(json.dumps(_all_models_doc()), encoding="utf-8")
     out = tmp_path / "out.json"
@@ -87,6 +130,8 @@ def test_main_html_to_tmp_drops_variant_without_base(tmp_path: Path) -> None:
                 str(out),
                 "--all-models",
                 str(all_models),
+                "--reference",
+                str(_write_reference(tmp_path, minimum=1, maximum=10)),
                 "--dump-html",
                 str(tmp_path / "failed.html"),
             ]
@@ -96,13 +141,169 @@ def test_main_html_to_tmp_drops_variant_without_base(tmp_path: Path) -> None:
 
     payload = json.loads(out.read_text(encoding="utf-8"))
     models = payload["commandcode-goat"]["models"]
-    assert set(models) == {"qwen3.30b", "qwen3.32b"}
+    assert set(models) == {"qwen3.30b", "qwen3.32b", "deepseek-v4-flash-fast"}
     assert models["qwen3.30b"]["extra"]["rp5h"] == 1000
     assert models["qwen3.30b"]["extra"]["usage_quota"] == 5.0
+
+    goat_only = models["deepseek-v4-flash-fast"]
+    assert goat_only["id"] == "deepseek-v4-flash-fast"
+    assert goat_only["name"] == "DeepSeek V4 Flash Fast"
+    assert goat_only["cost"] == {"input": 0.1, "output": 0.5}
+    assert goat_only["extra"] == {"rp5h": 500, "usage_quota": None, "tok_s": 90}
+    assert "family" not in goat_only
+
     assert not list(tmp_path.glob(".out.json.*.tmp"))
 
 
-def test_main_missing_tables_returns_one(tmp_path: Path) -> None:
+def test_main_count_outside_expected_range_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    errors = _silence_error_state(monkeypatch)
+    all_models = tmp_path / "all.json"
+    all_models.write_text(json.dumps(_all_models_doc()), encoding="utf-8")
+    out = tmp_path / "out.json"
+
+    assert (
+        main(
+            [
+                "--html",
+                str(FIXTURE),
+                "--output",
+                str(out),
+                "--all-models",
+                str(all_models),
+                "--reference",
+                str(_write_reference(tmp_path, minimum=10, maximum=20)),
+                "--dump-html",
+                str(tmp_path / "failed.html"),
+            ]
+        )
+        == 1
+    )
+    assert not out.exists()
+    assert any("outside expected range" in error for error in errors)
+
+
+def test_main_short_main_table_row_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    errors = _silence_error_state(monkeypatch)
+    drifted = tmp_path / "drifted.html"
+    drifted.write_text(
+        FIXTURE.read_text(encoding="utf-8").replace(
+            "</table>",
+            '<tr><td><a href="/models/orphan-1b">Orphan 1B</a></td></tr></table>',
+            1,
+        ),
+        encoding="utf-8",
+    )
+    all_models = tmp_path / "all.json"
+    all_models.write_text(json.dumps(_all_models_doc()), encoding="utf-8")
+    out = tmp_path / "out.json"
+
+    assert (
+        main(
+            [
+                "--html",
+                str(drifted),
+                "--output",
+                str(out),
+                "--all-models",
+                str(all_models),
+                "--reference",
+                str(_write_reference(tmp_path)),
+                "--dump-html",
+                str(tmp_path / "failed.html"),
+            ]
+        )
+        == 1
+    )
+    assert not out.exists()
+    assert any("skipped for missing columns" in error for error in errors)
+
+
+def test_main_model_id_collision_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    errors = _silence_error_state(monkeypatch)
+    collided = tmp_path / "collided.html"
+    collided.write_text(
+        FIXTURE.read_text(encoding="utf-8").replace(
+            "</tr>\n</table>",
+            "</tr>\n"
+            '<tr><td><a href="/models/qwen3.30b">Qwen3 30B Duplicate</a></td>'
+            "<td>50.0</td><td>100</td><td>$0.20</td><td>$1.20</td>"
+            "<td>$0.05</td><td>$0.10</td></tr>\n</table>",
+            1,
+        ),
+        encoding="utf-8",
+    )
+    all_models = tmp_path / "all.json"
+    all_models.write_text(json.dumps(_all_models_doc()), encoding="utf-8")
+    out = tmp_path / "out.json"
+
+    assert (
+        main(
+            [
+                "--html",
+                str(collided),
+                "--output",
+                str(out),
+                "--all-models",
+                str(all_models),
+                "--reference",
+                str(_write_reference(tmp_path)),
+                "--dump-html",
+                str(tmp_path / "failed.html"),
+            ]
+        )
+        == 1
+    )
+    assert not out.exists()
+    assert any("collision" in error for error in errors)
+
+
+def test_main_empty_models_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    errors = _silence_error_state(monkeypatch)
+    empty = tmp_path / "empty.html"
+    empty.write_text(
+        "<html><body><table>"
+        '<tr><th>Model ↕</th><th>Intelligence ↕</th></tr>'
+        "</table><table>"
+        '<tr><th>Model ↕</th><th>Requests / 5 hours ↕</th></tr>'
+        "<tr><td>Whatever</td><td>100</td></tr>"
+        "</table></body></html>",
+        encoding="utf-8",
+    )
+    all_models = tmp_path / "all.json"
+    all_models.write_text(json.dumps(_all_models_doc()), encoding="utf-8")
+    out = tmp_path / "out.json"
+
+    assert (
+        main(
+            [
+                "--html",
+                str(empty),
+                "--output",
+                str(out),
+                "--all-models",
+                str(all_models),
+                "--reference",
+                str(_write_reference(tmp_path)),
+                "--dump-html",
+                str(tmp_path / "failed.html"),
+            ]
+        )
+        == 1
+    )
+    assert not out.exists()
+    assert any("no models resolved" in error for error in errors)
+
+
+def test_main_missing_tables_returns_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _silence_error_state(monkeypatch)
     bad = tmp_path / "bad.html"
     bad.write_text("<html><body><table><tr><th>Other</th></tr></table></body></html>", encoding="utf-8")
     all_models = tmp_path / "all.json"
