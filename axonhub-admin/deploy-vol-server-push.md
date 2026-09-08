@@ -1,32 +1,16 @@
-# vol-server 退役指南:快照推送线(ADR 0010 → ADR 0012)
+# vol-server 推送/刷新线退役执行记录(ADR 0010 → ADR 0012)
 
-本文件原是 ADR 0010 推送线的部署指南;该推送线已被 [ADR 0012](../docs/adr/0012-model-registry-pipeline.md) 退役——commandcode 渠道的 `supportedModels` 回归 axonhub-admin 交互式写入,不再有无人值守写入。以下是在 vol-server 上拆除已部署单元的步骤(需要在服务器上手动执行)。
+本文件原是 ADR 0010 推送线的部署指南;该线连同更早的 modelListSourceURL 刷新机制已按 [ADR 0012](../docs/adr/0012-model-registry-pipeline.md) 全部退役。**退役动作已于 2026-09-08 由 agent 经 `ssh klein@vol-server` 执行完毕**,以下为实际状态与执行记录,供日后核对。
 
-## 拆除步骤
+## 执行记录(2026-09-08)
 
-1. **停用并删除 systemd 单元**:
+1. **发现**:ADR 0010 的推送单元(`axonhub-push-channel-models.timer/service`、`/etc/axonhub-push/`、`/var/lib/axonhub-push/`)在这台服务器上**从未部署过**。实际在跑的是更早的刷新机制:`axonhub-model-lists-refresh.timer`(每小时)以 klein 用户跑 `/usr/local/bin/axonhub-refresh-model-lists`,从 `jasonQin6/commandcode-goat-sync` 仓库拉快照到 `/home/klein/.config/axonhub/model-lists/goat-models.json`,供 AxonHub 渠道 settings 的 `modelListSourceURL` 消费。该刷新自 2026-09-07 起因上游 SSL 故障持续失败。
+2. **拆除刷新线**:`systemctl disable --now axonhub-model-lists-refresh.timer`,删除 timer/service 单元与 `/usr/local/bin/axonhub-refresh-model-lists`,`daemon-reload` + `reset-failed`;删除缓存目录 `model-lists/`。服务器上现仅剩 `axonhub.service`(AxonHub 本体)。
+3. **关闭渠道自动同步**:经 admin GraphQL(`updateChannel(id: "gid://axonhub/Channel/12", input: {autoSyncSupportedModels: false})`)关闭 commandcode-goat 的 autoSync,回读验证 `autoSyncSupportedModels=false`、`supportedModels`(59 项,旧机制产物)未动。其余渠道(mimo 同为 autoSync=1)不属于本项目管理,未触碰。
+4. **modelListSourceURL 死键**:commandcode-goat 的 DB settings 里仍存有 `modelListSourceURL` 键,但当前 AxonHub 二进制中已无该字符串(功能整体移除),GraphQL 的 `ChannelSettings` 也不再暴露它——确认为无害死数据,为避免直写运行中的 SQLite 未做清理。
 
-   ```bash
-   sudo systemctl disable --now axonhub-push-channel-models.timer
-   sudo rm /etc/systemd/system/axonhub-push-channel-models.timer
-   sudo rm /etc/systemd/system/axonhub-push-channel-models.service
-   sudo systemctl daemon-reload
-   sudo systemctl reset-failed
-   ```
+## 现状与后续
 
-2. **删除凭据与缓存**(推送线专用,不含其他服务的凭据):
-
-   ```bash
-   sudo rm -rf /var/lib/axonhub-push
-   sudo rm /etc/axonhub-push/env /etc/axonhub-push/password
-   sudo rmdir /etc/axonhub-push
-   ```
-
-3. **停用服务账号**:在 AxonHub 中禁用/删除推送专用的管理员账号(部署时的 `ops-push`)。确认 AxonHub 审计日志中该账号再无活动后即可删除。
-
-4. **核实渠道状态**(可选,交互会话内经 axonhub-admin 执行):commandcode 渠道的 `autoSyncSupportedModels` 保持关闭;`supportedModels` 从此由 model-registry 规划 + axonhub-admin 确认式写入维护。
-
-## 历史
-
-- 该推送线部署于 2026-09(ADR 0010):每小时从本仓库 `main` 拉取 `data/goat-models.json`,经 `apply_channel_models.py` 幂等推送为 commandcode 渠道的 `supportedModels`。
-- ADR 0012(model-registry 重组)将其退役:`apply_channel_models.py` 及其测试已从仓库删除;`data/goat-models.json` 已被 `data/models_extra.json` 取代。
+- commandcode 渠道(及其他全部渠道)的 `supportedModels` 从此只经 model-registry 规划 + axonhub-admin 交互式写入维护,不再存在任何无人值守写入。
+- 渠道上现存的 59 项 `supportedModels` 是旧交集机制的产物;新架构(`data/models_extra.json` 去重)规划出 35 项,需在 axonhub-admin 交互会话中经用户确认后整体替换。
+- 该渠道 `settings.modelListSourceURL` 的死键如需清除,待 AxonHub 后续版本经管理界面或 API 自然处理。
