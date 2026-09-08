@@ -368,7 +368,7 @@
           ]
         },
         "name": "GLM-5.3-Flash (2x usage)",
-        "open_weights": false,
+        "open_weights": true,
         "price_cached_read": 0.03,
         "price_cached_write": null,
         "price_input": 0.15,
