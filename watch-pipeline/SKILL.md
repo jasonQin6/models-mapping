@@ -5,22 +5,22 @@ description: Maintain the collection layer — the watch_* scrapers behind .gith
 
 # Watch Pipeline
 
-This skill is the maintenance manual for the collection layer. It owns `watch-pipeline/scripts/` (the `watch_*.py` scrapers plus `error_state.py`), their tests, and the per-channel `reference/` directories. It does NOT own `models-mapping/` (transformation) and never writes AxonHub.
+This skill is the maintenance manual for the collection layer. It owns `watch-pipeline/scripts/` (the `watch_*.py` scrapers plus `models_extra.py`, the shared models-extra store, and `error_state.py`), their tests, and the per-channel `reference/` directories. It does NOT own `model-registry/` (planning) and never writes AxonHub.
 
 ## Channels
 
 | Channel | Script | Upstream | Snapshot | Reference |
 |---|---|---|---|---|
 | models-dev | *(pure `curl` in yml, no script)* | models.dev/models.json | `data/all_models.json` | — |
-| opencode-go | `watch-pipeline/scripts/watch_go.py` | opencode `go.mdx` | `data/opencode-go-models.json` (enriched in place) | `reference/go/` |
-| goat | `watch-pipeline/scripts/watch_goat.py` | commandcode.ai GOAT plan page | `data/goat-models.json` | `reference/goat/` |
+| opencode-go | `watch-pipeline/scripts/watch_go.py` | opencode `go.mdx` | `data/models_extra.json` (`channels.opencode-go`) | `reference/go/` |
+| goat | `watch-pipeline/scripts/watch_goat.py` | commandcode.ai GOAT plan page | `data/models_extra.json` (`channels.commandcode-goat`) | `reference/goat/` |
 | arena | `watch-pipeline/scripts/watch_arena.py` | lmarena.ai WebDev leaderboard | `data/arena.json` | `reference/arena/` |
 
-Execution entrypoint is `.github/workflows/watch-pipeline.yml` (daily cron). Every script is stdlib-only Python 3.12+ and replays offline via `--html` / positional input / `--input` respectively.
+Execution entrypoint is `.github/workflows/watch-pipeline.yml` (every-3-days cron). Every script is stdlib-only Python 3.12+ and replays offline via `--html` / positional input / `--input` respectively.
 
 ## Field contracts
 
-`reference/<channel>/extra.json` is the machine-readable definition of what each scraper extracts: which upstream column/field each snapshot field comes from, its type, parse rule, and where it lands in the snapshot. When adapting a script, read the channel's extra.json first — the fix must keep the snapshot matching that contract. The snapshot shapes themselves never change here; changing them is an ADR-level decision.
+`reference/<channel>/extra.json` is the machine-readable definition of what each scraper extracts: which upstream column/field each record field comes from, its type, parse rule, and where it lands in `data/models_extra.json`. When adapting a script, read the channel's extra.json first — the fix must keep the section matching that contract. The store shape never changes here; changing it is an ADR-level decision.
 
 ## Error repair workflow
 
@@ -32,18 +32,17 @@ Each script persists failures to `watch-pipeline/reference/<channel>/last-error.
 4. **Verify offline**: replay the dump through the script and extend `watch-pipeline/tests/fixtures/` with a representative excerpt:
    ```bash
    python3 watch-pipeline/scripts/watch_goat.py --html watch-pipeline/reference/goat/failed-page.html \
-     --all-models data/all_models.json --output /tmp/goat.json
+     --extra /tmp/models_extra.json
    python3 -m pytest watch-pipeline/tests -q
    ```
 5. **Commit**: the fix together with the updated fixture. The success run in CI removes `last-error.json`; do not hand-edit it away without a verified fix.
 
 ## Snapshot invariants
 
-- `goat-models.json` / `opencode-go-models.json` are api.json-shaped provider envelopes (`{"commandcode-goat": {...}}` / `{"opencode-go": {...}}`); `arena.json` is flat `{schema_version, source, models}`.
-- GOAT enriches from the single source `data/all_models.json` (never from `opencode-go-models.json`); GOAT-exclusive ids without an upstream base are **kept** with GOAT-claimed fields only (`id`, `name`, `cost`, `extra`) — the snapshot's `models` keys are the channel's entitlement allowlist, pushed verbatim (ADR 0010).
-- GOAT hard gates: main-table rows skipped for missing columns, `to_model_id` collisions, zero models, or a count outside `expected_count` in `reference/goat/extra.json` fail the run with no snapshot write (partial lists must never publish).
-- `watch_go.py` enriches `data/opencode-go-models.json` in place — no separate `go.json`; Go-only ids are skipped, stale Go fields are cleared.
-- `watch_arena.py` owns only `data/arena.json`; joining Arena ids to OpenCode ids happens in `models-mapping`, never here.
-- Success messages: `watch-arena: wrote N models ...` / `watch-go: enriched N Go records ...` / `watch-goat: N models -> ...`.
-
-See `docs/adr/0006-goat-as-fourth-snapshot.md` for the GOAT ownership boundary.
+- `data/models_extra.json` is the shared store `{schema_version, updated_at, channels}`; each collector rewrites **only its own** `channels.<channel>` section via `models_extra.update_channel` (read-modify-write, atomic), so writers must serialize — CI orders goat after go.
+- Sections carry channel-declared facts only (`rp5h`, `usage_quota`, `cost{}`, remark thresholds, goat `tok_s`); card data is never collected here — planning fills it from `data/all_models.json` (ADR 0012).
+- Channel-provided `claude-*` models are not collected: Claude is served by self-built AxonHub models mapped by arena score (ADR 0012).
+- The go section's keys are exactly the go.mdx model ids (ADR 0011); an id that leaves the document leaves the section.
+- The goat section's keys are the channel's entitlement facts; GOAT hard gates: main-table rows skipped for missing columns, `to_model_id` collisions, zero models, or a count outside `expected_count` in `reference/goat/extra.json` fail the run with no write (partial lists must never publish).
+- `watch_arena.py` owns only `data/arena.json`; joining Arena ids to OpenCode ids happens in `model-registry`, never here.
+- Success messages: `watch-arena: wrote N models ...` / `watch-go: N Go models -> ...` / `watch-goat: N models -> ...`.

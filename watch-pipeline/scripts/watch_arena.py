@@ -2,7 +2,7 @@
 """Fetch and normalize the Arena WebDev leaderboard.
 
 This watcher owns only ``data/arena.json``.  Joining Arena names to OpenCode
-model IDs belongs to ``build_mapping.py``; keeping that join out of this
+model IDs belongs to ``models_mapping.py``; keeping that join out of this
 script means an Arena refresh cannot partially rewrite the mapping workspace.
 
 The parser keeps the historical matching helpers exported from this module

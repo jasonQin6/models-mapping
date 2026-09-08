@@ -16,5 +16,5 @@
       }
     }
   },
-  "join_rule": "arena.json stays keyed by normalized Arena id; joining to OpenCode model ids happens only in models-mapping build_mapping.py, never here."
+  "join_rule": "arena.json stays keyed by normalized Arena id; joining to OpenCode model ids happens only in model-registry models_mapping.py, never here."
 }
