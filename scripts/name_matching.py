@@ -95,8 +95,7 @@ def find_best_match(
       2. Remove "-contributor" suffix
       3. Version downgrade (e.g., qwen3.7-plus -> qwen3.6-plus)
       4. Prefix match with wildcard (e.g., claude-haiku -> claude-haiku-*)
-      5. Size-suffix strip (qwen3.8-27b -> qwen3.8)
-    6. Free model default (arena_score=0) if is_free=True
+      5. Free model default (arena_score=0) if is_free=True
     
     Args:
         csv_id: normalized model_id from CSV
@@ -133,12 +132,6 @@ def find_best_match(
             if alt_id in arena_lookup:
                 return (arena_lookup[alt_id], 'version_downgrade')
     
-    # Layer 3b: Strip a size suffix (qwen3.8-27b -> qwen3.8). Channel ids
-    # often carry the parameter size the leaderboard name omits.
-    stripped = re.sub(r"-\d+b$", "", csv_id, flags=re.IGNORECASE)
-    if stripped != csv_id and stripped in arena_lookup:
-        return (arena_lookup[stripped], "size_suffix")
-
     # Layer 4: Prefix match with wildcard
     candidates = []
     for arena_id, entry in arena_lookup.items():

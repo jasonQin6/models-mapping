@@ -152,15 +152,13 @@ def test_claude_mapping_uses_formula_and_baseline_routing() -> None:
     rows, plan = _plan(sections, cards={}, arena=arena, requests=requests)
 
     request_rows = _request_rows(rows)
-    # Baseline = lowest arena request (haiku): routes to the free candidate.
+    # Free fill: the lowest-scored request takes the lowest-scored free model.
     assert request_rows["claude-haiku-4.5"]["mapping"] == "freebie"
-    # Non-baseline uses the formula: closest score wins. freebie carries the
-    # free-default 1550 (no base variant to inherit) plus the top rp5h, and
-    # 1550 sits closer to opus than qwen's 1600 is far above it with a tiny
-    # rp5h.
-    assert request_rows["claude-opus-5"]["mapping"] == "freebie"
     mapping_by_request = {m["request_model"]: m for m in plan["report"]["mappings"]}
-    assert mapping_by_request["claude-haiku-4.5"]["match_confidence"] == "baseline"
+    assert mapping_by_request["claude-haiku-4.5"]["match_confidence"] == "free_fill"
+    # Free pool exhausted: the remaining request uses the formula over
+    # non-free candidates (closest score wins over the far-above one).
+    assert request_rows["claude-opus-5"]["mapping"] == "qwen3.8-max"
     # Candidates are listed for review with their matched arena score.
     candidate_by_id = {row["model_id"]: row for row in rows if row["role"] == "candidate"}
     assert candidate_by_id["muse-spark-1.2"]["arena_score"] == "1200"
@@ -377,6 +375,53 @@ def test_request_pinned_arena_score_skips_lookup() -> None:
     assert request_rows["claude-sonnet-5"]["arena_score"] == "1536.91"
     assert request_rows["claude-sonnet-5"]["mapping"] == "omen-alpha"
     assert plan["report"]["errors"] == []
+
+
+def test_free_fill_pairs_lowest_request_with_lowest_free_model() -> None:
+    # User example: haiku (lowest request) gets laguna (lowest free), then
+    # sonnet-4-6 gets longcat; the rest fall through to the formula.
+    sections = {
+        "commandcode-goat": {
+            "laguna-s-2.1-free": _rec(rp5h=None),
+            "longcat-2.0-free": _rec(rp5h=None),
+            "muse-spark-1.3-contributor": _rec(rp5h=45300),
+            "paid-filler": _rec(rp5h=900),
+        },
+        "opencode-go": {"longcat-2.0": _rec(rp5h=1540)},
+    }
+    requests = [
+        {"model_id": "claude-haiku-4.5", "arena_model_id": "claude-haiku-4-5", "enabled": True},
+        {"model_id": "claude-sonnet-4-6", "enabled": True},
+        {"model_id": "claude-opus-5", "enabled": True},
+    ]
+    arena = {
+        "claude-haiku-4-5": 1328.9,
+        "claude-sonnet-4-6": 1521.49,
+        "claude-opus-5": 1687.61,
+        "muse-spark-1.3-contributor": 1622.48,
+        "longcat-2.0": 1540,
+        "paid-filler": 1200.0,
+    }
+
+    rows, plan = plan_from(
+        sections,
+        cards={},
+        arena_models={
+            model_id: {"rating": entry["arena_score"], "rank": entry["arena_rank"]}
+            for model_id, entry in _arena_doc(arena)["models"].items()
+        },
+        request_models=requests,
+        decisions=_decisions(),
+    )
+
+    request_rows = _request_rows(rows)
+    assert request_rows["claude-haiku-4.5"]["mapping"] == "laguna-s-2.1-free"
+    assert request_rows["claude-sonnet-4-6"]["mapping"] == "longcat-2.0-free"
+    # Free pool exhausted -> formula over non-free candidates.
+    assert request_rows["claude-opus-5"]["mapping"] == "muse-spark-1.3-contributor"
+    mapping_by_request = {m["request_model"]: m for m in plan["report"]["mappings"]}
+    assert mapping_by_request["claude-haiku-4.5"]["match_confidence"] == "free_fill"
+    assert mapping_by_request["claude-opus-5"]["match_confidence"] in ("high", "medium", "none")
 
 
 def test_score_formula_ignores_price_and_quota() -> None:

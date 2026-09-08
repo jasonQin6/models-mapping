@@ -262,7 +262,7 @@ def load_decisions(path: Path) -> dict[str, Any]:
 VARIANT_SUFFIXES = ("-free", "-contributor")
 _VARIANT_PRIORITY = {"-free": 0, "-contributor": 1}
 DEFAULT_ARENA_SCORE = 1500.0
-FREE_DEFAULT_ARENA_SCORE = 1550.0
+FREE_DEFAULT_ARENA_SCORE = 1500.0
 RP5H_MISSING_EXCLUDE_THRESHOLD = 1500.0
 
 
@@ -620,7 +620,7 @@ def compute_mapping_for_request_model(
 def _confidence(match_type: str) -> str:
     if match_type == "direct_match":
         return "high"
-    if match_type in ("contributor_suffix", "version_downgrade", "size_suffix", "free_inherited"):
+    if match_type in ("contributor_suffix", "version_downgrade", "free_inherited"):
         return "medium"
     if match_type in ("prefix_match", "free_default"):
         return "low"
@@ -824,27 +824,29 @@ def plan_from(
     if not scored_requests:
         warnings.append({"type": "empty_claude_series", "message": "no enabled claude-* request models"})
 
-    eligible_pool = [
-        candidate
-        for candidate in candidates
-        if candidate["arena_score"] is not None and candidate["rp5h"] is not None
-    ]
-    free_pool = [candidate for candidate in eligible_pool if "free" in candidate["model_id"].lower()]
-    baseline_id = find_baseline_model(scored_requests)
-    for request in sorted(scored_requests, key=lambda item: str(item["model_id"])):
+    # Free models are a dedicated supply: requests take them in ascending
+    # arena-score order (the lowest-quality request gets the lowest-scored
+    # free model); once the free pool is exhausted the remaining requests
+    # use the formula over non-free candidates. Overrides win last.
+    scored_requests.sort(key=lambda item: (float(item["arena_score"]), str(item["model_id"])))
+    free_candidates = sorted(
+        (c for c in candidates if "free" in c["model_id"].lower()),
+        key=lambda c: ((c["arena_score"] if c["arena_score"] is not None else 0.0), c["model_id"]),
+    )
+    non_free_candidates = [c for c in candidates if "free" not in c["model_id"].lower()]
+    free_supply = iter(free_candidates)
+    for request in scored_requests:
         model_id = str(request["model_id"])
         score = float(request["arena_score"])
-        if baseline_id is not None and model_id == baseline_id:
-            pool = free_pool or eligible_pool
-            target = (
-                sorted(pool, key=lambda item: (-(item["rp5h"] or 0.0), item["model_id"]))[0]["model_id"]
-                if pool
-                else None
-            )
-            confidence = "baseline"
+        free_entry = next(free_supply, None)
+        if free_entry is not None:
+            target = free_entry["model_id"]
+            confidence = "free_fill"
         else:
-            target, _details = compute_mapping_for_request_model(score, candidates)
-            target_match = next((c["match_type"] for c in candidates if c["model_id"] == target), "")
+            target, _details = compute_mapping_for_request_model(score, non_free_candidates)
+            target_match = next(
+                (c["match_type"] for c in non_free_candidates if c["model_id"] == target), ""
+            )
             confidence = _confidence(target_match)
         override = decisions["overrides"].get(model_id)
         if override:
