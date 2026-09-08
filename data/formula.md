@@ -28,14 +28,19 @@ upgrade bonus only when it is above it. Prices and `usage_quota` are source
 metadata, not mapping-score dimensions; they are written to AxonHub through
 the catalog plan.
 
-## Baseline routing
+## Mapping order
 
 Only `claude-*` request models participate in the mapping (GPT requests are
-pass-through, ADR 0012). Within the claude series, the request model with the
-lowest valid Arena score is the baseline. The baseline bypasses the formula
-and maps to the eligible free candidate with the highest RP5H. If no free
-candidate is available, it maps to the eligible candidate with the highest
-RP5H.
+pass-through, ADR 0012). Three steps, in order:
+
+1. **Formula first** — every request is scored against the non-free
+   candidates with the formula above.
+2. **Free fill** — the free pool sorted by Arena score ascending is paired
+   with the requests sorted by Arena score ascending, replacing those
+   requests' formula targets (`free_fill`): the lowest-quality request gets
+   the lowest-scored free model.
+3. **Overrides** — `mapping_overrides` in `config/model-decisions.json`
+   replace any result last.
 
 ## Data quality
 
@@ -64,9 +69,9 @@ Arena score when the board lists it (`longcat-2.0-free` <- `longcat-2.0`,
 warning `arena_inherited`) and defaults to 1550 when it does not; free
 models are always reachable through baseline routing regardless of score. A
 free candidate has its `rp5h` re-derived from its owning channel's largest
-non-free `rp5h`; missing `usage_quota` becomes 60. Channel ids carrying a
-parameter size the leaderboard omits (`qwen3.8-27b` <- `qwen3.8`) match via
-the size-suffix fallback at medium confidence. Request models may pin `arena_score` directly in
+non-free `rp5h`; missing `usage_quota` becomes 60. Arena ids keep the
+board's parameter-size suffixes verbatim (`qwen3.8-27b`), so channel ids
+carrying the size direct-match. Request models may pin `arena_score` directly in
 `config/request-models.json` instead of relying on the Arena snapshot.
 Arena direct matches are high confidence; contributor-suffix and
 version-downgrade matches are medium confidence; prefix matches and free

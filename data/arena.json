@@ -2,7 +2,7 @@
   "schema_version": 1,
   "source": {
     "url": "https://lmarena.ai/leaderboard/code/webdev",
-    "fetched_at": "2026-09-08T07:31:22.110267+00:00"
+    "fetched_at": "2026-09-08T13:49:13.633811+00:00"
   },
   "models": {
     "claude-fable-5": {
@@ -34,11 +34,18 @@
       "effort": null
     },
     "claude-opus-4-5": {
+      "arena_score": 1467.88,
+      "arena_rank": 50,
+      "arena_context": 200000,
+      "organization": "Anthropic",
+      "effort": null
+    },
+    "claude-opus-4-5-20251101-high-32k": {
       "arena_score": 1494.65,
       "arena_rank": 43,
       "arena_context": 200000,
       "organization": "Anthropic",
-      "effort": "high"
+      "effort": null
     },
     "claude-opus-4-6": {
       "arena_score": 1546.01,
@@ -69,11 +76,18 @@
       "effort": "max"
     },
     "claude-sonnet-4-5": {
+      "arena_score": 1385.2,
+      "arena_rank": 82,
+      "arena_context": 200000,
+      "organization": "Anthropic",
+      "effort": null
+    },
+    "claude-sonnet-4-5-20250929-high-32k": {
       "arena_score": 1392.36,
       "arena_rank": 77,
       "arena_context": 200000,
       "organization": "Anthropic",
-      "effort": "high"
+      "effort": null
     },
     "claude-sonnet-4-6": {
       "arena_score": 1521.49,
@@ -222,17 +236,17 @@
       "organization": "Google",
       "effort": "high"
     },
-    "gemma-4": {
-      "arena_score": 1363.07,
-      "arena_rank": 88,
-      "arena_context": 131072,
-      "organization": "Google",
-      "effort": null
-    },
     "gemma-4-26b-a4b": {
       "arena_score": 1361.2,
       "arena_rank": 89,
       "arena_context": "-",
+      "organization": "Google",
+      "effort": null
+    },
+    "gemma-4-31b": {
+      "arena_score": 1363.07,
+      "arena_rank": 88,
+      "arena_context": 131072,
       "organization": "Google",
       "effort": null
     },
@@ -390,7 +404,7 @@
       "organization": "OpenAI",
       "effort": "max"
     },
-    "granite-4.1": {
+    "granite-4.1-8b": {
       "arena_score": 1191.43,
       "arena_rank": 122,
       "arena_context": 131072,
@@ -674,16 +688,16 @@
       "organization": "Alibaba",
       "effort": null
     },
-    "qwen3.5": {
-      "arena_score": 1357.13,
-      "arena_rank": 93,
+    "qwen3.5-122b-a10b": {
+      "arena_score": 1357.84,
+      "arena_rank": 92,
       "arena_context": 262144,
       "organization": "Alibaba",
       "effort": null
     },
-    "qwen3.5-122b-a10b": {
-      "arena_score": 1357.84,
-      "arena_rank": 92,
+    "qwen3.5-27b": {
+      "arena_score": 1357.13,
+      "arena_rank": 93,
       "arena_context": 262144,
       "organization": "Alibaba",
       "effort": null
@@ -730,7 +744,7 @@
       "organization": "Alibaba",
       "effort": null
     },
-    "qwen3.8": {
+    "qwen3.8-27b": {
       "arena_score": 1593.73,
       "arena_rank": 16,
       "arena_context": "-",

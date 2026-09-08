@@ -824,30 +824,37 @@ def plan_from(
     if not scored_requests:
         warnings.append({"type": "empty_claude_series", "message": "no enabled claude-* request models"})
 
-    # Free models are a dedicated supply: requests take them in ascending
-    # arena-score order (the lowest-quality request gets the lowest-scored
-    # free model); once the free pool is exhausted the remaining requests
-    # use the formula over non-free candidates. Overrides win last.
+    # Mapping order: (1) every request is scored by the formula over
+    # non-free candidates; (2) free fill — the free pool (ascending) is
+    # paired with the requests (ascending arena score), replacing the
+    # lowest-scored requests' formula targets; (3) overrides apply last.
     scored_requests.sort(key=lambda item: (float(item["arena_score"]), str(item["model_id"])))
     free_candidates = sorted(
         (c for c in candidates if "free" in c["model_id"].lower()),
         key=lambda c: ((c["arena_score"] if c["arena_score"] is not None else 0.0), c["model_id"]),
     )
     non_free_candidates = [c for c in candidates if "free" not in c["model_id"].lower()]
+
+    resolved: dict[str, tuple[Optional[str], str]] = {}
+    for request in scored_requests:
+        score = float(request["arena_score"])
+        target, _details = compute_mapping_for_request_model(score, non_free_candidates)
+        match_type = next(
+            (c["match_type"] for c in non_free_candidates if c["model_id"] == target), ""
+        )
+        resolved[str(request["model_id"])] = (target, _confidence(match_type))
+
     free_supply = iter(free_candidates)
+    for request in scored_requests:
+        free_entry = next(free_supply, None)
+        if free_entry is None:
+            break
+        resolved[str(request["model_id"])] = (free_entry["model_id"], "free_fill")
+
     for request in scored_requests:
         model_id = str(request["model_id"])
         score = float(request["arena_score"])
-        free_entry = next(free_supply, None)
-        if free_entry is not None:
-            target = free_entry["model_id"]
-            confidence = "free_fill"
-        else:
-            target, _details = compute_mapping_for_request_model(score, non_free_candidates)
-            target_match = next(
-                (c["match_type"] for c in non_free_candidates if c["model_id"] == target), ""
-            )
-            confidence = _confidence(target_match)
+        target, confidence = resolved[model_id]
         override = decisions["overrides"].get(model_id)
         if override:
             target = override["target_model"]

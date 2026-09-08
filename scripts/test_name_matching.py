@@ -66,19 +66,27 @@ class TestNormalizeArenaName:
         assert normalized == "gpt-5.4-mini"
         assert effort is None
     
-    def test_removes_size_suffix_lowercase(self):
+    def test_preserves_size_suffix_lowercase(self):
+        # Parameter size is part of the board's model identity.
         normalized, effort = normalize_arena_name("Llama-70b")
-        assert normalized == "llama"
+        assert normalized == "llama-70b"
         assert effort is None
-    
-    def test_removes_size_suffix_uppercase(self):
+
+    def test_preserves_size_suffix_uppercase(self):
         normalized, effort = normalize_arena_name("Llama-70B")
-        assert normalized == "llama"
+        assert normalized == "llama-70b"
         assert effort is None
-    
-    def test_removes_size_suffix_k(self):
+
+    def test_preserves_size_suffix_k(self):
         normalized, effort = normalize_arena_name("Model-70k")
-        assert normalized == "model"
+        assert normalized == "model-70k"
+        assert effort is None
+
+    def test_preserves_qwen_size_suffix(self):
+        # Regression: qwen3.8-27b used to collapse into qwen3.8, letting two
+        # distinct board entries share one key.
+        normalized, effort = normalize_arena_name("qwen3.8-27b")
+        assert normalized == "qwen3.8-27b"
         assert effort is None
     
     def test_qwen_exempt_from_effort(self):

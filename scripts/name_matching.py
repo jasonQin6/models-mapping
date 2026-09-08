@@ -38,33 +38,36 @@ def normalize(name: str) -> str:
 
 def normalize_arena_name(name: str) -> Tuple[str, Optional[str]]:
     """Normalize an arena leaderboard model name and extract effort level.
-    
+
     Calls normalize() first, then applies arena-specific cleanup:
     - Removes date suffixes (e.g., -20250320)
-    - Removes size suffixes (e.g., -70b, case-insensitive)
     - Extracts effort level (max/xhigh/ultra/high/medium/low) unless the
       model name starts with an exempt prefix (see EFFORT_EXEMPT_PREFIXES).
-    
+
+    Parameter-size suffixes (e.g., -27b) are part of the board's model
+    identity and are kept verbatim; the leaderboard lists full ids such as
+    ``qwen3.8-27b`` and stripping them collides distinct models.
+
     Note: effort is expected as a suffix (e.g., "claude-opus-5-max"), not
     in parentheses. Parenthetical content is removed by normalize().
-    
+
     Returns:
         (normalized_id, effort_level) where effort_level is None if not found
         or if the model is exempt.
-    
+
     Examples:
         "Claude-Opus-5-max" -> ("claude-opus-5", "max")
         "Qwen3.8-max" -> ("qwen3.8-max", None)  # qwen exempt
         "GPT-5.4 Mini (20250320)" -> ("gpt-5.4-mini", None)
+        "qwen3.8-27b" -> ("qwen3.8-27b", None)
     """
     normalized = normalize(name)
-    
-    def strip_build_suffix(value: str) -> str:
-        value = re.sub(r'-\d{8}$', '', value)
-        return re.sub(r'-\d+[kb]$', '', value, flags=re.IGNORECASE)
 
-    # Arena may place date/size before or after an effort suffix.
-    normalized = strip_build_suffix(normalized)
+    def strip_date_suffix(value: str) -> str:
+        return re.sub(r'-\d{8}$', '', value)
+
+    # Arena may place a date before or after an effort suffix.
+    normalized = strip_date_suffix(normalized)
     
     # Extract effort level (unless exempt)
     effort = None
@@ -78,8 +81,8 @@ def normalize_arena_name(name: str) -> Tuple[str, Optional[str]]:
                 effort = eff
                 break
 
-    normalized = strip_build_suffix(normalized)
-    
+    normalized = strip_date_suffix(normalized)
+
     return (normalized, effort)
 
 

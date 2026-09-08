@@ -60,11 +60,13 @@ Pipeline, in order:
    pool; a non-free model missing `rp5h` is excluded below an Arena score of
    1500 (`rp5h_missing_excluded`) and kept with a review warning at or above
    it (`rp5h_missing_review`, ineligible for target selection only).
-8. **Claude mapping** — baseline routing (lowest-arena request of the claude
-   series maps to the free candidate with the highest `rp5h`) plus the
-   Arena/RP5H/proximity formula (weights in `data/formula.md`); request
-   models may pin `arena_score` in `config/request-models.json`;
-   `mapping_overrides` win last.
+8. **Claude mapping** — (1) every request is scored by the
+   Arena/RP5H/proximity formula over non-free candidates; (2) free fill: the
+   free pool (ascending Arena score) is paired with the requests (ascending
+   Arena score), replacing the lowest-scored requests' targets
+   (`free_fill`); (3) `mapping_overrides` apply last. Request models may pin
+   `arena_score` in `config/request-models.json` (weights in
+   `data/formula.md`).
 9. **Outputs** — `models.csv` (reviewable: candidates for context, one
    `mapping` per `claude-*` request row) and the schema-2 plan (per-channel
    exact `supportedModels` with native ids, canonical model cards with
