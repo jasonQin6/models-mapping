@@ -551,6 +551,10 @@
       "organization": "Poolside",
       "effort": null
     },
+    "longcat-2.0": {
+      "arena_score": 1540,
+      "manual": true
+    },
     "mercury-2": {
       "arena_score": 1166.19,
       "arena_rank": 123,

@@ -200,8 +200,15 @@ def build_arena_snapshot(
     *,
     source_url: str = ARENA_URL,
     fetched_at: Optional[str] = None,
+    previous_models: Optional[Mapping[str, Any]] = None,
 ) -> dict:
-    """Build a schema-versioned ``arena.json`` object."""
+    """Build a schema-versioned ``arena.json`` object.
+
+    Leaderboard values always win.  Previous records carrying
+    ``"manual": true`` survive when the leaderboard no longer lists them, so
+    hand-assigned scores for off-board models persist across runs; previous
+    records without the flag are treated as delisted and dropped.
+    """
 
     models: Dict[str, dict] = {}
     for entry in entries:
@@ -212,6 +219,12 @@ def build_arena_snapshot(
         previous = models.get(model_id)
         if previous is None or current["arena_score"] > previous["arena_score"]:
             models[model_id] = current
+
+    for model_id, entry in sorted((previous_models or {}).items()):
+        if model_id in models:
+            continue
+        if isinstance(entry, Mapping) and entry.get("manual"):
+            models[model_id] = dict(entry)
 
     return {
         "schema_version": SCHEMA_VERSION,
@@ -290,7 +303,15 @@ def main(argv: Optional[list[str]] = None) -> int:
         entries = parse_arena_html(html, top_n=args.top_n)
         if not entries:
             raise ValueError("no leaderboard entries found")
-        snapshot = build_arena_snapshot(entries, source_url=args.url)
+        previous_models = None
+        if args.output.exists():
+            try:
+                existing = json.loads(args.output.read_text(encoding="utf-8"))
+                if isinstance(existing, Mapping):
+                    previous_models = existing.get("models")
+            except (OSError, json.JSONDecodeError):
+                previous_models = None
+        snapshot = build_arena_snapshot(entries, source_url=args.url, previous_models=previous_models)
         snapshot = preserve_timestamp_when_unchanged(args.output, snapshot)
         write_json_atomic(args.output, snapshot)
     except (OSError, ValueError) as exc:

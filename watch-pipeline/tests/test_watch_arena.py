@@ -150,3 +150,43 @@ def test_fetch_url_raises_when_curl_also_fails(monkeypatch):
 if __name__ == "__main__":
     import pytest
     pytest.main([__file__, "-v"])
+
+
+def test_manual_entries_survive_leaderboard_runs(tmp_path):
+    """Hand-assigned scores persist; delisted auto entries do not."""
+    import json
+
+    from watch_arena import main
+
+    out = tmp_path / "arena.json"
+    out.write_text(json.dumps({
+        "schema_version": 1,
+        "source": {"url": "https://lmarena.ai/leaderboard/code/webdev", "fetched_at": "t0"},
+        "models": {
+            "longcat-2.0": {"arena_score": 1540, "manual": True},
+            "gone-model": {"arena_score": 1200, "arena_rank": 9},
+        },
+    }), encoding="utf-8")
+
+    assert main(["--input", str(FIXTURE_PATH), "--output", str(out), "--top-n", "5"]) == 0
+
+    models = json.loads(out.read_text(encoding="utf-8"))["models"]
+    # Manual record kept verbatim (leaderboard does not list it).
+    assert models["longcat-2.0"] == {"arena_score": 1540, "manual": True}
+    # Unflagged record absent from the leaderboard is treated as delisted.
+    assert "gone-model" not in models
+
+
+def test_leaderboard_value_overwrites_manual_entry(tmp_path):
+    import json
+
+    from watch_arena import build_arena_snapshot
+
+    entries = [{"model_id": "longcat-2.0", "rating": 1733, "rank": 3,
+                "context": "-", "organization": "Meituan", "effort": None}]
+    previous = {"longcat-2.0": {"arena_score": 1540, "manual": True}}
+
+    snapshot = build_arena_snapshot(entries, previous_models=previous)
+
+    assert snapshot["models"]["longcat-2.0"]["arena_score"] == 1733
+    assert "manual" not in snapshot["models"]["longcat-2.0"]

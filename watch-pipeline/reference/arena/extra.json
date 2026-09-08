@@ -3,7 +3,7 @@
   "script": "watch-pipeline/scripts/watch_arena.py",
   "upstream": "https://lmarena.ai/leaderboard/code/webdev",
   "snapshot": "data/arena.json",
-  "description": "Fields parsed from the Arena WebDev leaderboard (Next.js serialized entries JSON) into the schema-versioned snapshot.",
+  "description": "Fields parsed from the Arena WebDev leaderboard (Next.js serialized entries JSON) into the schema-versioned snapshot. Hand-assigned records (manual: true) for off-board models survive every run: the leaderboard value wins when present, unflagged records absent from the board are treated as delisted and dropped.",
   "targets": {
     "models.<id>": {
       "note": "Snapshot is flat (no provider envelope): {schema_version, source:{url,fetched_at}, models}. id is the normalized model id from name_matching.normalize_arena_name. fetched_at is preserved from the previous snapshot when models are unchanged (byte-stable daily runs).",
@@ -16,5 +16,6 @@
       }
     }
   },
-  "join_rule": "arena.json stays keyed by normalized Arena id; joining to OpenCode model ids happens only in model-registry models_mapping.py, never here."
+  "join_rule": "arena.json stays keyed by normalized Arena id; joining to OpenCode model ids happens only in model-registry models_mapping.py, never here.",
+  "manual_rule": "Add a record with {arena_score, manual: true} for any model the leaderboard does not carry; watchers preserve it verbatim and it beats the free_default/no_match fallbacks in planning (direct match)."
 }
