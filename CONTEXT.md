@@ -33,6 +33,9 @@ _Avoid_: Free-form note, metadata
 **Catalog exclusion**：因跨渠道去重落选、不在渠道声明清单或经人工决定而不属于 managed catalog 的模型。排除不等同于删除全局 model object。
 _Avoid_: Tombstone, stale model
 
+**Model variant**：同一基础模型的变种。`-free`/`-contributor` 变种在登记中优先于原版；`-fast`/`-highspeed` 速度变种不采用、仅记录排除原因。尺寸后缀（如 `-27b`）是模型 id 的一部分，不构成变种关系。
+_Avoid_: Alias（别名指跨渠道对同一 id 的拼写归一）
+
 **Model decision**：对登记内缺失数据模型作出的、带理由的人工 exclude 或 supplement 事实。
 _Avoid_: CSV edit, inferred fallback
 
@@ -53,16 +56,16 @@ _Avoid_: Any profile template, dated template
 **Mapping workspace**：由 Arena 数据、OpenCode 补充数据和固定 request model 集合确定性生成的审核表；它是映射建议的可审查快照，不是 AxonHub 的运行时状态。
 _Avoid_: Source of truth, handoff CSV
 
-**Baseline request model**：同一 Claude 或 GPT series 中 Arena 分数最低的 request model，使用专门的基础模型选择规则。
-_Avoid_: Cheap model, entry-level model
+**Free fill**：free 模型池与 request model 各按 Arena score 升序一一配对的填充步骤；最低质量的 request 得到最低分的 free 模型，free 池耗尽后剩余 request 由公式在非 free 候选上承接。
+_Avoid_: Baseline routing, free priority
 
 **Series**：共享 `claude-` 或 `gpt-` 前缀的一组 request models。
 _Avoid_: Provider group, family
 
-**Arena score**：Arena 榜单对模型表现给出的质量信号，用于比较 request model 与 candidate model。
+**Arena score**：Arena 榜单或人工赋分（榜外模型以 `manual: true` 记录）给出的模型质量信号，用于比较 request model 与 candidate model；无任何来源时按模型类别取默认分（非 free 1500、free 1500）。
 _Avoid_: Price score, quota score
 
-**Match confidence**：Arena 记录与模型标识符关联时的证据强度，例如 direct、contributor suffix、version downgrade 或 prefix match。
+**Match confidence**：Arena 记录与模型标识符关联时的证据强度，例如 direct、contributor suffix、version downgrade、prefix match 或 free inherited（free 模型继承基础变体分数）。
 _Avoid_: Mapping certainty（除非明确指最终映射）
 
 ## 变更门禁

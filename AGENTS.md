@@ -26,6 +26,7 @@ python3 -m pytest -q
 - `data/models_extra.json` 各渠道节由对应采集脚本独占写入；模型卡只来自 `data/all_models.json`，渠道 `cost` 逐字段优先；仅 Arena 允许使用文档化的 fallback 链。
 - 渠道自带的 `claude-*` 模型不采集：Claude 由 AxonHub 自建全局模型 + Arena 映射供给（ADR 0012）；GPT 按名透传，不参与映射。
 - 外部抓取只发生在 watch-pipeline；model-registry 只消费仓库内快照做离线计算；AxonHub 写入只由 axonhub-admin 在交互会话执行，CI 永不写 AxonHub。
+- `data/arena.json` 的 `manual: true` 记录与 `models_extra.json` 的 `aliases` 是手工维护数据，采集/重生成必须保留（脚本已保证，不得绕过脚本直写文件）。
 - 保留无关的脏工作区改动；不手工编辑生成物。
 - 凭据与写入门禁以 `SECURITY.md` 为准；门禁分级以 `CONTEXT.md` 为准。
 

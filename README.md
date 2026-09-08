@@ -10,14 +10,21 @@
 |---|---|---|
 | `data/all_models.json` | `watch-pipeline/fetch-all-models` | models.dev 全量目录快照（扁平 `vendor/model`），唯一的模型卡来源，不是任何清单来源 |
 | `data/models_extra.json` | `fetch-opencode-go` + `watch-goat-models` | 渠道声明事实，按 `channels.<channel>.<model_id>` 组织：`rp5h`、`usage_quota`、`cost{}`、`context_threshold`、`peak_hours`、`retention`，goat 另有 `tok_s`；渠道自带的 `claude-*` 不采集（ADR 0012） |
-| `data/arena.json` | `watch-pipeline/watch-arena` | Arena 评分、排名、effort 及名称匹配证据，`schema_version: 1` |
+| `data/arena.json` | `watch-pipeline/watch-arena` | Arena 评分、排名、effort 及名称匹配证据，`schema_version: 1`；榜外模型可手动赋分（`manual: true`，采集时永久保留，榜上出现同名值则被覆盖） |
 | `config/request-models.json` | 项目维护者 | 固定 request model 集合；只有 `claude-*` 参与映射，GPT 按名透传 |
 | `config/model-decisions.json` | 项目维护者 | `scope.channels`（provider→channel）、人工 exclude/supplement、`mapping_overrides` |
 | `models.csv` | `model-registry` | 可审查的映射建议表：候选行（全部去重后模型）+ `claude-*` request 行各一个建议 target；列定义以 `scripts/csv_io.py` 为准 |
 
 `models.csv` 列为 `model_id,role,arena_score,rp5h,mapping`，其中 `role` 为 `candidate` 或 `request`，仅 request 行填写 `mapping`。catalog plan 是纯目标态 JSON（每渠道 bare-ID `supportedModels` 精确清单 + 模型卡目标值），无模式字段、无指纹、无远端 before-state——过期直接重新生成，不作为事实源持久留存。
 
-去重规则：同一模型 id 被多个渠道声明时，只归 `rp5h` 最高的渠道（缺值输给有值，平局归字母序靠前的渠道），模型卡与 remark 都用胜出渠道的数据；每次归属判定都以 warning 披露。free 模型配额按归属渠道重算（`rp5h` = 该渠道最大非 free 值、`usage_quota` 缺省 60）。
+登记规则（`models_extra.json` → 登记清单，全部以 warning 披露判定）：
+
+1. **别名归一**：顶层 `aliases` 表合并跨渠道命名（如 `tencent-hy3` → `hy3`）；渠道清单保留原生 id，全局模型用规范 id（plan 的 `channelAliases` 描述暴露差异）。尺寸后缀（`-27b` 等）是模型 id 的一部分，不做模糊归一。
+2. **速度变种不采用**：`-fast`/`-highspeed` 变种采集时打 `exclude` 标记，不进登记（`-flash` 等系列名不受影响）。
+3. **跨渠道去重**：同一模型 id 归 `rp5h` 最高的渠道（缺值输给有值，平局归字母序靠前的渠道），模型卡与 remark 都用胜出渠道的数据。
+4. **变种归组**：同基础模型 `-free` > `-contributor` > 原版，落选原版移出登记。
+5. **free 补全**：free 模型 `rp5h` 按归属渠道重算（该渠道最大非 free 值）、`usage_quota` 缺省 60。
+6. **缺 rp5h 分级**：非 free 模型缺 `rp5h` 时，Arena 分数 < 1500 排除，≥ 1500 保留并出人工处理 warning。
 
 ## 常用命令
 
@@ -57,6 +64,6 @@ Claude 全局模型（claude-opus-5、claude-sonnet-5 等）是 AxonHub 中一�
 
 ## 映射规则
 
-普通 Claude request 使用 Arena 分数、RP5H 对数归一化和与 request 的接近度计算候选；价格和 usage quota 不参与本阶段 target selection。Claude series 中 Arena 最低的 request 为 baseline，直接映射归属渠道中 RP5H 最高的 free candidate（无 free 时选最高 RP5H）。本阶段不生成有序 fallback。
+Claude 映射三步顺序（GPT 按名透传不参与）：① **公式全算**——所有 request 在非 free 候选上按 Arena 分数、RP5H 对数归一与接近度打分，价格和 usage_quota 不参与；② **free 填充**——free 池与 request 各按 Arena 分数升序一一配对，替换最低分 request 的公式结果（free 用完后剩余 request 保持公式结果）；③ **override**——`mapping_overrides` 最后覆盖。Arena 分数来源优先级：榜上/手动直配 → free 继承基础变体分数 → 默认 1500。本阶段不生成有序 fallback。
 
 完整字段与评分见 [`data/formula.md`](data/formula.md)，术语与门禁见 [`CONTEXT.md`](CONTEXT.md)，架构取舍见 [`docs/adr/`](docs/adr)（当前 0005–0012；0012 为现行架构）。
