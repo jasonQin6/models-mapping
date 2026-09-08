@@ -2,7 +2,7 @@
   "schema_version": 1,
   "source": {
     "url": "https://lmarena.ai/leaderboard/code/webdev",
-    "fetched_at": "2026-09-06T02:09:27.432032+00:00"
+    "fetched_at": "2026-09-08T02:18:39.317555+00:00"
   },
   "models": {
     "claude-fable-5": {
@@ -386,7 +386,7 @@
     "gpt-6-astra": {
       "arena_score": 1797.04,
       "arena_rank": 1,
-      "arena_context": 1000000,
+      "arena_context": 1050000,
       "organization": "OpenAI",
       "effort": "max"
     },
@@ -631,7 +631,7 @@
     "mistral-medium-3.5": {
       "arena_score": 1265.03,
       "arena_rank": 110,
-      "arena_context": 32768,
+      "arena_context": 262144,
       "organization": "Mistral",
       "effort": null
     },
