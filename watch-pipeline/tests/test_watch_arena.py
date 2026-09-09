@@ -38,17 +38,17 @@ class TestParseArenaHtml:
     def test_entry_structure(self):
         """Each entry should have required keys."""
         result = parse_arena_html(self.html, top_n=10)
-        required_keys = {'model_id', 'effort', 'rating', 'organization'}
+        required_keys = {'model_id', 'rating', 'organization'}
         for entry in result:
             assert set(entry.keys()) == required_keys
-    
-    def test_model_id_normalized(self):
-        """model_id should be lowercase with hyphens."""
+
+    def test_model_id_preserved_verbatim(self):
+        """model_id is the board's raw display name; normalization is planning-side."""
         result = parse_arena_html(self.html, top_n=10)
         for entry in result:
             model_id = entry['model_id']
-            assert model_id == model_id.lower()
-            assert ' ' not in model_id
+            assert model_id
+            assert model_id == model_id.strip()
     
     def test_rating_is_float(self):
         """rating should be a float, rounded to 2 decimals."""
@@ -78,13 +78,6 @@ class TestParseArenaHtml:
             assert False, "Should have raised ValueError"
         except ValueError as e:
             assert "entries data" in str(e)
-    
-    def test_effort_is_none_or_string(self):
-        """effort should be None or a valid effort level string."""
-        valid_efforts = {'max', 'xhigh', 'ultra', 'high', 'medium', 'low', None}
-        result = parse_arena_html(self.html, top_n=50)
-        for entry in result:
-            assert entry['effort'] in valid_efforts
 
 
 def test_unchanged_snapshot_preserves_timestamp(tmp_path):
@@ -169,7 +162,7 @@ def test_leaderboard_value_overwrites_manual_entry(tmp_path):
     from watch_arena import build_arena_snapshot
 
     entries = [{"model_id": "longcat-2.0", "rating": 1733,
-                "organization": "Meituan", "effort": None}]
+                "organization": "Meituan"}]
     previous = {"longcat-2.0": {"arena_score": 1540, "manual": True}}
 
     snapshot = build_arena_snapshot(entries, previous_models=previous)

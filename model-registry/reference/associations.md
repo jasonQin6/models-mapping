@@ -64,7 +64,8 @@ Scores come from the leaderboard, hand assignments (`manual: true`
 records in `data/arena.json`, preserved across collection runs), or the
 defaults below. The matching chain strips a fixed set of variant suffixes
 (`-contributor`, `-free`, `-vl` — `MATCH_VARIANT_SUFFIXES` in
-`scripts/name_matching.py`): a variant the board does not list inherits
+`model-registry/scripts/name_matching.py`): a variant the board does not
+list inherits
 its base model's score (`ling-3.0-flash-vl` <- `ling-3.0-flash`), so one
 hand-assigned base record covers every variant. Arena ids keep the
 board's parameter-size suffixes verbatim (`qwen3.8-27b`), so channel ids

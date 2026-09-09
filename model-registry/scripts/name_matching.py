@@ -3,13 +3,9 @@
 Name matching module for cross-source model identification.
 
 Provides normalization and matching functions to identify the same model
-across different data sources (opencode mdx, arena leaderboard, CSV).
-
-Public interface:
-  - normalize(name) -> str: core normalization for model names
-  - normalize_arena_name(name) -> (str, Optional[str]): arena-specific cleanup + effort extraction
-  - find_best_match(csv_id, arena_lookup, is_free=False) -> (Optional[dict], str): 5-layer fallback chain
-  - unrecognized_variant_suffix(model_id) -> Optional[str]: variant-looking tail outside the registry
+across data sources (arena leaderboard, registry ids, the mapping CSV).
+All normalization happens here, in the planning layer; collectors store
+raw names.
 """
 
 import re

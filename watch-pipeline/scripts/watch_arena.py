@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
-"""Fetch and normalize the Arena WebDev leaderboard.
+"""Fetch the Arena WebDev leaderboard.
 
-This watcher owns only ``data/arena.json``.  Joining Arena names to OpenCode
-model IDs belongs to ``models_mapping.py``; keeping that join out of this
-script means an Arena refresh cannot partially rewrite the mapping workspace.
-
-The generated JSON is keyed by the normalized Arena model ID and includes
-the source metadata required for audit.
+This watcher owns only ``data/arena.json``.  Normalizing board names and
+joining them to OpenCode model IDs belongs to ``model-registry``; the
+snapshot is keyed by the board's raw display names, so an Arena refresh
+cannot partially rewrite the mapping workspace.
 """
 
 from __future__ import annotations
@@ -15,7 +13,6 @@ import argparse
 import json
 import math
 import os
-import re
 import subprocess
 import sys
 import tempfile
@@ -24,10 +21,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional
 from urllib.request import Request, urlopen
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(REPO_ROOT / "scripts"))
-
-from name_matching import normalize_arena_name  # noqa: E402
 from error_state import clear_error, dump_page, persist_error  # noqa: E402
 
 
@@ -114,10 +107,11 @@ def _required_float(value: Any, field: str) -> float:
 
 
 def parse_arena_html(html: str, top_n: int = 0) -> List[dict]:
-    """Parse leaderboard entries into normalized records.
+    """Parse leaderboard entries into raw records.
 
-    Each record contains the legacy keys used by ``name_matching`` as well as
-    stable field names used by the JSON snapshot.
+    Each record carries the board's display name verbatim; normalization to
+    comparable ids (including effort extraction) happens at planning time in
+    ``model-registry/scripts/name_matching.py``.
     """
 
     entries = _find_entries_array(html)
@@ -126,9 +120,8 @@ def parse_arena_html(html: str, top_n: int = 0) -> List[dict]:
     for entry in selected_entries:
         if not isinstance(entry, Mapping):
             continue
-        model_name = str(entry.get("modelDisplayName", entry.get("model_id", "")))
-        normalized, effort = normalize_arena_name(model_name)
-        if not normalized:
+        model_name = str(entry.get("modelDisplayName", entry.get("model_id", ""))).strip()
+        if not model_name:
             continue
         rating = round(
             _required_float(entry.get("rating", entry.get("arena_score")), "rating"),
@@ -137,8 +130,7 @@ def parse_arena_html(html: str, top_n: int = 0) -> List[dict]:
         organization = entry.get("modelOrganization", entry.get("organization", ""))
         result.append(
             {
-                "model_id": normalized,
-                "effort": effort,
+                "model_id": model_name,
                 "rating": rating,
                 "organization": str(organization or ""),
             }
@@ -152,7 +144,6 @@ def _snapshot_entry(entry: Mapping[str, Any]) -> dict:
     return {
         "arena_score": round(_as_float(entry.get("rating", entry.get("arena_score", 0))), 2),
         "organization": entry.get("organization", ""),
-        "effort": entry.get("effort"),
     }
 
 

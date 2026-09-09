@@ -5,7 +5,7 @@ description: Maintain the collection layer — the watch_* scrapers behind .gith
 
 # Watch Pipeline
 
-This skill is the maintenance manual for the collection layer. It owns `watch-pipeline/scripts/` (the `watch_*.py` scrapers plus `models_extra.py`, the shared models-extra store, and `error_state.py`), their tests, and the per-channel `reference/` directories. It does NOT own `model-registry/` (planning) and never writes AxonHub.
+This skill is the maintenance manual for the collection layer. It owns `watch-pipeline/scripts/` (the `watch_*.py` scrapers plus `models_extra.py`, the shared models-extra store, `parse_opencode_mdx.py`, the go.mdx list parser, and `error_state.py`), their tests, and the per-channel `reference/` directories. It does NOT own `model-registry/` (planning) and never writes AxonHub. Collection stores raw facts only: name normalization and matching live in the planning layer.
 
 ## Channels
 

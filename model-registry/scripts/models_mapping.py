@@ -37,9 +37,6 @@ import sys
 from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(REPO_ROOT / "scripts"))
-
 from csv_io import read_mapping, write_mapping  # noqa: E402
 from name_matching import (  # noqa: E402
     find_best_match,
@@ -148,10 +145,12 @@ def load_cards(path: Path) -> dict[str, dict[str, Any]]:
 def load_arena(path: Path) -> dict[str, dict[str, Any]]:
     """Load the arena snapshot into the lookup shape ``find_best_match`` expects.
 
-    Keys are re-normalized (idempotent for watcher output), records are
-    converted to ``{rating, organization, effort}`` with ``rating`` mirroring
-    ``arena_score``, and duplicates keep the higher score.  Rows without a
-    score are skipped.
+    Normalization lives here, not in the collector: keys are the board's raw
+    display names and are normalized (idempotent for hand-assigned ids) with
+    effort derived from the name itself.  Records are converted to
+    ``{rating, organization, effort}`` with ``rating`` mirroring
+    ``arena_score``; duplicates keep the higher score, rows without a score
+    are skipped.
     """
 
     payload = load_json(path)
@@ -164,7 +163,7 @@ def load_arena(path: Path) -> dict[str, dict[str, Any]]:
     for raw_id, raw_value in models.items():
         if not isinstance(raw_value, Mapping):
             continue
-        normalized, _ = normalize_arena_name(str(raw_id))
+        normalized, effort = normalize_arena_name(str(raw_id))
         if not normalized:
             continue
         rating = _number(raw_value.get("arena_score", raw_value.get("rating")))
@@ -173,7 +172,7 @@ def load_arena(path: Path) -> dict[str, dict[str, Any]]:
         entry = {
             "rating": rating,
             "organization": raw_value.get("organization", ""),
-            "effort": raw_value.get("effort"),
+            "effort": effort,
         }
         old = lookup.get(normalized)
         if old is None or entry["rating"] > old["rating"]:

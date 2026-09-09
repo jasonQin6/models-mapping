@@ -13,6 +13,7 @@ from models_mapping import (  # noqa: E402
     PlanningError,
     dedupe_registry,
     extract_series,
+    load_arena,
     load_csv_requests,
     main,
     plan_from,
@@ -72,6 +73,29 @@ def test_load_csv_requests_reads_claude_rows_and_ignores_the_rest(tmp_path: Path
     assert requests == [{"model_id": "claude-opus-5"}]
     assert {w["model"] for w in warnings} == {"gpt-5.5", "gemini-3.7-flash"}
     assert all(w["type"] == "non_claude_request_ignored" for w in warnings)
+
+
+def test_load_arena_normalizes_raw_board_names(tmp_path: Path) -> None:
+    # The collector stores raw display names; the planner owns normalization
+    # (case/spacing, date suffixes, effort extraction). Hand-assigned ids are
+    # already normalized and pass through idempotently.
+    doc = {
+        "schema_version": 1,
+        "models": {
+            "GPT-5.4 Mini (20250320)": {"arena_score": 1500.0},
+            "Claude-Opus-5-max": {"arena_score": 1600.0},
+            "ling-3.0-flash": {"arena_score": 1458.0, "manual": True},
+        },
+    }
+    path = tmp_path / "arena.json"
+    path.write_text(json.dumps(doc), encoding="utf-8")
+
+    lookup = load_arena(path)
+
+    assert set(lookup) == {"gpt-5.4-mini", "claude-opus-5", "ling-3.0-flash"}
+    assert lookup["claude-opus-5"]["rating"] == 1600.0
+    assert lookup["claude-opus-5"]["effort"] == "max"
+    assert lookup["ling-3.0-flash"]["effort"] is None
 
 
 def test_load_csv_requests_missing_file_is_blocking(tmp_path: Path) -> None:

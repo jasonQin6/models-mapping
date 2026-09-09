@@ -11,7 +11,7 @@
 | `data/all_models.json` | `watch-pipeline/fetch-all-models` | models.dev 全量目录快照；唯一的模型卡来源，不是任何清单来源 |
 | `data/models_extra.json` | `fetch-opencode-go` + `watch-goat-models`（契约字段）；项目维护者（`exclude` 字段与顶层 `aliases`） | 各渠道声明的模型事实（配额、价格）与人工排除标记，按 `channels.<channel>.<model_id>` 组织；字段契约以各采集脚本为准，采集按字段合并、契约外字段人工所有（ADR 0014） |
 | `data/arena.json` | `watch-pipeline/watch-arena` | Arena 评分与名称匹配证据；含人工赋分记录（规则见 `watch_arena.py`） |
-| `models.csv` | `model-registry`（重算全部单元格）；项目维护者（`role=request` 行清单：加行/删行） | 映射审查表：request 行是人工维护的请求模型清单（事实源），其余为生成物（列定义以 `scripts/csv_io.py` 为准） |
+| `models.csv` | `model-registry`（重算全部单元格）；项目维护者（`role=request` 行清单：加行/删行） | 映射审查表：request 行是人工维护的请求模型清单（事实源），其余为生成物（列定义以 `model-registry/scripts/csv_io.py` 为准） |
 
 catalog plan 是纯目标态 JSON（过期直接重新生成，不作为事实源持久留存；schema 3，渠道键 = `models_extra.json` 渠道节名）。模型如何从渠道声明变为登记清单、映射如何分配，完整规则按 AxonHub 的三类对象见 [`model-registry/reference/`](model-registry/reference/)：[渠道清单](model-registry/reference/channel.md)（去重、变种治理、free 补全）、[模型卡](model-registry/reference/models.md)、[模型关联](model-registry/reference/associations.md)（赋分来源、公式与 free 填充顺序、非 Claude 路由约定）。
 
@@ -49,4 +49,4 @@ Claude 全局模型（claude-opus-5、claude-sonnet-5 等）是 AxonHub 中一�
 - `watch-pipeline`：维护 watch-pipeline.yml、采集脚本（`watch-pipeline/scripts/watch_*.py`、`models_extra.py`）与全部采集渠道；每渠道字段契约在 `watch-pipeline/reference/<channel>/extra.json`，脚本失败留痕于 `reference/<channel>/last-error.json`（成功后自删），修复流程见其 `SKILL.md`。
 - `model-registry`：把 `data/*.json` 离线变换为去重后的模型登记与 AxonHub 写入材料——`models.csv` 映射建议、catalog plan；只读规划，不联网，不写 AxonHub，详见其 `SKILL.md`。
 - `axonhub-admin`：唯一面向 AxonHub 写入、持有其凭据的 skill；按其 `SKILL.md` 的交互式执行程序（确认 → 读远端 → 逐项写入 → 回读验证 → 汇报）落地确认后的 catalog plan 与 `models.csv` 映射表，以及日常 channel/model 运维。渠道的 tags/weights 等期望状态以 AxonHub 系统内现状为准，不在仓库中另存副本。
-- `scripts/{csv_io,name_matching,parse_opencode_mdx}` 为共享库，无独立 skill 归属，由 `model-registry/scripts` 与 `watch-pipeline/scripts` 使用。
+- 名字归一与匹配只在计算层发生：`model-registry/scripts/{csv_io,name_matching}.py` 归 `model-registry`（`csv_io` 是 models.csv 列契约，`name_matching` 是 Arena 名归一与匹配链）；`watch-pipeline/scripts/parse_opencode_mdx.py` 归 `watch-pipeline`（go.mdx 清单解析器）。采集层只存原始榜名，归一在规划装载时进行。

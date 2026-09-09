@@ -21,7 +21,20 @@ This logic is in fix_free_model(), called only when free models are detected.
 import re
 from typing import Dict, List, Optional, Tuple
 
-from name_matching import normalize
+
+def normalize_model_key(name: str) -> str:
+    """Derive the channel key from an mdx table's Model cell.
+
+    Collection-side keying for the go.mdx tables (lowercase, spaces to
+    hyphens, parentheticals dropped, hyphens collapsed).  Kept local on
+    purpose: the planning layer's ``name_matching`` serves arena/registry
+    matching, and the collection layer does not import across layers.  The
+    transformation must stay byte-compatible with historical snapshot keys.
+    """
+
+    value = re.sub(r'\s*\([^)]+\)', '', name)
+    value = value.strip().lower().replace(' ', '-')
+    return re.sub(r'-+', '-', value)
 
 
 def extract_variant_condition(name: str) -> Tuple[str, Optional[str], Optional[str]]:
@@ -208,7 +221,7 @@ def parse_mdx(content: str, include_incomplete: bool = False) -> Dict[str, dict]
             rows = parse_table_lines(tables[0])
             for row in rows:
                 raw_name = row.get('Model', '').strip()
-                key = normalize(raw_name)
+                key = normalize_model_key(raw_name)
                 if not key:
                     continue
                 models[key] = {
@@ -226,7 +239,7 @@ def parse_mdx(content: str, include_incomplete: bool = False) -> Dict[str, dict]
             for row in rows:
                 raw_name = row.get('Model', '').strip()
                 base_name, context_thresh, peak_type = extract_variant_condition(raw_name)
-                key = normalize(base_name)
+                key = normalize_model_key(base_name)
                 
                 if not key:
                     continue
@@ -290,7 +303,7 @@ def parse_mdx(content: str, include_incomplete: bool = False) -> Dict[str, dict]
             rows = parse_table_lines(tables[0])
             for row in rows:
                 raw_name = row.get('Model', '').strip()
-                key = normalize(raw_name)
+                key = normalize_model_key(raw_name)
                 if not key:
                     continue
                 model_id = row.get('Model ID', '').strip()
@@ -318,7 +331,7 @@ def parse_mdx(content: str, include_incomplete: bool = False) -> Dict[str, dict]
             rows = parse_table_lines(tables[0])
             for row in rows:
                 raw_name = row.get('Model', '').strip()
-                key = normalize(raw_name)
+                key = normalize_model_key(raw_name)
                 if not key:
                     continue
                 retention_days = parse_retention(row.get('Data retention', '0 days'))
