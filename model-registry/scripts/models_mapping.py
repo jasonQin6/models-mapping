@@ -46,7 +46,7 @@ from name_matching import (  # noqa: E402
 
 PLAN_SCHEMA_VERSION = 3
 EXTRA_SCHEMA_VERSION = 1
-REMARK_FIELDS = ("rp5h", "usage_quota", "context_threshold", "peak_hours", "retention")
+REMARK_FIELDS = ("rp5h", "usage_quota")
 FREE_USAGE_QUOTA_DEFAULT = 60
 # Fallback for free models whose channel offers no non-free rp5h to derive from.
 FREE_RP5H_DEFAULT = 1000

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Shared read-modify-write store for ``data/models_extra.json``.
 
-The file merges channel-declared model facts (quotas, channel prices,
-remark thresholds) from every collector: each watcher owns exactly one
+The file merges channel-declared model facts (quotas, channel prices) from
+every collector: each watcher owns exactly one
 ``channels`` section and updates only that section's contract fields, so
 writers must be serialized (the CI graph orders the goat job after the go
 job).  A record field outside the channel's contract (e.g. a hand-maintained

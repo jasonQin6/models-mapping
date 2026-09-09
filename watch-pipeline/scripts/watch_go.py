@@ -82,9 +82,9 @@ def build_go_section(content: str) -> Dict[str, dict]:
     """Parse go.mdx into the opencode-go section of models_extra.json.
 
     Keys are exactly the go.mdx model ids (claude-* dropped); values carry
-    channel-declared facts only: display name, quotas, the four prices
+    channel-declared facts only: display name, quotas, and the four prices
     assembled into ``cost`` (``cache_*`` keys align with models.dev and the
-    goat section), and the remark thresholds the document states.
+    goat section).
     """
 
     parsed = parse_mdx(content)
@@ -103,9 +103,6 @@ def build_go_section(content: str) -> Dict[str, dict]:
                 "cache_read": _json_value(source.get("price_cached_read")),
                 "cache_write": _json_value(source.get("price_cached_write")),
             },
-            "context_threshold": _json_value(source.get("context_threshold")),
-            "peak_hours": _json_value(source.get("peak_hours")),
-            "retention": _json_value(source.get("retention")),
         }
         models[model_id] = record
     return models

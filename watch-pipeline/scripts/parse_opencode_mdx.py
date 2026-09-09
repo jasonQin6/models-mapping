@@ -2,14 +2,13 @@
 """
 Parse the OpenCode Go markdown source into model records.
 
-Extracts data from four markdown tables:
-1. Usage limits (rp5h, rpw, rpm)
+Extracts data from three markdown tables:
+1. Usage limits (rp5h)
 2. Pricing (input, output, cached_read, cached_write, usage_quota)
 3. Endpoints (model_id, endpoint -> protocol)
-4. Privacy (retention, model_training)
 
-Handles pricing variants (context length, peak/off-peak) by keeping the
-cheapest output price as base and recording max_price_output.
+Pricing variants (several condition rows for one model) collapse to the row
+with the cheapest output price.
 
 The parser transcribes declarations only: undeclared cells stay None and no
 value is derived from other rows — free-model backfill and any other
@@ -17,7 +16,7 @@ cleaning belong to the planning layer (models_mapping.py).
 """
 
 import re
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 
 def normalize_model_key(name: str) -> str:
@@ -33,37 +32,6 @@ def normalize_model_key(name: str) -> str:
     value = re.sub(r'\s*\([^)]+\)', '', name)
     value = value.strip().lower().replace(' ', '-')
     return re.sub(r'-+', '-', value)
-
-
-def extract_variant_condition(name: str) -> Tuple[str, Optional[str], Optional[str]]:
-    """Extract variant condition from model name.
-    
-    Returns (base_name, context_threshold, peak_hours).
-    """
-    match = re.search(r'\(([^)]+)\)', name)
-    base_name = re.sub(r'\s*\([^)]+\)', '', name).strip()
-    
-    if not match:
-        return (base_name, None, None)
-    
-    condition = match.group(1).strip()
-    
-    # Context length variants
-    context_match = re.search(r'[≤<>=]\s*((\d+)K?)', condition, re.IGNORECASE)
-    if context_match and 'token' in condition.lower():
-        threshold = context_match.group(1).upper()
-        if not threshold.endswith('K'):
-            threshold += 'K'
-        return (base_name, threshold, None)
-    
-    # Time-based variants
-    if 'peak' in condition.lower():
-        if 'off-peak' in condition.lower():
-            return (base_name, None, 'off-peak')
-        else:
-            return (base_name, None, 'peak')
-    
-    return (base_name, None, None)
 
 
 def parse_price(value: str) -> Optional[float]:
@@ -86,22 +54,6 @@ def parse_int_or_none(value: str) -> Optional[int]:
         return int(value)
     except ValueError:
         return None
-
-
-def parse_retention(value: str) -> int:
-    """Parse retention value to integer days.
-    
-    Not ZDR -> 999
-    "30 days" -> 30
-    "0 days" -> 0
-    """
-    value = value.strip()
-    if 'Not ZDR' in value or 'not zdr' in value.lower():
-        return 999
-    match = re.search(r'(\d+)', value)
-    if match:
-        return int(match.group(1))
-    return 0
 
 
 def find_tables_in_text(text: str) -> List[List[str]]:
@@ -149,14 +101,6 @@ def extract_section(text: str, heading: str) -> Optional[str]:
     return None
 
 
-def extract_peak_hours(text: str) -> Optional[str]:
-    """Extract peak hours from document text."""
-    match = re.search(r'Peak hours? are ([^.;]+(?:UTC|utc))', text, re.IGNORECASE)
-    if match:
-        return match.group(1).strip()
-    return None
-
-
 def merge_model(existing: dict, new_data: dict) -> dict:
     """Merge new_data into existing, only overwriting if new value is not None/empty."""
     result = dict(existing)
@@ -168,7 +112,6 @@ def merge_model(existing: dict, new_data: dict) -> dict:
 
 def parse_mdx(content: str) -> Dict[str, dict]:
     models = {}
-    peak_hours = extract_peak_hours(content)
 
     # 1. Usage limits section
     usage_section = extract_section(content, 'Usage limits')
@@ -186,73 +129,37 @@ def parse_mdx(content: str) -> Dict[str, dict]:
                 models[key] = {
                     'name': raw_name,
                     'rp5h': parse_int_or_none(row.get('requests per 5 hour', '-')),
-                    'rpw': parse_int_or_none(row.get('requests per week', '-')),
-                    'rpm': parse_int_or_none(row.get('requests per month', '-')),
                 }
         
-        # Second table: pricing (with variants)
+        # Second table: pricing.  Variant rows of one model (conditions in
+        # the Model cell) collapse to the row with the cheapest output price.
         if len(tables) >= 2:
             rows = parse_table_lines(tables[1])
-            model_variants = {}
-            
+            cheapest: Dict[str, dict] = {}
             for row in rows:
                 raw_name = row.get('Model', '').strip()
-                base_name, context_thresh, peak_type = extract_variant_condition(raw_name)
-                key = normalize_model_key(base_name)
-                
+                key = normalize_model_key(raw_name)
                 if not key:
                     continue
-                
-                if key not in model_variants:
-                    model_variants[key] = []
-                
-                model_variants[key].append({
-                    'raw_name': raw_name,
-                    'base_name': base_name,
-                    'context_threshold': context_thresh,
-                    'peak_type': peak_type,
+                record = {
+                    'name': re.sub(r'\s*\([^)]+\)', '', raw_name).strip() or raw_name,
                     'price_input': parse_price(row.get('Input', '-')),
                     'price_output': parse_price(row.get('Output', '-')),
                     'price_cached_read': parse_price(row.get('Cached Read', '-')),
                     'price_cached_write': parse_price(row.get('Cached Write', '-')),
                     'usage_quota': parse_price(row.get('Usage', '-')),
-                })
-            
-            # Process variants
-            for key, variants in model_variants.items():
-                valid_variants = [v for v in variants if v['price_output'] is not None]
-                if not valid_variants:
+                }
+                if record['price_output'] is None:
                     continue
-                
-                base_variant = min(valid_variants, key=lambda v: v['price_output'])
-                max_output = max(v['price_output'] for v in valid_variants)
-                
-                context_threshold = None
-                peak_hours_value = None
-                
-                for v in variants:
-                    if v['context_threshold'] and v['price_output'] == base_variant['price_output']:
-                        context_threshold = v['context_threshold']
-                    if v['peak_type'] == 'off-peak':
-                        peak_hours_value = peak_hours
-                
-                has_peak_variant = any(v['peak_type'] == 'peak' for v in variants)
-                if has_peak_variant and peak_hours:
-                    peak_hours_value = peak_hours
-                
+                current = cheapest.get(key)
+                if current is None or record['price_output'] < current['price_output']:
+                    cheapest[key] = record
+
+            for key, record in cheapest.items():
+                name = record.pop('name')
                 if key not in models:
-                    models[key] = {'name': base_variant['base_name']}
-                
-                models[key] = merge_model(models[key], {
-                    'price_input': base_variant['price_input'],
-                    'price_output': base_variant['price_output'],
-                    'price_cached_read': base_variant['price_cached_read'],
-                    'price_cached_write': base_variant['price_cached_write'],
-                    'usage_quota': base_variant['usage_quota'],
-                    'max_price_output': max_output,
-                    'context_threshold': context_threshold or '-',
-                    'peak_hours': peak_hours_value or '-',
-                })
+                    models[key] = {'name': name}
+                models[key] = merge_model(models[key], record)
 
     # 2. Endpoints table
     endpoints_section = extract_section(content, 'Endpoints')
@@ -280,24 +187,6 @@ def parse_mdx(content: str) -> Dict[str, dict]:
                     'model_id': model_id,
                     'endpoint': endpoint,
                     'protocol': protocol,
-                })
-
-    # 3. Privacy table
-    privacy_section = extract_section(content, 'Privacy')
-    if privacy_section:
-        tables = find_tables_in_text(privacy_section)
-        if tables:
-            rows = parse_table_lines(tables[0])
-            for row in rows:
-                raw_name = row.get('Model', '').strip()
-                key = normalize_model_key(raw_name)
-                if not key:
-                    continue
-                retention_days = parse_retention(row.get('Data retention', '0 days'))
-                if key not in models:
-                    models[key] = {'name': raw_name}
-                models[key] = merge_model(models[key], {
-                    'retention': retention_days,
                 })
 
     return models

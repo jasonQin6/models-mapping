@@ -27,7 +27,7 @@ _Avoid_: Model filter, intersection result
 **Model card**：描述模型能力、限制、模态、价格和版本信息的公共模型资料。
 _Avoid_: Model config, remark
 
-**Model remark**：附在模型上的结构化补充资料，包含 `rp5h`、`usage_quota`、`context_threshold`、`peak_hours`、`retention` 和人工备注。
+**Model remark**：附在模型上的结构化补充资料，包含 `rp5h`、`usage_quota` 和人工备注。
 _Avoid_: Free-form note, metadata
 
 **Catalog exclusion**：因跨渠道去重落选、不在渠道声明清单或经人工决定而不属于 managed catalog 的模型。排除不等同于删除全局 model object。

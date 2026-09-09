@@ -17,10 +17,9 @@ optional `channelAliases`, and the `input` the write path applies.
 - **Nothing is invented** — a model with no card is planned from
   channel-claimed data alone and reported as `card_missing`.
 - **Remark** — the plan recomputes the structured fields (`rp5h`,
-  `usage_quota`, `context_threshold`, `peak_hours`, `retention`) from the
-  owning channel's record — missing ones reported as
-  `missing_remark_fields` — and carries a `manual` field; the writer keeps
-  the remote `manual` content and replaces only the computed values
+  `usage_quota`) from the owning channel's record — missing ones reported
+  as `missing_remark_fields` — and carries a `manual` field; the writer
+  keeps the remote `manual` content and replaces only the computed values
   (axonhub-admin's write program).
 
 Every planned model is `type: chat`; image-generation endpoints are kept

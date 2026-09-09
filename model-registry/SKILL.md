@@ -14,9 +14,8 @@ credentials.
 Inputs (all committed snapshots, fully offline):
 
 - `data/models_extra.json` — channel-declared facts per `channels.<channel>.<model_id>`:
-  `rp5h`, `usage_quota`, `cost{}`, `tok_s` (goat only), `context_threshold`,
-  `peak_hours`, `retention`; a hand-maintained `exclude` reason on a record
-  keeps the model out of the registry.
+  `rp5h`, `usage_quota`, `cost{}` and `tok_s` (goat only); a hand-maintained
+  `exclude` reason on a record keeps the model out of the registry.
 - `data/all_models.json` — models.dev flat `vendor/model` catalog; the only
   card source (never a list source).
 - `data/arena.json` — Arena scores feeding the mapping formula.

@@ -35,8 +35,6 @@ def test_build_go_section_fixture_yields_channel_facts() -> None:
         "cache_read": 0.02,
         "cache_write": 0.1,
     }
-    assert grok["context_threshold"] is None
-    assert grok["peak_hours"] is None
 
     bot = models["sample-bot"]
     assert bot["rp5h"] == 1000
