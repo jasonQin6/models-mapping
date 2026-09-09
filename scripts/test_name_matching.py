@@ -126,93 +126,79 @@ class TestFindBestMatch:
         """Set up test fixtures."""
         self.arena_lookup = {
             "claude-opus-5": {
-                "rank": 1,
                 "rating": 1500.0,
-                "context": "200k",
                 "organization": "Anthropic",
                 "effort": "max",
             },
             "gpt-5.6-luna": {
-                "rank": 2,
                 "rating": 1480.0,
-                "context": "128k",
                 "organization": "OpenAI",
                 "effort": "xhigh",
             },
             "qwen3.6-plus": {
-                "rank": 10,
                 "rating": 1400.0,
-                "context": "128k",
                 "organization": "Alibaba",
                 "effort": None,
             },
             "muse-spark-1.2": {
-                "rank": 5,
                 "rating": 1450.0,
-                "context": "64k",
                 "organization": "Meta",
                 "effort": None,
             },
             "claude-haiku-3.5": {
-                "rank": 20,
                 "rating": 1350.0,
-                "context": "200k",
                 "organization": "Anthropic",
                 "effort": "low",
             },
         }
-    
+
     def test_direct_match(self):
         result, match_type = find_best_match("claude-opus-5", self.arena_lookup)
         assert result is not None
-        assert result["rank"] == 1
         assert result["rating"] == 1500.0
         assert match_type == "direct_match"
-    
+
     def test_remove_contributor_suffix(self):
         result, match_type = find_best_match("muse-spark-1.2-contributor", self.arena_lookup)
         assert result is not None
-        assert result["rank"] == 5
+        assert result["rating"] == 1450.0
         assert match_type == "contributor_suffix"
-    
+
     def test_version_downgrade(self):
         # qwen3.7-plus should match qwen3.6-plus
         result, match_type = find_best_match("qwen3.7-plus", self.arena_lookup)
         assert result is not None
-        assert result["rank"] == 10
+        assert result["rating"] == 1400.0
         assert match_type == "version_downgrade"
-    
+
     def test_version_downgrade_no_match_when_minor_zero(self):
         # qwen3.0-plus should not downgrade (minor=0)
         result, match_type = find_best_match("qwen3.0-plus", self.arena_lookup)
         assert result is None
         assert match_type == "no_match"
-    
+
     def test_prefix_match(self):
         # claude-haiku should match claude-haiku-3.5
         result, match_type = find_best_match("claude-haiku", self.arena_lookup)
         assert result is not None
-        assert result["rank"] == 20
+        assert result["rating"] == 1350.0
         assert match_type == "prefix_match"
-    
+
     def test_prefix_match_picks_highest_rating(self):
         # Add another claude-haiku variant with higher rating
         self.arena_lookup["claude-haiku-3.0"] = {
-            "rank": 25,
             "rating": 1300.0,
-            "context": "200k",
             "organization": "Anthropic",
             "effort": "low",
         }
         result, match_type = find_best_match("claude-haiku", self.arena_lookup)
         assert result is not None
-        assert result["rank"] == 20  # 3.5 has higher rating (1350 > 1300)
+        assert result["rating"] == 1350.0  # 3.5 has higher rating (1350 > 1300)
         assert match_type == "prefix_match"
-    
+
     def test_free_model_default(self):
         result, match_type = find_best_match("ox-alpha-free", self.arena_lookup, is_free=True)
         assert result is not None
-        assert result["rank"] == 0
         assert result["rating"] == 0
         assert result["organization"] == "Unknown"
         assert match_type == "free_default"
@@ -230,14 +216,12 @@ class TestFindBestMatch:
     def test_fallback_priority_direct_beats_contributor(self):
         # If both direct and contributor match exist, direct wins
         self.arena_lookup["test-model-contributor"] = {
-            "rank": 99,
             "rating": 1000.0,
-            "context": "32k",
             "organization": "Test",
             "effort": None,
         }
         result, match_type = find_best_match("test-model-contributor", self.arena_lookup)
-        assert result["rank"] == 99  # direct match, not layer 2
+        assert result["rating"] == 1000.0  # direct match, not layer 2
         assert match_type == "direct_match"
     
     def test_fallback_layer_2_contributor_then_layer_3_version(self):
@@ -250,9 +234,7 @@ class TestFindBestMatch:
     def test_fallback_layer_3_version_downgrade(self):
         # Add qwen3.6-plus-contributor to test layer 3
         self.arena_lookup["qwen3.6-plus-contributor"] = {
-            "rank": 15,
             "rating": 1380.0,
-            "context": "128k",
             "organization": "Alibaba",
             "effort": None,
         }
@@ -260,7 +242,7 @@ class TestFindBestMatch:
         # layer 3 tries qwen3.6-plus-contributor (now in lookup)
         result, match_type = find_best_match("qwen3.7-plus-contributor", self.arena_lookup)
         assert result is not None
-        assert result["rank"] == 15
+        assert result["rating"] == 1380.0
         assert match_type == "version_downgrade"
 
 
@@ -276,21 +258,17 @@ class TestMatchEvidence:
         """Set up test fixtures."""
         self.arena_lookup = {
             "claude-opus-5": {
-                "rank": 1,
                 "rating": 1500.0,
-                "context": "200k",
                 "organization": "Anthropic",
                 "effort": "max",
             },
             "gpt-5.6-luna": {
-                "rank": 2,
                 "rating": 1480.0,
-                "context": "128k",
                 "organization": "OpenAI",
                 "effort": "xhigh",
             },
         }
-    
+
     def test_match_type_returned(self):
         """find_best_match should return match_type as second element."""
         result, match_type = find_best_match("claude-opus-5", self.arena_lookup)

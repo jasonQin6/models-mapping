@@ -97,13 +97,6 @@ def _find_entries_array(html: str) -> list[Any]:
     raise ValueError("Could not find entries data in Arena page")
 
 
-def _as_int(value: Any, default: int = 0) -> int:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return default
-
-
 def _as_float(value: Any, default: float = 0.0) -> float:
     try:
         return float(value)
@@ -142,16 +135,12 @@ def parse_arena_html(html: str, top_n: int = 0) -> List[dict]:
             _required_float(entry.get("rating", entry.get("arena_score")), "rating"),
             2,
         )
-        rank = _as_int(entry.get("rank", entry.get("arena_rank", 0)))
-        context = entry.get("contextLength", entry.get("arena_context"))
         organization = entry.get("modelOrganization", entry.get("organization", ""))
         result.append(
             {
                 "model_id": normalized,
                 "effort": effort,
-                "rank": rank,
                 "rating": rating,
-                "context": context if context is not None else "-",
                 "organization": str(organization or ""),
             }
         )
@@ -188,8 +177,6 @@ def _snapshot_entry(entry: Mapping[str, Any]) -> dict:
 
     return {
         "arena_score": round(_as_float(entry.get("rating", entry.get("arena_score", 0))), 2),
-        "arena_rank": _as_int(entry.get("rank", entry.get("arena_rank", 0))),
-        "arena_context": entry.get("context", entry.get("arena_context", "-")),
         "organization": entry.get("organization", ""),
         "effort": entry.get("effort"),
     }

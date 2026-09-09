@@ -28,18 +28,12 @@ def _rec(rp5h=None, quota=None, name="X", **kw):
 
 
 def _arena_doc(scores: dict[str, float]) -> dict:
-    models = {
-        model_id: {"arena_score": score, "arena_rank": index}
-        for index, (model_id, score) in enumerate(sorted(scores.items()))
-    }
+    models = {model_id: {"arena_score": score} for model_id, score in scores.items()}
     return {"schema_version": 1, "models": models}
 
 
 def _arena_models(arena: dict[str, float]) -> dict:
-    return {
-        model_id: {"rating": entry["arena_score"], "rank": entry["arena_rank"]}
-        for model_id, entry in _arena_doc(arena)["models"].items()
-    }
+    return {model_id: {"rating": score} for model_id, score in arena.items()}
 
 
 def _plan(sections, cards=None, arena=None, requests=()):

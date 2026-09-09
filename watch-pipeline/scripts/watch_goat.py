@@ -11,21 +11,19 @@ GOAT deal prices, tok/s); public card data is filled at planning time from
 Hard gates (any hit -> no write, last-error.json persisted):
 - a main-table row is skipped for missing columns (page layout drifted);
 - two rows normalize to the same model_id (to_model_id collision);
-- zero models resolve;
-- the model count falls outside ``expected_count`` in the reference contract.
+- zero models resolve.
 
 Channel-provided ``claude-*`` models are not collected (ADR 0012): Claude
 requests are served by self-built AxonHub models mapped by arena score.
 Intelligence scoring drives model selection only and is not stored.
 
 Stdlib only. Pipeline entrypoint; see .github/workflows/watch-pipeline.yml.
-Usage: watch_goat.py [--url URL] [--html FILE] [--extra PATH] [--reference PATH]
+Usage: watch_goat.py [--url URL] [--html FILE] [--extra PATH]
 """
 
 from __future__ import annotations
 
 import argparse
-import json
 import re
 import sys
 import urllib.request
@@ -41,8 +39,6 @@ from models_extra import (
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_REFERENCE = REPO_ROOT / "watch-pipeline" / "reference" / "goat" / "extra.json"
 URL = "https://commandcode.ai/docs/plans/goat"
 CHANNEL = "goat"
 
@@ -259,29 +255,6 @@ def build_goat_fields(
     return record
 
 
-def load_expected_count(reference: Path) -> Optional[tuple[int, int]]:
-    """Return the (min, max) model-count gate from the channel reference contract.
-
-    The section is the authoritative allowlist, so a partial parse must fail
-    the run instead of publishing a shrunken list. A missing file or a
-    malformed ``expected_count`` disables the gate.
-    """
-    try:
-        doc = json.loads(reference.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    gate = doc.get("expected_count") if isinstance(doc, dict) else None
-    if not isinstance(gate, dict):
-        return None
-    try:
-        lo, hi = int(gate["min"]), int(gate["max"])
-    except (KeyError, TypeError, ValueError):
-        return None
-    if lo <= 0 or hi < lo:
-        return None
-    return lo, hi
-
-
 def main(argv: Optional[list[str]] = None) -> int:
     ap = argparse.ArgumentParser(
         description="Scrape the GOAT plan page and update the commandcode-goat section of data/models_extra.json"
@@ -299,12 +272,6 @@ def main(argv: Optional[list[str]] = None) -> int:
         type=Path,
         default=None,
         help="Where to dump HTML when the page structure changes (default: watch-pipeline/reference/goat/failed-page.html)",
-    )
-    ap.add_argument(
-        "--reference",
-        type=Path,
-        default=DEFAULT_REFERENCE,
-        help="Channel contract JSON carrying the expected_count gate (default: watch-pipeline/reference/goat/extra.json)",
     )
     args = ap.parse_args(argv)
 
@@ -435,13 +402,6 @@ def main(argv: Optional[list[str]] = None) -> int:
             )
         if not models:
             raise ValueError("no models resolved from the GOAT plan page")
-        expected = load_expected_count(args.reference)
-        if expected is not None:
-            lo, hi = expected
-            if not lo <= len(models) <= hi:
-                raise ValueError(
-                    f"model count {len(models)} outside expected range [{lo}, {hi}]"
-                )
 
         update_channel(args.extra, "commandcode-goat", models)
     except (OSError, ValueError) as exc:

@@ -143,9 +143,9 @@ def load_arena(path: Path) -> dict[str, dict[str, Any]]:
     """Load the arena snapshot into the lookup shape ``find_best_match`` expects.
 
     Keys are re-normalized (idempotent for watcher output), records are
-    converted to ``{rank, rating, context, organization, effort}`` with
-    ``rating`` mirroring ``arena_score``, and duplicates keep the higher
-    score.  Rows without a score are skipped.
+    converted to ``{rating, organization, effort}`` with ``rating`` mirroring
+    ``arena_score``, and duplicates keep the higher score.  Rows without a
+    score are skipped.
     """
 
     payload = load_json(path)
@@ -165,9 +165,7 @@ def load_arena(path: Path) -> dict[str, dict[str, Any]]:
         if rating is None:
             continue
         entry = {
-            "rank": int(_number(raw_value.get("arena_rank", raw_value.get("rank")), 0) or 0),
             "rating": rating,
-            "context": raw_value.get("arena_context", raw_value.get("context", "-")),
             "organization": raw_value.get("organization", ""),
             "effort": raw_value.get("effort"),
         }

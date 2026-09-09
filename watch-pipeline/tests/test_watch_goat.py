@@ -13,7 +13,6 @@ import watch_goat
 from watch_goat import (
     build_goat_fields,
     col_index,
-    load_expected_count,
     main,
     parse_price,
     parse_tables,
@@ -21,15 +20,6 @@ from watch_goat import (
 )
 
 FIXTURE = Path(__file__).parent / "fixtures" / "goat-sample.html"
-
-
-def _write_reference(tmp_path: Path, *, minimum: int = 1, maximum: int = 10) -> Path:
-    reference = tmp_path / "extra.json"
-    reference.write_text(
-        json.dumps({"expected_count": {"min": minimum, "max": maximum}}),
-        encoding="utf-8",
-    )
-    return reference
 
 
 def _silence_error_state(monkeypatch: pytest.MonkeyPatch) -> list[str]:
@@ -91,20 +81,6 @@ def test_build_goat_fields_keeps_channel_declared_facts_only() -> None:
     }
 
 
-def test_load_expected_count_gate(tmp_path: Path) -> None:
-    reference = tmp_path / "extra.json"
-
-    assert load_expected_count(tmp_path / "missing.json") is None
-    reference.write_text("{}", encoding="utf-8")
-    assert load_expected_count(reference) is None
-    reference.write_text(json.dumps({"expected_count": {"min": 25, "max": 60}}), encoding="utf-8")
-    assert load_expected_count(reference) == (25, 60)
-    reference.write_text(json.dumps({"expected_count": {"min": 60, "max": 25}}), encoding="utf-8")
-    assert load_expected_count(reference) is None
-    reference.write_text(json.dumps({"expected_count": {"min": "x", "max": 25}}), encoding="utf-8")
-    assert load_expected_count(reference) is None
-
-
 def test_main_html_writes_channel_section_and_skips_claude(tmp_path: Path) -> None:
     out = tmp_path / "models_extra.json"
 
@@ -115,8 +91,6 @@ def test_main_html_writes_channel_section_and_skips_claude(tmp_path: Path) -> No
                 str(FIXTURE),
                 "--extra",
                 str(out),
-                "--reference",
-                str(_write_reference(tmp_path, minimum=1, maximum=10)),
                 "--dump-html",
                 str(tmp_path / "failed.html"),
             ]
@@ -147,31 +121,6 @@ def test_main_html_writes_channel_section_and_skips_claude(tmp_path: Path) -> No
     assert not list(tmp_path.glob(".models_extra.json.*.tmp"))
 
 
-def test_main_count_outside_expected_range_fails(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    errors = _silence_error_state(monkeypatch)
-    out = tmp_path / "models_extra.json"
-
-    assert (
-        main(
-            [
-                "--html",
-                str(FIXTURE),
-                "--extra",
-                str(out),
-                "--reference",
-                str(_write_reference(tmp_path, minimum=10, maximum=20)),
-                "--dump-html",
-                str(tmp_path / "failed.html"),
-            ]
-        )
-        == 1
-    )
-    assert not out.exists()
-    assert any("outside expected range" in error for error in errors)
-
-
 def test_main_short_main_table_row_fails(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -194,8 +143,6 @@ def test_main_short_main_table_row_fails(
                 str(drifted),
                 "--extra",
                 str(out),
-                "--reference",
-                str(_write_reference(tmp_path)),
                 "--dump-html",
                 str(tmp_path / "failed.html"),
             ]
@@ -231,8 +178,6 @@ def test_main_model_id_collision_fails(
                 str(collided),
                 "--extra",
                 str(out),
-                "--reference",
-                str(_write_reference(tmp_path)),
                 "--dump-html",
                 str(tmp_path / "failed.html"),
             ]
@@ -264,8 +209,6 @@ def test_main_empty_models_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
                 str(empty),
                 "--extra",
                 str(out),
-                "--reference",
-                str(_write_reference(tmp_path)),
                 "--dump-html",
                 str(tmp_path / "failed.html"),
             ]

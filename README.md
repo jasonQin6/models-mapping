@@ -9,8 +9,8 @@
 | 文件 | 写入者 | 内容 |
 |---|---|---|
 | `data/all_models.json` | `watch-pipeline/fetch-all-models` | models.dev 全量目录快照；唯一的模型卡来源，不是任何清单来源 |
-| `data/models_extra.json` | `fetch-opencode-go` + `watch-goat-models`（契约字段）；项目维护者（`exclude` 字段与顶层 `aliases`） | 各渠道声明的模型事实（配额、价格）与人工排除标记，按 `channels.<channel>.<model_id>` 组织；字段契约见 `watch-pipeline/reference/<channel>/extra.json`，采集按字段合并、契约外字段人工所有（ADR 0014） |
-| `data/arena.json` | `watch-pipeline/watch-arena` | Arena 评分与名称匹配证据；含人工赋分记录（规则见 `reference/arena/extra.json`） |
+| `data/models_extra.json` | `fetch-opencode-go` + `watch-goat-models`（契约字段）；项目维护者（`exclude` 字段与顶层 `aliases`） | 各渠道声明的模型事实（配额、价格）与人工排除标记，按 `channels.<channel>.<model_id>` 组织；字段契约以各采集脚本为准，采集按字段合并、契约外字段人工所有（ADR 0014） |
+| `data/arena.json` | `watch-pipeline/watch-arena` | Arena 评分与名称匹配证据；含人工赋分记录（规则见 `watch_arena.py`） |
 | `models.csv` | `model-registry`（重算全部单元格）；项目维护者（`role=request` 行清单：加行/删行） | 映射审查表：request 行是人工维护的请求模型清单（事实源），其余为生成物（列定义以 `scripts/csv_io.py` 为准） |
 
 catalog plan 是纯目标态 JSON（过期直接重新生成，不作为事实源持久留存；schema 3，渠道键 = `models_extra.json` 渠道节名）。模型如何从渠道声明变为登记清单、映射如何分配（去重、变种治理、赋分来源、free 填充顺序），完整规则见 [`data/formula.md`](data/formula.md)。

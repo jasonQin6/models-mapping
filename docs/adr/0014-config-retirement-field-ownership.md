@@ -50,9 +50,10 @@ erased any hand-maintained record field. `update_channel` now merges per
 record: an id the channel still declares keeps its hand-maintained fields
 (anything the scrape does not produce, e.g. `exclude`) while its contract
 fields refresh; an id that leaves the channel declaration leaves the
-section with its whole record. The contracts in
-`watch-pipeline/reference/<channel>/extra.json` enumerate the collector-
-owned fields.
+section with its whole record. The collector scripts are the single
+enumeration of the collector-owned fields; the former per-channel
+`reference/<channel>/extra.json` contract files were retired, taking the
+GOAT `expected_count` count gate with them.
 
 ## Considered options
 

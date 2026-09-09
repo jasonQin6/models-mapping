@@ -107,7 +107,7 @@ def find_best_match(
     
     Returns:
         (arena_entry, match_type) where:
-        - arena_entry: dict with keys {rank, rating, context, organization, effort}
+        - arena_entry: dict with keys {rating, organization, effort}
           or None if no match found and not is_free
         - match_type: one of 'direct_match', 'contributor_suffix', 'version_downgrade',
           'prefix_match', 'free_default', 'no_match'
@@ -147,9 +147,7 @@ def find_best_match(
     # Layer 5: Free model default
     if is_free:
         return ({
-            'rank': 0,
             'rating': 0,
-            'context': '-',
             'organization': 'Unknown',
             'effort': None,
         }, 'free_default')

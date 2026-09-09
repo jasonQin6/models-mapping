@@ -38,7 +38,7 @@ class TestParseArenaHtml:
     def test_entry_structure(self):
         """Each entry should have required keys."""
         result = parse_arena_html(self.html, top_n=10)
-        required_keys = {'model_id', 'effort', 'rank', 'rating', 'context', 'organization'}
+        required_keys = {'model_id', 'effort', 'rating', 'organization'}
         for entry in result:
             assert set(entry.keys()) == required_keys
     
@@ -57,12 +57,6 @@ class TestParseArenaHtml:
             assert isinstance(entry['rating'], float)
             # Check rounding: rating * 100 should be an integer
             assert entry['rating'] == round(entry['rating'], 2)
-    
-    def test_rank_is_int(self):
-        """rank should be an integer."""
-        result = parse_arena_html(self.html, top_n=10)
-        for entry in result:
-            assert isinstance(entry['rank'], int)
     
     def test_top_n_limits_results(self):
         """top_n should limit the number of returned entries."""
@@ -85,14 +79,6 @@ class TestParseArenaHtml:
         except ValueError as e:
             assert "entries data" in str(e)
     
-    def test_context_defaults_to_dash(self):
-        """context should be '-' if not provided."""
-        result = parse_arena_html(self.html, top_n=50)
-        for entry in result:
-            assert entry['context'] is not None
-            # If context was None in source, it should be '-'
-            # (we can't easily test the None case without modifying the fixture)
-    
     def test_effort_is_none_or_string(self):
         """effort should be None or a valid effort level string."""
         valid_efforts = {'max', 'xhigh', 'ultra', 'high', 'medium', 'low', None}
@@ -103,7 +89,7 @@ class TestParseArenaHtml:
 
 def test_unchanged_snapshot_preserves_timestamp(tmp_path):
     path = tmp_path / "arena.json"
-    entries = [{"model_id": "model", "rating": 1500, "rank": 1}]
+    entries = [{"model_id": "model", "rating": 1500}]
     old = build_arena_snapshot(entries, fetched_at="2026-01-01T00:00:00+00:00")
     write_json_atomic(path, old)
     new = build_arena_snapshot(entries, fetched_at="2026-01-02T00:00:00+00:00")
@@ -164,7 +150,7 @@ def test_manual_entries_survive_leaderboard_runs(tmp_path):
         "source": {"url": "https://lmarena.ai/leaderboard/code/webdev", "fetched_at": "t0"},
         "models": {
             "longcat-2.0": {"arena_score": 1540, "manual": True},
-            "gone-model": {"arena_score": 1200, "arena_rank": 9},
+            "gone-model": {"arena_score": 1200},
         },
     }), encoding="utf-8")
 
@@ -182,8 +168,8 @@ def test_leaderboard_value_overwrites_manual_entry(tmp_path):
 
     from watch_arena import build_arena_snapshot
 
-    entries = [{"model_id": "longcat-2.0", "rating": 1733, "rank": 3,
-                "context": "-", "organization": "Meituan", "effort": None}]
+    entries = [{"model_id": "longcat-2.0", "rating": 1733,
+                "organization": "Meituan", "effort": None}]
     previous = {"longcat-2.0": {"arena_score": 1540, "manual": True}}
 
     snapshot = build_arena_snapshot(entries, previous_models=previous)
