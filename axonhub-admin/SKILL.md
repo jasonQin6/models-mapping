@@ -1,6 +1,6 @@
 ---
 name: axonhub-admin
-description: Operate AxonHub (AI gateway) over its admin GraphQL API — interactively execute confirmed catalog plans and mapping tables (channel supportedModels, model cards, request-model routing) and view or change channels, models, and API-key templates. Use when the user asks to view or change anything in AxonHub without the web UI.
+description: Execute this repository's governed AxonHub write program — confirmed catalog plans (channel supportedModels, model cards), mapping tables (request-model associations), batch model creation, and the deployment's routing patterns and quirks. Use for any AxonHub work within the managed scope; generic one-off resource queries from the command line belong to the axonhub-cli skill.
 ---
 
 # AxonHub Admin
@@ -55,7 +55,7 @@ deployment's server errors on a channels query combining `tags` with
 
 - Channels: `channels(first: 50) { edges { node { id name type status supportedModels manualModels autoSyncSupportedModels baseURL orderingWeight tags } } } }` and `channels(first: 50) { edges { node { id settings { modelMappings { from to } } } } }`
 - Models: `models(first: 100) { edges { node { id modelID name developer status remark modelCard { reasoning { supported default } toolCall temperature modalities { input output } vision cost { input output cacheRead cacheWrite } limit { context output } knowledge releaseDate lastUpdated } settings { disableDeveloperSettingsInheritance loadBalancerStrategy traceStickyMode associations { type priority disabled channelModel { channelId modelId } modelId { modelId } regex { pattern } } } } } } }`
-- API-key profile templates: `apiKeyProfileTemplates { id name linkedProfilesCount profile { name modelMappings { from to } channelIDs channelTags channelTagsMatchMode modelIDs loadBalanceStrategy traceStickyMode quota { … } } }`
+- API-key profile templates: `apiKeyProfileTemplates(first: 50) { edges { node { id name linkedProfilesCount profile { name modelMappings { from to } channelIDs channelTags channelTagsMatchMode modelIDs loadBalanceStrategy traceStickyMode quota { … } } } } }` — Relay connections require an explicit `first:` and `edges { node { … } }` wrapping; `apiKeyProfileTemplates` without `first` fails with `either first or last must be provided`.
 
 Take the **exact upstream model IDs** from the channels query's `supportedModels` — never from UI chips, screenshots, or memory. A wrong ID (e.g. `sensenova-v1-fast` for the upstream's `sensenova-u1-fast`) creates a model entity that silently routes nowhere.
 
@@ -96,6 +96,59 @@ catalog-plan flow above (ADR 0012). The former unattended vol-server push
 (`apply_channel_models.py`, ADR 0010) is retired; server-side teardown steps
 live in `deploy-vol-server-push.md`.
 
+## Batch model creation via GraphQL (proven 2026-09-09)
+
+Bulk (re)creation after a catalog wipe: payloads come from the
+`models_extra.json ∩ all_models.json` intersection, cards from
+`all_models.json`. Tooling: the `axonhub-cli` skill (`graphql-cli`), or raw
+GraphQL over `node:https`.
+
+- Mutations MUST pass the input as **variables** (`-v '{"input": …}'`); an
+  inline JSON object literal is invalid GraphQL (`Expected Name, found
+  String`).
+- **CLI output is noisy** (npm notices) and its JSON is not always cleanly
+  parseable — a mutation can succeed on the server while local parsing
+  reports failure. After every pass, reconcile against live state
+  (`models(first: 100)`) and only re-issue what is actually missing.
+- **Soft-deleted rows block creation.** Deleted models are invisible to
+  `models` but keep their ID: `createModel` fails with `model name 'x'
+  already exists`. They are still enumerable via `node(id:
+  "gid://axonhub/Model/<n>") { … on Model { modelID } }` — the node lookup
+  bypasses the soft-delete interceptor, so probing ascending IDs rebuilds
+  the full inventory. Purge with `deleteModel(id)`: the resolver context
+  skips the soft-delete interceptor, making it a hard delete.
+  `bulkDeleteModels(ids)` returned `true` but was observed NOT to purge —
+  verify every purge by the succeeding `createModel`, never by the return
+  value.
+- **Enable after create**: `createModel` and the web UI both start models
+  `disabled`; flip with `updateModelStatus(id, enabled)`.
+- Association wiring is a separate pass after creation
+  (`settings: {associations: []}` in the payload); request-model routing
+  then follows the mapping table.
+
+Payload conventions (per model, card data from `all_models.json`):
+
+- `developer` — the models.dev vendor prefix normalized to AxonHub's English
+  vendor vocabulary: `zai-org`/`zhipuai` → `zai`, `meituan` → `longcat`,
+  `moonshotai` → `moonshot`, `deepseek-ai` → `deepseek`.
+- `icon` — lobe-icons name per vendor (DeepSeek, ChatGLM, Qwen, Moonshot,
+  XAI, Hunyuan, LongCat, XiaomiMiMo, Meta, NVIDIA, Step, Gemini, OpenAI);
+  empty string when unsure.
+- `group` — the card's `family`.
+- `type` — `chat`; image-generation endpoints (e.g. `sensenova-u1-fast`,
+  `POST /v1/images/generations`, no image input, not Chat Completions) are
+  `image_generation` with modalities `input: [text]` / `output: [image]`,
+  `vision: false`, and are excluded from the chat registry via the
+  `models_extra.json` record `exclude` flag.
+- `modelCard` — `reasoning: {supported, default}` ← `reasoning`; `toolCall`
+  ← `tool_call`; `temperature` ← `temperature` (default true); `vision` ←
+  `image` in modalities.input; `modalities` and `limit` verbatim; `cost` ←
+  `{input, output, cacheRead: cache_read, cacheWrite: cache_write}`;
+  `knowledge`, `releaseDate` ← `release_date`, `lastUpdated` ←
+  `last_updated` when present.
+- `settings` — `{associations: []}`; omit the optional strategy fields
+  (deployment quirk above).
+
 ## Reference
 
 ### The model-ID gotcha (read before touching associations)
@@ -119,15 +172,24 @@ Association types: `channel_model` (pinned channel + exact ID), `model` (exact I
   - time-gated (see quirks — root condition must be a group): `when: {enabled: true, condition: {type: "group", logic: "AND", conditions: [{type: "condition", field: "daily_time", operator: "within", value: "22:00-08:00"}]}}`
 - `updateModel` can rename (`modelID`), retitle (`name`), and flip `status` (lowercase enums `enabled`/`disabled`/`archived`). Models created via `createModel` or the web UI start **disabled** and must be enabled separately.
 
+### Routing patterns (proven 2026-09-09)
+
+- Fallback chain within one channel: same `channel_model` rules with ascending priorities (`p0` primary, `p1`/`p2` fallbacks — e.g. `ling-3.0-flash` → ant's `vl`/`sante`/`fin`).
+- Cross-channel pool: one global `regex` at p0 matches the bare ID on every channel that serves it.
+- Strict fallback demotion: the main rule keeps p0 with `exclude: [{channelIds: [<fallback channel>]}]`; the fallback channel gets a p1 `channel_model` rule — daily traffic never touches it, 429/failures do.
+- Night routing: a p0 `channel_model` on the free channel wrapped in the `when` daily_time group (see quirks); the unrestricted main pool drops to p1.
+- Request-model mapping: exactly one `type=model` association to the confirmed target (mapping table).
+- Verify every pattern with `queryModelChannelConnections(associations: $assocs) { channel { id name } models { requestModel actualModel source } }`.
+
 ### Deployment quirks (verified 2026-09-09)
 
 - A `when` whose **root condition is a bare `condition`** is rejected with `invalid when condition: root when condition must be a group` — always wrap the leaf condition in `{type: "group", logic: "AND", conditions: [...]}`. Cross-midnight ranges (`22:00-08:00`) are supported; times are server-local.
 - Transient `unknown field` errors (`GRAPHQL_VALIDATION_FAILED`, erratic `variable.input.*` paths, sometimes pointing at untouched sibling fields) appear during apparent deploy windows and disappear on their own; identical payloads succeed afterwards. Handle per guardrail 4: retry with backoff + read-back, don't reshape on a flake.
 - Omit optional `settings` fields (`disableDeveloperSettingsInheritance`, `loadBalancerStrategy`, `traceStickyMode`) when unchanged — omitted fields keep their live values, and passing them unnecessarily was observed to trip the transient validator.
-- When input shapes misbehave, introspect the **live** server (`__type(name: "ModelSettingsInput") { inputFields { name } }`) — the deployment can drift from the local `internal/server/gql/*.graphql` snapshot in either direction.
+- When input shapes misbehave, explore the **live** schema first: prefer the `axonhub-cli` skill's `find <type> -e axonhub --input --detail`; raw introspection (`__type(name: "ModelSettingsInput") { inputFields { name } }`) is the fallback when the CLI is unavailable. The deployment can drift from the local `internal/server/gql/*.graphql` snapshot in either direction.
 
 ### Known facts about this deployment
 
 - Server: `https://axon.jasonqin.site` — the built-in default of every script; override with `AXONHUB_URL`.
 - `AXONHUB_JWT` is the agreed env-var name for the live JWT. It is a credential: use it in Authorization headers, never write it into files, commits, or logs. Credentials live only in this skill — planning (`model-registry`) is offline and needs none.
-- The full admin schema to consult for exact field names: `internal/server/gql/*.graphql` in the axonhub repo.
+- Ad-hoc queries, schema discovery (`find`), and CLI-based operations: use the **axonhub-cli** skill (`graphql-cli`) — it owns the generic tool mechanics; this skill owns only this repository's write program and conventions. The full admin schema lives at `internal/server/gql/*.graphql` in the axonhub repo.
