@@ -172,14 +172,14 @@ Association types: `channel_model` (pinned channel + exact ID), `model` (exact I
   - time-gated (see quirks — root condition must be a group): `when: {enabled: true, condition: {type: "group", logic: "AND", conditions: [{type: "condition", field: "daily_time", operator: "within", value: "22:00-08:00"}]}}`
 - `updateModel` can rename (`modelID`), retitle (`name`), and flip `status` (lowercase enums `enabled`/`disabled`/`archived`). Models created via `createModel` or the web UI start **disabled** and must be enabled separately.
 
-### Routing patterns (proven 2026-09-09)
+### Routing patterns
 
-- Fallback chain within one channel: same `channel_model` rules with ascending priorities (`p0` primary, `p1`/`p2` fallbacks — e.g. `ling-3.0-flash` → ant's `vl`/`sante`/`fin`).
-- Cross-channel pool: one global `regex` at p0 matches the bare ID on every channel that serves it.
-- Strict fallback demotion: the main rule keeps p0 with `exclude: [{channelIds: [<fallback channel>]}]`; the fallback channel gets a p1 `channel_model` rule — daily traffic never touches it, 429/failures do.
-- Night routing: a p0 `channel_model` on the free channel wrapped in the `when` daily_time group (see quirks); the unrestricted main pool drops to p1.
-- Request-model mapping: exactly one `type=model` association to the confirmed target (mapping table).
-- Verify every pattern with `queryModelChannelConnections(associations: $assocs) { channel { id name } models { requestModel actualModel source } }`.
+The association conventions — fallback chains, cross-channel pools,
+priority demotion, time-gated routing, free-variant merging (e.g.
+`ling-3.0-flash` → ant's `vl`/`sante`/`fin`) — are owned by
+`model-registry/reference/associations.md`; this skill executes the
+confirmed shapes and verifies every one with
+`queryModelChannelConnections(associations: $assocs) { channel { id name } models { requestModel actualModel source } }`.
 
 ### Deployment quirks (verified 2026-09-09)
 

@@ -33,48 +33,44 @@ python3 model-registry/scripts/models_mapping.py \
   --fail-on-errors
 ```
 
-Pipeline, in order:
+The rules per AxonHub object live in `reference/` —
+[channel.md](reference/channel.md) (channel allowlists: dedupe, variant
+governance, free completion), [models.md](reference/models.md) (cards and
+remark), [associations.md](reference/associations.md) (the Claude mapping
+formula and the non-Claude routing conventions). Pipeline, in order:
 
-1. **Alias normalisation** — the hand-maintained `aliases` map in
-   `data/models_extra.json` (e.g. `tencent-hy3` -> `hy3`) merges
-   cross-channel spellings. Channel lists keep native ids; the registry and
-   `plan.models[]` use the canonical id, with `channelAliases` describing
-   per-channel exposure for routing.
-2. **Excluded records** — ids ending `-fast`/`-highspeed` (speed-marketing
-   variants) and records carrying a hand-maintained `exclude` reason are
-   skipped with a warning.
+1. **Alias normalisation** — the hand-maintained `aliases` map merges
+   cross-channel spellings; channel lists keep native ids, the registry and
+   `plan.models[]` use the canonical id with `channelAliases` for routing.
+2. **Excluded records** — speed-marketing ids (`-fast`/`-highspeed`) and
+   records with a hand-maintained `exclude` reason are skipped with a warning.
 3. **Dedupe** — a model id listed by several channels belongs to the channel
-   with the highest `rp5h` (null loses to a value, ties keep the
-   alphabetically first channel); every resolution reports
-   `duplicate_model_across_sources`.
+   with the highest `rp5h` (ties keep the alphabetically first channel);
+   every resolution reports `duplicate_model_across_sources`.
 4. **Variant grouping** — within a base model, `-free` beats `-contributor`
    beats the plain original; superseded variants leave with
    `variant_superseded`.
-5. **Free fill** — per owning channel, a free model's `rp5h` is re-derived
-   from the channel's largest non-free `rp5h` and a missing `usage_quota`
-   becomes 60 (`free_default_filled`).
+5. **Free fill** — a free model's `rp5h` is re-derived from its channel's
+   largest non-free `rp5h`; a missing `usage_quota` becomes 60.
 6. **Cards** — filled from `data/all_models.json` only; channel `cost` wins
-   field-by-field. A model with no card keeps channel-claimed data and
-   reports `card_missing` (no data is invented).
-7. **Arena + rp5h triage** — a non-free model without an Arena match gets a
-   default score of 1500 (`arena_defaulted`) so beta models stay in the
-   pool; a non-free model missing `rp5h` is excluded below an Arena score of
-   1500 (`rp5h_missing_excluded`) and kept with a review warning at or above
-   it (`rp5h_missing_review`, ineligible for target selection only).
-8. **Claude mapping** — (1) every request is scored by the
-   Arena/RP5H/proximity formula over non-free candidates; (2) free fill:
-   the free pool (ascending Arena score) is paired with the requests
-   (ascending Arena score), replacing the lowest-scored requests' targets
-   (`free_fill`). There are no overrides (weights in `data/formula.md`).
+   field-by-field; no card means channel-claimed data plus `card_missing`.
+7. **Arena + rp5h triage** — no Arena match defaults to 1500
+   (`arena_defaulted`); a missing `rp5h` excludes below an Arena score of
+   1500 (`rp5h_missing_excluded`) and keeps with a review warning at or
+   above it (`rp5h_missing_review`, target-selection ineligible only).
+8. **Claude mapping** — the formula scores every request over the non-free
+   candidates, then free fill pairs the ascending free pool with the
+   ascending requests (`free_fill`). No overrides; weights and order in
+   [reference/associations.md](reference/associations.md).
 9. **Outputs** — `models.csv` regenerated in place (request rows kept as
    the input list, every other cell recomputed) and the schema-3 plan
    (per-channel exact `supportedModels` with native ids keyed by section
    name, canonical model cards with `channelAliases`, warnings).
 
-Missing request Arena evidence, unknown override targets, or source schema
-drift are blocking errors; with `--fail-on-errors` the run exits non-zero and
-the artifacts are for inspection only. Everything else (remark gaps,
-arena fallbacks, card misses) is a warning.
+Missing request Arena evidence or source schema drift are blocking errors;
+with `--fail-on-errors` the run exits non-zero and the artifacts are for
+inspection only. Everything else (remark gaps, arena fallbacks, card
+misses) is a warning.
 
 ## Handoff
 

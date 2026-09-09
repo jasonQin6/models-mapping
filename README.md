@@ -2,7 +2,7 @@
 
 维护 OpenCode 模型目录数据，并把固定的 Claude 下游请求模型映射到可用的第三方模型。分工：CI（watch-pipeline.yml）只把外部数据抓取进仓库，`model-registry` 只做离线计算，`axonhub-admin` 才能写入 AxonHub。
 
-本文件是数据归属与流程的唯一真源。产物归属、DAG、skills 分工以此处为准；术语以 [`CONTEXT.md`](CONTEXT.md) 为准，安全边界以 [`SECURITY.md`](SECURITY.md) 为准，登记与映射规则以 [`data/formula.md`](data/formula.md) 为准。
+本文件是数据归属与流程的唯一真源。产物归属、DAG、skills 分工以此处为准；术语以 [`CONTEXT.md`](CONTEXT.md) 为准，安全边界以 [`SECURITY.md`](SECURITY.md) 为准，登记与映射规则以 [`model-registry/reference/`](model-registry/reference/) 为准。
 
 ## 数据边界
 
@@ -13,7 +13,7 @@
 | `data/arena.json` | `watch-pipeline/watch-arena` | Arena 评分与名称匹配证据；含人工赋分记录（规则见 `watch_arena.py`） |
 | `models.csv` | `model-registry`（重算全部单元格）；项目维护者（`role=request` 行清单：加行/删行） | 映射审查表：request 行是人工维护的请求模型清单（事实源），其余为生成物（列定义以 `scripts/csv_io.py` 为准） |
 
-catalog plan 是纯目标态 JSON（过期直接重新生成，不作为事实源持久留存；schema 3，渠道键 = `models_extra.json` 渠道节名）。模型如何从渠道声明变为登记清单、映射如何分配（去重、变种治理、赋分来源、free 填充顺序），完整规则见 [`data/formula.md`](data/formula.md)。
+catalog plan 是纯目标态 JSON（过期直接重新生成，不作为事实源持久留存；schema 3，渠道键 = `models_extra.json` 渠道节名）。模型如何从渠道声明变为登记清单、映射如何分配，完整规则按 AxonHub 的三类对象见 [`model-registry/reference/`](model-registry/reference/)：[渠道清单](model-registry/reference/channel.md)（去重、变种治理、free 补全）、[模型卡](model-registry/reference/models.md)、[模型关联](model-registry/reference/associations.md)（赋分来源、公式与 free 填充顺序、非 Claude 路由约定）。
 
 ## 常用命令
 
