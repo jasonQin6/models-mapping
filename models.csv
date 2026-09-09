@@ -24,9 +24,6 @@ kimi-k2.6,candidate,1508.76,1150,
 glm-5.1,candidate,1508.11,880,
 deepseek-v4-flash-vision-exp,candidate,1500,6080,
 laguna-s-2.1-free,candidate,1500,18200,
-ling-3.0-flash-fin,candidate,1500,,
-ling-3.0-flash-sante,candidate,1500,,
-ling-3.0-flash-vl,candidate,1500,,
 nemotron-3-ultra-550b-a55b,candidate,1500,575,
 omen-alpha,candidate,1500,11600,
 qwen3.7-flash,candidate,1500,,
@@ -39,13 +36,14 @@ mimo-v2.5-pro,candidate,1474.9,5700,
 kimi-k2.7-code,candidate,1472.45,1350,
 qwen3.6-plus,candidate,1460.01,3300,
 qwen3.7-plus,candidate,1460.01,4300,
+ling-3.0-flash,candidate,1458,1000,
 mimo-v2.5,candidate,1437.71,30100,
 inkling,candidate,1408.68,396,
 inkling-small,candidate,1405,709,
 minimax-m2.7,candidate,1398.47,3400,
-claude-haiku-4-5,request,1328.9,,laguna-s-2.1-free
-claude-sonnet-4-6,request,1521.49,,longcat-2.0-free
-claude-sonnet-5,request,1536.91,,deepseek-v4-flash
+claude-haiku-4-5,request,1328.9,,ling-3.0-flash
+claude-sonnet-4-6,request,1521.49,,laguna-s-2.1-free
+claude-sonnet-5,request,1536.91,,longcat-2.0-free
 claude-opus-4-6,request,1546.01,,deepseek-v4-flash
 claude-fable-5,request,1629.05,,muse-spark-1.3-contributor
 claude-opus-5,request,1687.61,,muse-spark-1.3-contributor

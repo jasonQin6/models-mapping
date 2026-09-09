@@ -7,7 +7,7 @@ from pathlib import Path
 # Add scripts/ to path so we can import name_matching
 sys.path.insert(0, str(Path(__file__).parent.parent / 'scripts'))
 
-from name_matching import normalize, normalize_arena_name, find_best_match
+from name_matching import normalize, normalize_arena_name, find_best_match, unrecognized_variant_suffix
 
 
 class TestNormalize:
@@ -158,11 +158,23 @@ class TestFindBestMatch:
         assert result["rating"] == 1500.0
         assert match_type == "direct_match"
 
-    def test_remove_contributor_suffix(self):
-        result, match_type = find_best_match("muse-spark-1.2-contributor", self.arena_lookup)
-        assert result is not None
-        assert result["rating"] == 1450.0
-        assert match_type == "contributor_suffix"
+    def test_variant_suffix_strips_known_suffixes(self):
+        # contributor/free/vl all inherit the base model's score
+        for suffixed, base in (
+            ("muse-spark-1.2-contributor", "muse-spark-1.2"),
+            ("muse-spark-1.2-free", "muse-spark-1.2"),
+            ("claude-opus-5-vl", "claude-opus-5"),
+        ):
+            result, match_type = find_best_match(suffixed, self.arena_lookup)
+            assert result is not None
+            assert result["rating"] == self.arena_lookup[base]["rating"]
+            assert match_type == "variant_suffix"
+
+    def test_variant_suffix_unknown_base_does_not_match(self):
+        # stripping must not invent a base the board does not carry
+        result, match_type = find_best_match("ling-3.0-flash-vl", self.arena_lookup)
+        assert result is None
+        assert match_type == "no_match"
 
     def test_version_downgrade(self):
         # qwen3.7-plus should match qwen3.6-plus
@@ -246,6 +258,19 @@ class TestFindBestMatch:
         assert match_type == "version_downgrade"
 
 
+def test_unrecognized_variant_suffix():
+    # unregistered alphabetic tails are surfaced for human triage
+    assert unrecognized_variant_suffix("ling-3.0-flash-vq") == "vq"
+    # registered suffixes and versioned/parameter tails never fire
+    assert unrecognized_variant_suffix("ling-3.0-flash-vl") is None
+    assert unrecognized_variant_suffix("ling-3.0-flash-free") is None
+    assert unrecognized_variant_suffix("nemotron-3-ultra-550b-a55b") is None
+    assert unrecognized_variant_suffix("qwen3.8-27b") is None
+    assert unrecognized_variant_suffix("muse-spark-1.2") is None
+    assert unrecognized_variant_suffix("claude-opus-5") is None
+    assert unrecognized_variant_suffix("freebie") is None
+
+
 if __name__ == "__main__":
     import pytest
     pytest.main([__file__, "-v"])
@@ -275,7 +300,7 @@ class TestMatchEvidence:
         assert match_type == "direct_match"
         
         result, match_type = find_best_match("claude-opus-5-contributor", self.arena_lookup)
-        assert match_type == "contributor_suffix"
+        assert match_type == "variant_suffix"
         
         result, match_type = find_best_match("nonexistent", self.arena_lookup)
         assert match_type == "no_match"
@@ -286,9 +311,9 @@ class TestMatchEvidence:
         _, match_type = find_best_match("claude-opus-5", self.arena_lookup)
         assert match_type == "direct_match"
         
-        # contributor_suffix
+        # variant_suffix
         _, match_type = find_best_match("gpt-5.6-luna-contributor", self.arena_lookup)
-        assert match_type == "contributor_suffix"
+        assert match_type == "variant_suffix"
         
         # no_match
         _, match_type = find_best_match("nonexistent-model", self.arena_lookup)

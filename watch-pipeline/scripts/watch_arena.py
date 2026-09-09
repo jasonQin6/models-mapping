@@ -5,9 +5,8 @@ This watcher owns only ``data/arena.json``.  Joining Arena names to OpenCode
 model IDs belongs to ``models_mapping.py``; keeping that join out of this
 script means an Arena refresh cannot partially rewrite the mapping workspace.
 
-The parser keeps the historical matching helpers exported from this module
-for callers that use them directly.  The generated JSON is keyed by the
-normalized Arena model ID and includes the source metadata required for audit.
+The generated JSON is keyed by the normalized Arena model ID and includes
+the source metadata required for audit.
 """
 
 from __future__ import annotations
@@ -145,31 +144,6 @@ def parse_arena_html(html: str, top_n: int = 0) -> List[dict]:
             }
         )
     return result
-
-
-def build_arena_lookup(arena_data: List[dict]) -> Dict[str, dict]:
-    """Build a normalized lookup, keeping the highest rating per model."""
-
-    lookup: Dict[str, dict] = {}
-    for entry in arena_data:
-        model_id = entry.get("model_id")
-        if not model_id:
-            continue
-        if model_id not in lookup or entry.get("rating", 0) > lookup[model_id].get("rating", 0):
-            lookup[model_id] = entry
-    return lookup
-
-
-def get_confidence(match_type: str) -> str:
-    """Return the user-facing confidence for an Arena fallback."""
-
-    if match_type == "direct_match":
-        return "high"
-    if match_type in ("contributor_suffix", "version_downgrade"):
-        return "medium"
-    if match_type in ("prefix_match", "free_default"):
-        return "low"
-    return "none"
 
 
 def _snapshot_entry(entry: Mapping[str, Any]) -> dict:

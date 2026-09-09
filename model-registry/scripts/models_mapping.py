@@ -41,12 +41,18 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 from csv_io import read_mapping, write_mapping  # noqa: E402
-from name_matching import find_best_match, normalize_arena_name  # noqa: E402
+from name_matching import (  # noqa: E402
+    find_best_match,
+    normalize_arena_name,
+    unrecognized_variant_suffix,
+)
 
 PLAN_SCHEMA_VERSION = 3
 EXTRA_SCHEMA_VERSION = 1
 REMARK_FIELDS = ("rp5h", "usage_quota", "context_threshold", "peak_hours", "retention")
 FREE_USAGE_QUOTA_DEFAULT = 60
+# Fallback for free models whose channel offers no non-free rp5h to derive from.
+FREE_RP5H_DEFAULT = 1000
 DEFAULT_WEIGHTS = {
     "score": 0.35,
     "rp5h": 0.30,
@@ -383,12 +389,14 @@ def fill_free_records(
     for channel, records in sorted(per_channel.items()):
         non_free = [
             _number(record.get("rp5h"), 0.0) or 0.0
-            for model_id, record in records.items()
-            if "free" not in model_id.lower()
+            for record in records.values()
+            if not record.get("free")
         ]
         max_rp5h = max(non_free) if non_free else 0.0
+        if max_rp5h <= 0:
+            max_rp5h = FREE_RP5H_DEFAULT
         for model_id, record in sorted(records.items()):
-            if "free" not in model_id.lower():
+            if not record.get("free"):
                 continue
             filled: list[str] = []
             derived = int(max_rp5h) if float(max_rp5h).is_integer() else max_rp5h
@@ -591,7 +599,7 @@ def compute_mapping_for_request_model(
 def _confidence(match_type: str) -> str:
     if match_type == "direct_match":
         return "high"
-    if match_type in ("contributor_suffix", "version_downgrade", "free_inherited"):
+    if match_type in ("variant_suffix", "version_downgrade"):
         return "medium"
     if match_type in ("prefix_match", "free_default"):
         return "low"
@@ -670,31 +678,35 @@ def plan_from(
     for canonical in sorted(registry):
         entry = registry[canonical]
         record = entry["record"]
-        is_free = "free" in canonical.lower()
+        # Freeness is a declared channel fact (`free: true`), never guessed
+        # from the id spelling.
+        is_free = record.get("free") is True
         # is_free=False keeps the free_default 0-score fallback out of the
-        # way: free models inherit their base variant's score instead.
+        # way: variant suffixes inherit their base model's score in the
+        # chain, and remaining free models default below.
         match, match_type = find_best_match(canonical, dict(arena_models))
         arena_score = _number((match or {}).get("rating"))
-        if match_type == "no_match" and is_free:
-            base = _variant_base(canonical)
-            base_entry = arena_models.get(base)
-            if isinstance(base_entry, Mapping) and _number(base_entry.get("rating")) is not None:
-                arena_score = _number(base_entry.get("rating"))
-                match_type = "free_inherited"
+        if match_type == "no_match":
+            suffix = unrecognized_variant_suffix(canonical)
+            if suffix:
                 warnings.append(
-                    {"type": "arena_inherited", "model": canonical, "from": base, "score": arena_score}
+                    {
+                        "type": "unrecognized_variant_suffix",
+                        "model": canonical,
+                        "suffix": suffix,
+                    }
                 )
-            else:
+            if is_free:
                 arena_score = FREE_DEFAULT_ARENA_SCORE
                 match_type = "free_defaulted"
                 warnings.append(
                     {"type": "arena_defaulted", "model": canonical, "score": FREE_DEFAULT_ARENA_SCORE}
                 )
-        elif match_type == "no_match":
-            arena_score = DEFAULT_ARENA_SCORE
-            warnings.append(
-                {"type": "arena_defaulted", "model": canonical, "score": DEFAULT_ARENA_SCORE}
-            )
+            else:
+                arena_score = DEFAULT_ARENA_SCORE
+                warnings.append(
+                    {"type": "arena_defaulted", "model": canonical, "score": DEFAULT_ARENA_SCORE}
+                )
         elif match_type not in ("direct_match", "free_default"):
             warnings.append(
                 {"type": "candidate_arena_fallback", "model": canonical, "match_type": match_type}
@@ -724,6 +736,7 @@ def plan_from(
             {
                 "model_id": canonical,
                 "channel": entry["channel"],
+                "free": is_free,
                 "rp5h": rp5h,
                 "arena_score": arena_score,
                 "match_type": match_type,
@@ -763,10 +776,10 @@ def plan_from(
     # lowest-scored requests' formula targets.
     scored_requests.sort(key=lambda item: (float(item["arena_score"]), str(item["model_id"])))
     free_candidates = sorted(
-        (c for c in candidates if "free" in c["model_id"].lower()),
+        (c for c in candidates if c["free"]),
         key=lambda c: ((c["arena_score"] if c["arena_score"] is not None else 0.0), c["model_id"]),
     )
-    non_free_candidates = [c for c in candidates if "free" not in c["model_id"].lower()]
+    non_free_candidates = [c for c in candidates if not c["free"]]
 
     resolved: dict[str, tuple[Optional[str], str]] = {}
     for request in scored_requests:

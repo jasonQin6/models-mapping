@@ -9,6 +9,7 @@ Public interface:
   - normalize(name) -> str: core normalization for model names
   - normalize_arena_name(name) -> (str, Optional[str]): arena-specific cleanup + effort extraction
   - find_best_match(csv_id, arena_lookup, is_free=False) -> (Optional[dict], str): 5-layer fallback chain
+  - unrecognized_variant_suffix(model_id) -> Optional[str]: variant-looking tail outside the registry
 """
 
 import re
@@ -17,6 +18,14 @@ from typing import Dict, Optional, Tuple
 # Qwen uses "max" in model names (e.g., qwen3.8-max), which conflicts with
 # effort level extraction. Skip effort extraction for these prefixes.
 EFFORT_EXEMPT_PREFIXES = ("qwen",)
+
+# Variant suffixes the matching chain may strip to inherit the base model's
+# Arena score. Series names (-flash, -max) and speed marketing (-fast,
+# -highspeed, excluded upstream) must never enter: stripping them would put
+# one real model's score onto a different model. A new marketing suffix
+# (e.g. -vl once it spreads) is promoted here after human triage of the
+# `unrecognized_variant_suffix` warning.
+MATCH_VARIANT_SUFFIXES = ("-contributor", "-free", "-vl")
 
 
 def normalize(name: str) -> str:
@@ -95,32 +104,33 @@ def find_best_match(
     
     Implements a 5-layer fallback chain:
       1. Direct match
-      2. Remove "-contributor" suffix
+      2. Known variant suffix (contributor/free/vl) -> base model
       3. Version downgrade (e.g., qwen3.7-plus -> qwen3.6-plus)
       4. Prefix match with wildcard (e.g., claude-haiku -> claude-haiku-*)
       5. Free model default (arena_score=0) if is_free=True
-    
+
     Args:
         csv_id: normalized model_id from CSV
         arena_lookup: dict mapping arena model_id -> arena entry dict
         is_free: if True, return a default entry when no match found
-    
+
     Returns:
         (arena_entry, match_type) where:
         - arena_entry: dict with keys {rating, organization, effort}
           or None if no match found and not is_free
-        - match_type: one of 'direct_match', 'contributor_suffix', 'version_downgrade',
+        - match_type: one of 'direct_match', 'variant_suffix', 'version_downgrade',
           'prefix_match', 'free_default', 'no_match'
     """
     # Layer 1: Direct match
     if csv_id in arena_lookup:
         return (arena_lookup[csv_id], 'direct_match')
-    
-    # Layer 2: Remove -contributor suffix
-    if csv_id.endswith('-contributor'):
-        alt_id = csv_id[:-len('-contributor')]
-        if alt_id in arena_lookup:
-            return (arena_lookup[alt_id], 'contributor_suffix')
+
+    # Layer 2: Known variant suffix -> base model
+    for suffix in MATCH_VARIANT_SUFFIXES:
+        if csv_id.endswith(suffix):
+            base_id = csv_id[: -len(suffix)]
+            if base_id in arena_lookup:
+                return (arena_lookup[base_id], 'variant_suffix')
     
     # Layer 3: Version downgrade
     match = re.match(r'^(.+?)(\d+)\.(\d+)(.*)$', csv_id)
@@ -151,5 +161,25 @@ def find_best_match(
             'organization': 'Unknown',
             'effort': None,
         }, 'free_default')
-    
+
     return (None, 'no_match')
+
+
+def unrecognized_variant_suffix(model_id: str) -> Optional[str]:
+    """Return the trailing token when it looks like a new variant suffix.
+
+    A candidate that matches nothing while ending in an alphabetic
+    ``-token`` outside ``MATCH_VARIANT_SUFFIXES`` probably carries a
+    marketing suffix the registry has never seen; the planner surfaces it
+    as an ``unrecognized_variant_suffix`` warning for human triage instead
+    of silently defaulting the score. Versioned tails (``-a55b``,
+    ``-0902``, ``qwen3.8-27b``) are parameter/size naming, never flagged.
+    """
+    if "-" not in model_id:
+        return None
+    tail = model_id.rsplit("-", 1)[-1]
+    if not tail or not tail.isascii() or not tail.isalpha():
+        return None
+    if f"-{tail}" in MATCH_VARIANT_SUFFIXES:
+        return None
+    return tail

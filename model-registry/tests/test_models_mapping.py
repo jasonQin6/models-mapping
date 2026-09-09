@@ -149,7 +149,7 @@ def test_free_fill_recomputes_from_owning_channel() -> None:
     # The free model belongs to the goat channel, so its quotas must derive
     # from goat's non-free max (500), not from any other channel's values.
     sections = {
-        "commandcode-goat": {"freebie": _rec(rp5h=None, quota=None), "paid": _rec(rp5h=500)},
+        "commandcode-goat": {"freebie": _rec(rp5h=None, quota=None, free=True), "paid": _rec(rp5h=500)},
     }
 
     _rows, plan = _plan(sections, arena={"paid": 1500.0})
@@ -161,12 +161,66 @@ def test_free_fill_recomputes_from_owning_channel() -> None:
     assert any(w["type"] == "free_default_filled" and w["provider"] == "commandcode-goat" for w in plan["warnings"])
 
 
+def test_variant_suffix_candidate_inherits_base_score() -> None:
+    # -vl on the candidate side reaches the base model's hand-assigned
+    # arena record through the chain's variant-suffix layer.
+    sections = {"ant": {"ling-3.0-flash-vl": _rec(name="Ling 3.0 Flash VL", rp5h=500)}}
+    arena = {"ling-3.0-flash": 1458.0}
+
+    rows, plan = _plan(sections, arena=arena)
+
+    candidates = {row["model_id"]: row for row in rows if row["role"] == "candidate"}
+    assert candidates["ling-3.0-flash-vl"]["arena_score"] == "1458"
+    assert any(
+        w["type"] == "candidate_arena_fallback" and w["match_type"] == "variant_suffix"
+        for w in plan["warnings"]
+    )
+
+
+def test_unrecognized_variant_suffix_surfaces_for_triage() -> None:
+    # A never-seen alphabetic suffix on an unmatched model is raised for
+    # human review instead of silently taking the 1500 default.
+    sections = {"ant": {"ling-3.0-flash-vq": _rec(name="Ling 3.0 Flash VQ", rp5h=500)}}
+    arena = {"ling-3.0-flash": 1458.0}
+
+    _rows, plan = _plan(sections, arena=arena)
+
+    assert any(
+        w["type"] == "unrecognized_variant_suffix"
+        and w["model"] == "ling-3.0-flash-vq"
+        and w["suffix"] == "vq"
+        for w in plan["warnings"]
+    )
+
+
+def test_free_declaration_and_rp5h_fallback() -> None:
+    # Freeness comes from the record flag, not the id; a channel with no
+    # non-free rp5h basis fills the free pool with the 1000 default.
+    sections = {
+        "ant": {
+            "ling-3.0-flash": _rec(rp5h=None, quota=None, free=True),
+            "qwen3.8-flash": _rec(rp5h=None),
+        },
+    }
+    arena = {"ling-3.0-flash": 1458.0}
+
+    rows, plan = _plan(sections, arena=arena)
+
+    models = {m["modelID"]: m for m in plan["models"]}
+    remark = json.loads(models["ling-3.0-flash"]["input"]["remark"])
+    assert remark["rp5h"] == 1000
+    assert remark["usage_quota"] == 60
+    candidates = {row["model_id"]: row for row in rows if row["role"] == "candidate"}
+    assert candidates["ling-3.0-flash"]["arena_score"] == "1458"
+    assert any(w["type"] == "free_default_filled" and w["provider"] == "ant" for w in plan["warnings"])
+
+
 def test_claude_mapping_uses_formula_and_baseline_routing() -> None:
     sections = {
         "opencode-go": {
             "muse-spark-1.2": _rec(rp5h=800),      # arena 1200, close to haiku
             "qwen3.8-max": _rec(rp5h=100),          # arena 1600, far above
-            "freebie": _rec(rp5h=500),              # free, arena 0 via free_default
+            "freebie": _rec(rp5h=500, free=True),   # free, arena 1500 default
         },
     }
     requests = [
@@ -360,8 +414,8 @@ def test_free_fill_pairs_lowest_request_with_lowest_free_model() -> None:
     # sonnet-4-6 gets longcat; the rest fall through to the formula.
     sections = {
         "commandcode-goat": {
-            "laguna-s-2.1-free": _rec(rp5h=None),
-            "longcat-2.0-free": _rec(rp5h=None),
+            "laguna-s-2.1-free": _rec(rp5h=None, free=True),
+            "longcat-2.0-free": _rec(rp5h=None, free=True),
             "muse-spark-1.3-contributor": _rec(rp5h=45300),
             "paid-filler": _rec(rp5h=900),
         },

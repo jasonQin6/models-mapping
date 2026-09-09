@@ -4,39 +4,14 @@
   },
   "channels": {
     "ant": {
-      "ling-3.0-flash-fin": {
+      "ling-3.0-flash": {
         "context_threshold": null,
         "cost": {
           "input": 0,
           "output": 0
         },
-        "name": "Ling 3.0 Flash Fin",
-        "peak_hours": null,
-        "retention": null,
-        "rp5h": null,
-        "tok_s": null,
-        "usage_quota": null
-      },
-      "ling-3.0-flash-sante": {
-        "context_threshold": null,
-        "cost": {
-          "input": 0,
-          "output": 0
-        },
-        "name": "Ling 3.0 Flash Sante",
-        "peak_hours": null,
-        "retention": null,
-        "rp5h": null,
-        "tok_s": null,
-        "usage_quota": null
-      },
-      "ling-3.0-flash-vl": {
-        "context_threshold": null,
-        "cost": {
-          "input": 0,
-          "output": 0
-        },
-        "name": "Ling 3.0 Flash VL",
+        "free": true,
+        "name": "Ling 3.0 Flash",
         "peak_hours": null,
         "retention": null,
         "rp5h": null,
@@ -327,6 +302,7 @@
           "input": 0.0,
           "output": 0.0
         },
+        "free": true,
         "name": "Laguna S 2.1",
         "rp5h": null,
         "tok_s": null,
@@ -338,6 +314,7 @@
           "input": 0.0,
           "output": 0.0
         },
+        "free": true,
         "name": "LongCat 2.0",
         "rp5h": null,
         "tok_s": null,
