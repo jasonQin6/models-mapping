@@ -24,10 +24,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.request import Request, urlopen
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-
-from error_state import clear_error, dump_page, persist_error  # noqa: E402
-from models_extra import (  # noqa: E402
+from error_state import clear_error, dump_page, persist_error
+from models_extra import (
     DEFAULT_EXTRA_PATH,
     is_excluded_model,
     update_channel,
@@ -38,10 +36,6 @@ GO_MDX_URL = (
     "https://raw.githubusercontent.com/anomalyco/opencode/"
     "dev/packages/web/src/content/docs/go.mdx"
 )
-GO_COMMIT_API_URL = (
-    "https://api.github.com/repos/anomalyco/opencode/commits"
-    "?path=packages/web/src/content/docs/go.mdx&sha=dev&per_page=1"
-)
 CHANNEL = "go"
 
 
@@ -51,23 +45,6 @@ def fetch_url(url: str, timeout: int = 30) -> str:
     request = Request(url, headers={"User-Agent": "models-mapping/watch-go"})
     with urlopen(request, timeout=timeout) as response:
         return response.read().decode("utf-8")
-
-
-def fetch_latest_commit(url: str = GO_COMMIT_API_URL) -> Optional[str]:
-    """Return the latest source commit, or ``None`` when unavailable."""
-
-    try:
-        payload = json.loads(fetch_url(url))
-    except (OSError, ValueError):
-        return None
-
-    if isinstance(payload, list) and payload:
-        first = payload[0]
-        if isinstance(first, dict):
-            commit = first.get("sha")
-            if commit:
-                return str(commit)
-    return None
 
 
 def _json_value(value: Any) -> Any:
@@ -306,10 +283,6 @@ def main(argv: Optional[list[str]] = None) -> int:
     )
     parser.add_argument("--url", default=GO_MDX_URL, help="go.mdx source URL")
     parser.add_argument(
-        "--source-commit",
-        help="Source commit (stored nowhere; for logging only)",
-    )
-    parser.add_argument(
         "--extra",
         type=Path,
         default=DEFAULT_EXTRA_PATH,
@@ -335,8 +308,6 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     clear_error(CHANNEL)
     print(f"watch-go: {len(models)} Go models -> {args.extra}")
-    if args.source_commit:
-        print(f"watch-go: source commit {args.source_commit}")
     return 0
 
 

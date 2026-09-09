@@ -126,11 +126,6 @@ def test_fetch_url_raises_when_curl_also_fails(monkeypatch):
         fetch_url("https://example.test/leaderboard")
 
 
-if __name__ == "__main__":
-    import pytest
-    pytest.main([__file__, "-v"])
-
-
 def test_manual_entries_survive_leaderboard_runs(tmp_path):
     """Hand-assigned scores persist; delisted auto entries do not."""
     import json

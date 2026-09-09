@@ -15,7 +15,6 @@ Hard gates (any hit -> no write, last-error.json persisted):
 
 Channel-provided ``claude-*`` models are not collected (ADR 0012): Claude
 requests are served by self-built AxonHub models mapped by arena score.
-Intelligence scoring drives model selection only and is not stored.
 
 Stdlib only. Pipeline entrypoint; see .github/workflows/watch-pipeline.yml.
 Usage: watch_goat.py [--url URL] [--html FILE] [--extra PATH]
@@ -28,7 +27,7 @@ import re
 import sys
 import urllib.request
 from pathlib import Path
-from typing import Any, Iterator, Mapping, Optional
+from typing import Any, Optional
 
 from error_state import clear_error, error_dump_path, persist_error
 from models_extra import (
@@ -37,12 +36,8 @@ from models_extra import (
     update_channel,
 )
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-
 URL = "https://commandcode.ai/docs/plans/goat"
 CHANNEL = "goat"
-
-VERSION = re.compile(r"\d+(?:\.\d+)+")
 
 Cell = tuple[str, Optional[str], str]
 
@@ -95,60 +90,6 @@ def cell_model_name(cell_html: str) -> str:
     return strip_tags(re.sub(r"<button.*?</button>", "", cell_html, flags=re.DOTALL))
 
 
-def build_score_index(universe: dict[str, tuple[str, str]]) -> dict[str, tuple[str, str]]:
-    idx: dict[str, tuple[str, str]] = {}
-    for name, (slug, score) in universe.items():
-        m = re.fullmatch(r"(\d+(?:\.\d+)?)", score.strip())
-        if m:
-            entry = (name, m.group(1))
-            idx.setdefault(name.lower(), entry)
-            idx.setdefault(slug, entry)
-    return idx
-
-
-def lookup_score(
-    idx: Mapping[str, tuple[str, str]], name: str
-) -> Optional[tuple[str, str]]:
-    return idx.get(name.lower()) or idx.get(slugify(name))
-
-
-def base_candidates(
-    name: str, idx: Mapping[str, tuple[str, str]]
-) -> Iterator[str]:
-    tokens = name.split()
-    chain = [" ".join(tokens[:-d]) for d in range(1, len(tokens))] + [name]
-    own = lookup_score(idx, name)
-    for cand in chain:
-        hit = lookup_score(idx, cand)
-        if hit and hit != own:
-            yield hit[0]
-    for cand in chain:
-        m = None
-        for m in VERSION.finditer(cand):
-            pass
-        if m is None:
-            continue
-        cur = tuple(int(p) for p in m.group().split("."))
-        preds: list[tuple[tuple[int, ...], str]] = []
-        seen: set[str] = set()
-        for canonical, _score in idx.values():
-            if canonical in seen:
-                continue
-            seen.add(canonical)
-            om = None
-            for om in VERSION.finditer(canonical):
-                pass
-            if om is None:
-                continue
-            ov = tuple(int(p) for p in om.group().split("."))
-            rebuilt = cand[: m.start()] + om.group() + cand[m.end() :]
-            hit = lookup_score(idx, rebuilt)
-            if ov < cur and hit and hit[0] == canonical:
-                preds.append((ov, canonical))
-        for _ov, canonical in sorted(preds, reverse=True):
-            yield canonical
-
-
 def parse_price(raw: str) -> Optional[float]:
     t = raw
     if "<" in t:
@@ -177,7 +118,7 @@ def parse_price(raw: str) -> Optional[float]:
 def parse_quota(raw: str) -> Optional[int]:
     t = strip_tags(raw) if "<" in raw else str(raw)
     t = t.replace(",", "").strip()
-    if not t or t in ("—", "-", "?", "?"):
+    if not t or t in ("—", "-", "?"):
         return None
     try:
         return int(float(t))
@@ -275,6 +216,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     )
     args = ap.parse_args(argv)
 
+    dump_ref: Optional[Path] = None
     try:
         html = fetch_html(args.url, args.html)
         tables = parse_tables(html)
@@ -288,11 +230,11 @@ def main(argv: Optional[list[str]] = None) -> int:
             if col_index(hdr, {"requests / 5 hours"}) is not None:
                 quota_rows = rows
         if main_rows is None or quota_rows is None:
-            dump: Path = args.dump_html or error_dump_path(CHANNEL)
-            dump.parent.mkdir(parents=True, exist_ok=True)
-            dump.write_text(html, encoding="utf-8")
+            dump_ref = args.dump_html or error_dump_path(CHANNEL)
+            dump_ref.parent.mkdir(parents=True, exist_ok=True)
+            dump_ref.write_text(html, encoding="utf-8")
             raise ValueError(
-                f"page structure changed; Intelligence or quota table not found. HTML saved to {dump} for adaptation."
+                f"page structure changed; Intelligence or quota table not found. HTML saved to {dump_ref} for adaptation."
             )
 
         mi = col_index(main_rows[0], {"model"})
@@ -335,7 +277,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             qname = strip_tags(row[qmi][0]) if qmi is not None else ""
             quota_by_norm[norm_name(qname)] = parse_quota(row[qi][0]) if qi is not None else None
 
-        universe: dict[str, tuple[str, str]] = {}
+        entries: list[tuple[str, str]] = []
         main_by_norm: dict[str, dict] = {}
         skipped_rows = 0
         for row in main_rows[1:]:
@@ -344,12 +286,10 @@ def main(argv: Optional[list[str]] = None) -> int:
                 continue
             name = cell_model_name(row[mi][2])
             slug = row[mi][1] or slugify(name)
-            score = row[ii][0]
-            universe[name] = (slug, score)
+            entries.append((name, slug))
             main_by_norm[norm_name(name)] = {
                 "name": name,
                 "slug": slug,
-                "score": score,
                 "tok_raw": row[tok_i][2] if tok_i is not None and len(row) > tok_i else None,
                 "input_raw": row[inp_i][2] if inp_i is not None and len(row) > inp_i else None,
                 "output_raw": row[out_i][2] if out_i is not None and len(row) > out_i else None,
@@ -357,24 +297,8 @@ def main(argv: Optional[list[str]] = None) -> int:
                 "cache_write_raw": row[cw_i][2] if cw_i is not None and len(row) > cw_i else None,
             }
 
-        idx = build_score_index(universe)
-        score_by_canonical = {c: s for c, s in idx.values()}
-        kept: list[tuple[str, str, str]] = []
-        for name, (slug, score) in universe.items():
-            if re.fullmatch(r"\d+(?:\.\d+)?", score.strip()):
-                kept.append((name, slug, score.strip()))
-            else:
-                inherited = None
-                for base in base_candidates(name, idx):
-                    inherited = (base, score_by_canonical[base])
-                    break
-                if inherited:
-                    kept.append((name, slug, inherited[1] + "*"))
-                else:
-                    kept.append((name, slug, "50"))
-
         models: dict[str, dict] = {}
-        for name, slug, _score_text in kept:
+        for name, slug in entries:
             mid = to_model_id(slug)
             if is_excluded_model(mid):
                 continue
@@ -405,7 +329,6 @@ def main(argv: Optional[list[str]] = None) -> int:
 
         update_channel(args.extra, "commandcode-goat", models)
     except (OSError, ValueError) as exc:
-        dump_ref = error_dump_path(CHANNEL) if error_dump_path(CHANNEL).exists() else None
         persist_error(CHANNEL, "watch_goat.py", str(exc), dump_ref)
         print(f"watch-goat: {exc}", file=sys.stderr)
         return 1
