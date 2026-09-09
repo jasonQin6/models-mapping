@@ -8,9 +8,10 @@ document leaves the section (ADR 0011).  The section carries channel-declared
 facts only (quotas, prices, remark thresholds); public card data is filled at
 planning time from ``data/all_models.json``, never here.
 
-Channel-provided ``claude-*`` models are not collected (ADR 0012).  Free
-models keep the parser's zero prices; quota backfill is re-derived at
-planning time from the model's owning channel so the rule lives in one place.
+Channel-provided ``claude-*`` models are not collected (ADR 0012).  The
+parser transcribes declarations only — the document's zero prices are kept
+as-is, and free quotas are re-derived at planning time from the model's
+owning channel so the rule lives in one place.
 """
 
 from __future__ import annotations
@@ -86,7 +87,7 @@ def build_go_section(content: str) -> Dict[str, dict]:
     goat section), and the remark thresholds the document states.
     """
 
-    parsed = parse_mdx(content, include_incomplete=True)
+    parsed = parse_mdx(content)
     models: Dict[str, dict] = {}
     for key, source in parsed.items():
         model_id = str(source.get("model_id") or key).strip()

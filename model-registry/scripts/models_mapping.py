@@ -432,9 +432,17 @@ def _cost_from_model(model: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _merge_channel_cost(card: Mapping[str, Any], record: Mapping[str, Any]) -> dict[str, Any]:
-    """Start from the card cost and overwrite with non-null channel values."""
+    """Start from the card cost and overwrite with non-null channel values.
 
-    cost = _cost_from_model(card)
+    A free record is the channel declaring every price zero: cost fields it
+    leaves silent start at 0 so the card's list price cannot leak into a
+    free model's card.
+    """
+
+    if record.get("free") is True:
+        cost = {key: 0 for key in ("input", "output", "cacheRead", "cacheWrite")}
+    else:
+        cost = _cost_from_model(card)
     channel_cost = _as_dict(record.get("cost"))
     aliases = {"input": "input", "output": "output", "cache_read": "cacheRead", "cacheRead": "cacheRead",
                "cache_write": "cacheWrite", "cacheWrite": "cacheWrite"}

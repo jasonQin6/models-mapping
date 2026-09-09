@@ -44,14 +44,14 @@ def test_build_go_section_fixture_yields_channel_facts() -> None:
     assert bot["cost"]["cache_write"] == 0.375
 
 
-def test_free_model_keeps_zero_prices_and_parser_quota_backfill() -> None:
+def test_free_model_transcribes_declarations_without_backfill() -> None:
     models = build_go_section(_fixture_content())
 
     freebie = models["freebie"]
-    # parse_mdx backfills blank free quotas from the largest non-free values;
-    # planning re-derives them against the model's owning channel.
-    assert freebie["rp5h"] == 1000
-    assert freebie["usage_quota"] == 60
+    # Collection transcribes declarations only: the usage row is "-" and the
+    # pricing row declares $0.  Deriving free quotas is the planner's job.
+    assert freebie["rp5h"] is None
+    assert freebie["usage_quota"] is None
     assert freebie["cost"] == {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0}
 
 

@@ -10,6 +10,10 @@ optional `channelAliases`, and the `input` the write path applies.
 - **Channel cost wins** — the card's `cost` starts, then each
   channel-declared field (`input`, `output`, `cache_read`, `cache_write`)
   overwrites field by field; null channel values keep the card value.
+- **Free zeroes silent prices** — a `free: true` record is the channel
+  declaring every price zero: cost fields it leaves silent start at 0
+  instead of the card's list price; declared values still win field by
+  field.
 - **Nothing is invented** — a model with no card is planned from
   channel-claimed data alone and reported as `card_missing`.
 - **Remark** — the plan recomputes the structured fields (`rp5h`,

@@ -11,11 +11,9 @@ Extracts data from four markdown tables:
 Handles pricing variants (context length, peak/off-peak) by keeping the
 cheapest output price as base and recording max_price_output.
 
-Free models (model_id contains "free") get special treatment:
-- rp5h = max of other models
-- usage_quota = max of other models
-- price = 0
-This logic is in fix_free_model(), called only when free models are detected.
+The parser transcribes declarations only: undeclared cells stay None and no
+value is derived from other rows — free-model backfill and any other
+cleaning belong to the planning layer (models_mapping.py).
 """
 
 import re
@@ -168,46 +166,7 @@ def merge_model(existing: dict, new_data: dict) -> dict:
     return result
 
 
-def fix_free_model(model: dict, all_models: Dict[str, dict]) -> dict:
-    """Fix free model by setting rp5h and usage_quota to max of other models.
-    
-    Called only when model_id contains "free".
-    This is a one-time fix; users can manually update the CSV later.
-    """
-    if 'free' not in model.get('model_id', '').lower():
-        return model
-    
-    # Find max rp5h and usage_quota from non-free models
-    max_rp5h = 0
-    max_usage = 0
-    
-    for key, m in all_models.items():
-        if 'free' in key.lower():
-            continue
-        rp5h = m.get('rp5h')
-        if rp5h is not None and rp5h > max_rp5h:
-            max_rp5h = rp5h
-        usage = m.get('usage_quota')
-        if usage is not None and usage > max_usage:
-            max_usage = usage
-    
-    # Apply fixes only to missing values.  A free model may acquire an
-    # explicit limit in the upstream document in the future; keep that value
-    # instead of silently replacing it with a derived one.
-    if model.get('rp5h') in (None, ''):
-        model['rp5h'] = max_rp5h
-    if model.get('usage_quota') in (None, ''):
-        model['usage_quota'] = max_usage
-    model['price_input'] = 0.0
-    model['price_output'] = 0.0
-    model['max_price_output'] = 0.0
-    model['price_cached_read'] = 0.0
-    model['price_cached_write'] = 0.0
-    
-    return model
-
-
-def parse_mdx(content: str, include_incomplete: bool = False) -> Dict[str, dict]:
+def parse_mdx(content: str) -> Dict[str, dict]:
     models = {}
     peak_hours = extract_peak_hours(content)
 
@@ -341,25 +300,4 @@ def parse_mdx(content: str, include_incomplete: bool = False) -> Dict[str, dict]
                     'retention': retention_days,
                 })
 
-    # 4. Fix free models
-    free_models = [key for key in models if 'free' in key.lower()]
-    if free_models:
-        for key in free_models:
-            models[key] = fix_free_model(models[key], models)
-
-    # 5. Historically this parser emitted only models with complete quota
-    # data.  The JSON source pipeline must retain every model listed in the
-    # document so that the sync skill can report missing fields, therefore it
-    # can opt out of this legacy filter with include_incomplete=True.
-    if include_incomplete:
-        return models
-
-    # Filter out incomplete models (missing rp5h or usage_quota), but keep free
-    # models (they were just fixed).
-    complete_models = {}
-    for key, model in models.items():
-        if 'free' in key.lower():
-            complete_models[key] = model
-        elif model.get('rp5h') is not None and model.get('usage_quota') is not None:
-            complete_models[key] = model
-    return complete_models
+    return models

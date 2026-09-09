@@ -239,6 +239,35 @@ def test_free_declaration_and_rp5h_fallback() -> None:
     assert any(w["type"] == "free_default_filled" and w["provider"] == "ant" for w in plan["warnings"])
 
 
+def test_free_record_zeroes_silent_cost_fields() -> None:
+    # `free: true` declares every price zero: card list prices may not leak
+    # into cost fields the channel leaves silent; a non-free control keeps
+    # the card values.
+    sections = {
+        "ant": {
+            "free-a": _rec(rp5h=None, quota=None, free=True, cost={}),
+            "paid": _rec(rp5h=500, cost={}),
+        },
+    }
+    card = {"name": "Same Card", "cost": {"input": 2, "output": 8, "cache_read": 0.2, "cache_write": 0.8}}
+
+    _rows, plan = _plan(sections, cards={"free-a": card, "paid": dict(card)}, arena={})
+
+    models = {m["modelID"]: m for m in plan["models"]}
+    assert models["free-a"]["input"]["modelCard"]["cost"] == {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+    }
+    assert models["paid"]["input"]["modelCard"]["cost"] == {
+        "input": 2,
+        "output": 8,
+        "cacheRead": 0.2,
+        "cacheWrite": 0.8,
+    }
+
+
 def test_claude_mapping_uses_formula_and_baseline_routing() -> None:
     sections = {
         "opencode-go": {
