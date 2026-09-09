@@ -49,4 +49,4 @@ Claude 全局模型（claude-opus-5、claude-sonnet-5 等）是 AxonHub 中一�
 - `watch-pipeline`：维护 watch-pipeline.yml、采集脚本（`watch-pipeline/scripts/watch_*.py`、`models_extra.py`）与全部采集渠道；每渠道字段契约在 `watch-pipeline/reference/<channel>/extra.json`，脚本失败留痕于 `reference/<channel>/last-error.json`（成功后自删），修复流程见其 `SKILL.md`。
 - `model-registry`：把 `data/*.json` 离线变换为去重后的模型登记与 AxonHub 写入材料——`models.csv` 映射建议、catalog plan；只读规划，不联网，不写 AxonHub，详见其 `SKILL.md`。
 - `axonhub-admin`：唯一面向 AxonHub 写入、持有其凭据的 skill；按其 `SKILL.md` 的交互式执行程序（确认 → 读远端 → 逐项写入 → 回读验证 → 汇报）落地确认后的 catalog plan 与 `models.csv` 映射表，以及日常 channel/model 运维。渠道的 tags/weights 等期望状态以 AxonHub 系统内现状为准，不在仓库中另存副本。
-- 名字归一与匹配只在计算层发生：`model-registry/scripts/{csv_io,name_matching}.py` 归 `model-registry`（`csv_io` 是 models.csv 列契约，`name_matching` 是 Arena 名归一与匹配链）；`watch-pipeline/scripts/parse_opencode_mdx.py` 归 `watch-pipeline`（go.mdx 清单解析器）。采集层只存原始榜名，归一在规划装载时进行。
+- 名字归一与匹配只在计算层发生：`model-registry/scripts/{csv_io,name_matching}.py` 归 `model-registry`（`csv_io` 是 models.csv 列契约，`name_matching` 是 Arena 名归一与匹配链）。采集层只存原始事实，名字归一在规划装载时进行。
