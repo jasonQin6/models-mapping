@@ -1,6 +1,6 @@
 ---
 name: model-registry
-description: Offline planner that turns watch-pipeline snapshots into a deduplicated model registry, Claude mapping suggestions (models.csv), and a schema-2 catalog plan for AxonHub. Dedupes models_extra across channels by highest rp5h, fills cards from models.dev, scores Claude mappings by Arena formula. Read-only planner; execution belongs to axonhub-admin.
+description: Offline planner that turns watch-pipeline snapshots into a deduplicated model registry, Claude mapping suggestions (models.csv), and a schema-3 catalog plan for AxonHub. Dedupes models_extra across channels by highest rp5h, fills cards from models.dev, scores Claude mappings by Arena formula. Read-only planner; execution belongs to axonhub-admin.
 ---
 
 # Model Registry
@@ -15,20 +15,20 @@ Inputs (all committed snapshots, fully offline):
 
 - `data/models_extra.json` — channel-declared facts per `channels.<channel>.<model_id>`:
   `rp5h`, `usage_quota`, `cost{}`, `tok_s` (goat only), `context_threshold`,
-  `peak_hours`, `retention`.
+  `peak_hours`, `retention`; a hand-maintained `exclude` reason on a record
+  keeps the model out of the registry.
 - `data/all_models.json` — models.dev flat `vendor/model` catalog; the only
   card source (never a list source).
 - `data/arena.json` — Arena scores feeding the mapping formula.
-- `config/request-models.json` — fixed request models; only `claude-*` rows
-  enter the mapping (GPT is pass-through).
-- `config/model-decisions.json` — `scope.channels` (provider→channel),
-  per-model exclude/supplement, `mapping_overrides`.
+- `models.csv` — the mapping workspace; its `role=request` rows are the
+  hand-maintained request-model list and the only cells read back (GPT rows
+  are pass-through and reported as ignored).
 
 ## Plan
 
 ```bash
 python3 model-registry/scripts/models_mapping.py \
-  --csv-output models.csv \
+  --csv models.csv \
   --plan-output /tmp/catalog-plan.json \
   --fail-on-errors
 ```
@@ -40,8 +40,9 @@ Pipeline, in order:
    cross-channel spellings. Channel lists keep native ids; the registry and
    `plan.models[]` use the canonical id, with `channelAliases` describing
    per-channel exposure for routing.
-2. **Collector excludes** — records stamped `exclude`
-   (`-fast`/`-highspeed` speed variants) are skipped with a warning.
+2. **Excluded records** — ids ending `-fast`/`-highspeed` (speed-marketing
+   variants) and records carrying a hand-maintained `exclude` reason are
+   skipped with a warning.
 3. **Dedupe** — a model id listed by several channels belongs to the channel
    with the highest `rp5h` (null loses to a value, ties keep the
    alphabetically first channel); every resolution reports
@@ -61,16 +62,14 @@ Pipeline, in order:
    1500 (`rp5h_missing_excluded`) and kept with a review warning at or above
    it (`rp5h_missing_review`, ineligible for target selection only).
 8. **Claude mapping** — (1) every request is scored by the
-   Arena/RP5H/proximity formula over non-free candidates; (2) free fill: the
-   free pool (ascending Arena score) is paired with the requests (ascending
-   Arena score), replacing the lowest-scored requests' targets
-   (`free_fill`); (3) `mapping_overrides` apply last. Request models may pin
-   `arena_score` in `config/request-models.json` (weights in
-   `data/formula.md`).
-9. **Outputs** — `models.csv` (reviewable: candidates for context, one
-   `mapping` per `claude-*` request row) and the schema-2 plan (per-channel
-   exact `supportedModels` with native ids, canonical model cards with
-   `channelAliases`, removals, warnings).
+   Arena/RP5H/proximity formula over non-free candidates; (2) free fill:
+   the free pool (ascending Arena score) is paired with the requests
+   (ascending Arena score), replacing the lowest-scored requests' targets
+   (`free_fill`). There are no overrides (weights in `data/formula.md`).
+9. **Outputs** — `models.csv` regenerated in place (request rows kept as
+   the input list, every other cell recomputed) and the schema-3 plan
+   (per-channel exact `supportedModels` with native ids keyed by section
+   name, canonical model cards with `channelAliases`, warnings).
 
 Missing request Arena evidence, unknown override targets, or source schema
 drift are blocking errors; with `--fail-on-errors` the run exits non-zero and

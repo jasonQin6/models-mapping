@@ -1,6 +1,6 @@
 ---
 name: axonhub-admin
-description: Operate AxonHub (AI gateway) over its admin GraphQL API — interactively execute confirmed catalog plans and mapping tables (channel supportedModels, model cards, removals, request-model routing) and view or change channels, models, and API-key templates. Use when the user asks to view or change anything in AxonHub without the web UI.
+description: Operate AxonHub (AI gateway) over its admin GraphQL API — interactively execute confirmed catalog plans and mapping tables (channel supportedModels, model cards, request-model routing) and view or change channels, models, and API-key templates. Use when the user asks to view or change anything in AxonHub without the web UI.
 ---
 
 # AxonHub Admin
@@ -13,7 +13,7 @@ The live JWT is read from a logged-in AxonHub browser session via the
 **browser-use skill**, then used for the rest of the run:
 
 1. Check `AXONHUB_JWT` in the environment — if non-empty, use it (valid for 7 days from sign-in).
-2. Otherwise open `https://axon.jasonqin.site/` with the browser-use skill and read the token from page context: `localStorage.getItem('axonhub_access_token')`. GraphQL calls can then be issued directly from page context (`fetch("/admin/graphql", …)`, same-origin) or exported as `AXONHUB_JWT` for curl.
+2. Otherwise open `https://axon.jasonqin.site/` with the browser-use skill and read the token from page context: `localStorage.getItem('axonhub_access_token')`. GraphQL calls can then be issued directly from page context (`fetch("/admin/graphql", …)`, same-origin) or exported as `AXONHUB_JWT` for curl. On the Node side of the browser-use kernel `fetch` is not a global — issue the call from page context, or use `node:https` with the exported token.
 3. If no logged-in session exists, ask the user to sign in first (or supply credentials for `POST /admin/auth/signin` with `{email, password}` — the response contains the token).
 
 Verify before proceeding:
@@ -33,16 +33,16 @@ Every AxonHub write happens in an interactive session by following this program.
 
 ### The four guardrails (hard, non-negotiable)
 
-1. **Touch managed channels only.** The managed set is the provider→channel scope in `config/model-decisions.json` (`scope.channels`) plus the managed templates (`scope.templates`). Nothing outside it is created, updated, or deleted — even when the GraphQL response makes it easy.
+1. **Touch managed channels only.** The managed set is the channel sections of `data/models_extra.json` (`ant`, `commandcode-goat`, `opencode-go`, `sensenova`); the AxonHub channel name equals the section name. Nothing outside it is created, updated, or deleted — even when the GraphQL response makes it easy. API-key profile templates are not managed by this project: the former `stable`/`claude`/`gpt` maintenance flow is retired (ADR 0014), and template mappings live directly in the AxonHub UI.
 2. **Preserve unmanaged associations and external references.** Association lists are replaced per model: keep every rule that does not belong to this write. A model object referenced by an external (non-managed) channel's `supportedModels`, or by any association of another model, is never deleted — retain it and report.
 3. **Read before write.** Fetch the live object immediately before each mutation. Never write from the plan alone or from a cached read; live state is the only write basis.
-4. **Write then verify, no speculative retries.** Read back every write and compare field by field. A mismatch or a failed item is reported as-is — never retried blindly, never rolled back speculatively.
+4. **Write then verify; retry only with verification.** Read back every write and compare field by field. This deployment intermittently rejects valid payloads with `unknown field` (see quirks below); such failures may be retried with a short backoff — writes are wholesale replacements, so re-issuing the same confirmed input is idempotent, and every retry is followed by a fresh read-back. Persistent errors are shape problems (e.g. a bare `when` condition), not flakes: fix the input shape or report the item, never retry blindly.
 
 ### Confirmation (AskUserQuestion)
 
 Two independent confirmations; confirming one never authorizes the other:
 
-- **Catalog plan** — the offline plan JSON from `model-registry/scripts/models_mapping.py` (schema 2, desired state): per-channel exact bare-ID `supportedModels`, target model-card values for every included model, `removals` candidates, `warnings`.
+- **Catalog plan** — the offline plan JSON from `model-registry/scripts/models_mapping.py` (schema 3, desired state): per-channel exact bare-ID `supportedModels`, target model-card values for every included model, `warnings`.
 - **Mapping table** — `models.csv` (the only mapping review artifact): `request → mapping` rows for the fixed request models.
 
 For each confirmation, show the artifact next to live state (current channel lists, current request-model targets) so the diff is visible, then ask. Execute only the confirmed set; anything the user declines is skipped and reported.
@@ -57,6 +57,8 @@ deployment's server errors on a channels query combining `tags` with
 - Models: `models(first: 100) { edges { node { id modelID name developer status remark modelCard { reasoning { supported default } toolCall temperature modalities { input output } vision cost { input output cacheRead cacheWrite } limit { context output } knowledge releaseDate lastUpdated } settings { disableDeveloperSettingsInheritance loadBalancerStrategy traceStickyMode associations { type priority disabled channelModel { channelId modelId } modelId { modelId } regex { pattern } } } } } } }`
 - API-key profile templates: `apiKeyProfileTemplates { id name linkedProfilesCount profile { name modelMappings { from to } channelIDs channelTags channelTagsMatchMode modelIDs loadBalanceStrategy traceStickyMode quota { … } } }`
 
+Take the **exact upstream model IDs** from the channels query's `supportedModels` — never from UI chips, screenshots, or memory. A wrong ID (e.g. `sensenova-v1-fast` for the upstream's `sensenova-u1-fast`) creates a model entity that silently routes nowhere.
+
 Done when: you can name each managed channel's ID, its exact `supportedModels`, and each affected model's `modelID`, status, and current associations.
 
 ### Execution-time check: autoSyncSupportedModels must be off
@@ -65,23 +67,22 @@ AxonHub's hourly upstream sync overwrites a channel's `supportedModels` with `ma
 
 ### Apply the catalog plan, item by item
 
-- **Channels** — for each planned channel: `updateChannel(id, input: { supportedModels: <exact plan list> })`. This is a wholesale replacement: legacy vendor-prefixed entries disappear with it. Prefix routing is that channel's own `auto-trim`/`modelMappings` setting, never the plan's or the agent's job. Do not merge with the remote list.
+- **Channels** — for each planned channel: `updateChannel(id, input: { supportedModels: <exact plan list> })`. This is a wholesale replacement: legacy vendor-prefixed entries disappear with it. Prefix routing is that channel's own `auto-trim`/`modelMappings` setting, never the plan's or the agent's job. Do not merge with the remote list. **Exception — static free channels (`ant`, `sensenova`, ADR 0013):** the plan's `supportedModels` for them contains only the channel-exclusive models (dedupe keeps one winning channel per canonical ID), so wholesale-applying it would strip the shared models they also serve. Their authoritative list is the hand-maintained `models_extra.json` static section plus live state; only association/card writes for their exclusive models follow the normal flow.
 - **Models** — for each `models[]` entry in the plan: read the live model; if absent, `createModel` with the plan's `input` (then enable it); if present, `updateModel` with only the fields that differ. `CreateModelInput` requires `settings`, which the offline plan cannot carry: the executor supplies defaults — a `channel_model` rule pinning the model to its planned channel plus `disableDeveloperSettingsInheritance: false` and `default` load-balancer/trace-sticky strategies. When writing `remark`, parse the remote remark and keep its `manual` field — the plan's computed fields replace the old computed values only. For existing models, leave `settings` untouched except where the mapping section below applies.
-- **Removals** — for each `removals[]` candidate: check every external (non-managed) channel's `supportedModels` and all models' associations (`channel_model.modelId`, `modelId.modelId`) for references. If any external use or reference exists: retain the object and report it under "retained". Otherwise `deleteModel(id)`.
+- **Retiring a live global model** — the plan has no removals section (ADR 0014): when a model leaves the plan and the user confirms it should go, check every external (non-managed) channel's `supportedModels` and all models' associations (`channel_model.modelId`, `modelId.modelId`) for references; retain and report on any external use, otherwise `deleteModel(id)` as a standalone confirmed operation.
 - **Never write unmanaged objects**: a model that appears in the plan for one channel but has associations to other channels keeps those associations (guardrail 2) — when updating its `settings.associations`, replace only the rules that point at this managed channel.
 
 ### Apply the mapping table, item by item
 
 - **Request models** — for each `models.csv` request row: read the live model and its target; both must exist and be enabled (a missing or disabled model is a per-item failure, reported, not fixed by creation). Then `updateModel` with `settings.associations` replaced by exactly one enabled `type=model` association targeting the confirmed candidate (`modelId: {modelId: <target>}`) — this is the one case where associations are wholesale-replaced, and it applies only to the fixed request models themselves.
-- **Managed templates** — for each managed template from `config/model-decisions.json` `scope.templates` (`stable`/`claude`/`gpt`): rebuild `profile.modelMappings` as manual mappings (sources outside the fixed request set, preserved verbatim) ∪ the confirmed pairs (`claude-*` requests → the `claude` template, `gpt-*` → `gpt`, and `stable` mirrors the union). Send the full profile with `updateApiKeyProfileTemplate` — `UpdateAPIKeyProfileTemplateInput.profile` replaces the profile, so carry every non-mapping field (`channelIDs`, `channelTags`, quota, strategies) from the live read. If a template is missing entirely, ask before creating it.
+- **Templates are out of scope** — the former managed-template rebuild (`stable`/`claude`/`gpt` `modelMappings`, ADR 0014-retired) is no longer part of the write program; never modify profile templates while executing a confirmed plan.
 - **Never touch manual mappings** whose sources are outside the request set, and never modify unrelated profile fields (guardrail 2).
 
 ### Verify by reading back (every write)
 
 - Channels: re-read `supportedModels` — must equal the plan list exactly.
 - Models: re-read the written fields — card values match the plan target; `remark` keeps the remote `manual` content with the plan's computed fields; associations match the intended shape (request models: exactly the one `type=model` rule; catalog models: this channel's rule added/replaced, everything else preserved).
-- Templates: re-read the profile — `modelMappings` equals the desired mapping set; all non-mapping fields unchanged.
-- Removals: re-read the deleted `modelID` — must be absent. A retained object must still exist.
+- Retired models: re-read the deleted `modelID` — must be absent. A retained object must still exist.
 - Routing (when the user asks or the write touches routing): `queryModelChannelConnections(associations: $assocs) { channel { id name } models { requestModel actualModel source } }` — done when the target channel resolves the expected `actualModel` with `source: mapping` or `direct`.
 
 ### Report
@@ -111,6 +112,19 @@ Association types: `channel_model` (pinned channel + exact ID), `model` (exact I
 - `UpdateChannelInput.settings` replaces the entire settings object — pass `modelMappings` in full.
 - `UpdateModelInput.settings.associations` replaces the entire list — fetch first, merge, write back.
 - GraphQL IDs are GIDs (`gid://axonhub/Channel/12`); association inputs take plain ints for `channelId`.
+- Association rules that pass live validation (one JSON object per rule):
+  - pinned channel: `{type: "channel_model", priority: 0, disabled: false, channelModel: {channelId: <int>, modelId: "<upstream id>"}}`
+  - global regex with channel exclusion: `{type: "regex", priority: 0, disabled: false, regex: {pattern: "(?i)(^|/)glm-5\\.2$", exclude: [{channelIds: [<int>]}]}}`
+  - exact-ID with exclusion: `{type: "model", priority: 0, modelId: {modelId: "<id>", exclude: [{channelIds: [<int>]}]}}`
+  - time-gated (see quirks — root condition must be a group): `when: {enabled: true, condition: {type: "group", logic: "AND", conditions: [{type: "condition", field: "daily_time", operator: "within", value: "22:00-08:00"}]}}`
+- `updateModel` can rename (`modelID`), retitle (`name`), and flip `status` (lowercase enums `enabled`/`disabled`/`archived`). Models created via `createModel` or the web UI start **disabled** and must be enabled separately.
+
+### Deployment quirks (verified 2026-09-09)
+
+- A `when` whose **root condition is a bare `condition`** is rejected with `invalid when condition: root when condition must be a group` — always wrap the leaf condition in `{type: "group", logic: "AND", conditions: [...]}`. Cross-midnight ranges (`22:00-08:00`) are supported; times are server-local.
+- Transient `unknown field` errors (`GRAPHQL_VALIDATION_FAILED`, erratic `variable.input.*` paths, sometimes pointing at untouched sibling fields) appear during apparent deploy windows and disappear on their own; identical payloads succeed afterwards. Handle per guardrail 4: retry with backoff + read-back, don't reshape on a flake.
+- Omit optional `settings` fields (`disableDeveloperSettingsInheritance`, `loadBalancerStrategy`, `traceStickyMode`) when unchanged — omitted fields keep their live values, and passing them unnecessarily was observed to trip the transient validator.
+- When input shapes misbehave, introspect the **live** server (`__type(name: "ModelSettingsInput") { inputFields { name } }`) — the deployment can drift from the local `internal/server/gql/*.graphql` snapshot in either direction.
 
 ### Known facts about this deployment
 

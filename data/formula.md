@@ -1,7 +1,10 @@
 # Mapping scoring formula
 
-`models.csv` is a generated review artifact. It contains only the model ID,
-the row role, the Arena score, RP5H and the suggested one-to-one mapping.
+`models.csv` is the mapping review artifact. Its `role=request` rows are the
+hand-maintained request-model list (the source of truth for which Claude
+requests are mapped); every other cell — candidate rows, Arena scores,
+RP5H, the one-to-one `mapping` column — is regenerated deterministically
+from the snapshots on each run.
 
 For a non-baseline request model, choose the candidate with the highest score:
 
@@ -31,7 +34,7 @@ the catalog plan.
 ## Mapping order
 
 Only `claude-*` request models participate in the mapping (GPT requests are
-pass-through, ADR 0012). Three steps, in order:
+pass-through, ADR 0012). Two steps, in order:
 
 1. **Formula first** — every request is scored against the non-free
    candidates with the formula above.
@@ -39,8 +42,10 @@ pass-through, ADR 0012). Three steps, in order:
    with the requests sorted by Arena score ascending, replacing those
    requests' formula targets (`free_fill`): the lowest-quality request gets
    the lowest-scored free model.
-3. **Overrides** — `mapping_overrides` in `config/model-decisions.json`
-   replace any result last.
+
+There are no mapping overrides: the computed pairings are the review
+suggestion, and day-to-day retargeting happens in the AxonHub UI after the
+review confirms the table.
 
 ## Data quality
 
@@ -51,8 +56,10 @@ The candidate universe starts from every record in `data/models_extra.json`
   `data/models_extra.json` merges cross-channel spellings (`tencent-hy3` ->
   `hy3`); channel lists keep the native id, the registry uses the canonical
   one, and `plan.models[].channelAliases` describes the exposure.
-- **Collector excludes** — records stamped `exclude` (speed-marketing
-  variants: `-fast`/`-highspeed`) never enter the registry.
+- **Speed-marketing variants** — ids ending `-fast`/`-highspeed` are
+  derived as excluded at planning time; a record carrying a hand-maintained
+  `exclude` reason in `data/models_extra.json` likewise never enters the
+  registry.
 - **Cross-channel dedupe** — one winning channel per id: highest `rp5h`
   (null loses to a value, ties keep the alphabetically first channel).
 - **Variant grouping** — within a base model, `-free` beats
@@ -61,7 +68,9 @@ The candidate universe starts from every record in `data/models_extra.json`
 - **rp5h triage** — a non-free model missing `rp5h` is excluded when its
   Arena score is below 1500; at or above 1500 it stays in the channel list
   with a review warning and is only ineligible for target selection.
-- **Manual excludes** in `config/model-decisions.json`.
+- **Manual excludes** — `exclude` reasons on records in
+  `data/models_extra.json` (field-level merges preserve them across
+  collection runs).
 
 Scores come from the leaderboard, hand assignments (`manual: true` records
 in `data/arena.json`, preserved across collection runs), or the defaults
@@ -74,9 +83,11 @@ models are always reachable through baseline routing regardless of score. A
 free candidate has its `rp5h` re-derived from its owning channel's largest
 non-free `rp5h`; missing `usage_quota` becomes 60. Arena ids keep the
 board's parameter-size suffixes verbatim (`qwen3.8-27b`), so channel ids
-carrying the size direct-match. Request models may pin `arena_score` directly in
-`config/request-models.json` instead of relying on the Arena snapshot.
+carrying the size direct-match. Request models come from the `role=request`
+rows of `models.csv`; their Arena scores are recomputed from the snapshot
+each run, and a request missing from the board gets a hand assignment
+(`manual: true` record in `data/arena.json`).
 Arena direct matches are high confidence; contributor-suffix and
 version-downgrade matches are medium confidence; prefix matches and free
-defaults are low confidence. Unmatched request models without a pinned score
-are blocking errors for an apply workflow.
+defaults are low confidence. Unmatched request models are blocking errors
+for an apply workflow.

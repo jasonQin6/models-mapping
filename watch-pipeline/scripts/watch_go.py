@@ -31,7 +31,6 @@ from error_state import clear_error, dump_page, persist_error  # noqa: E402
 from models_extra import (  # noqa: E402
     DEFAULT_EXTRA_PATH,
     is_excluded_model,
-    speed_variant_exclude,
     update_channel,
 )
 
@@ -109,9 +108,6 @@ def build_go_section(content: str) -> Dict[str, dict]:
             "peak_hours": _json_value(source.get("peak_hours")),
             "retention": _json_value(source.get("retention")),
         }
-        exclude_reason = speed_variant_exclude(model_id)
-        if exclude_reason:
-            record["exclude"] = exclude_reason
         models[model_id] = record
     return models
 

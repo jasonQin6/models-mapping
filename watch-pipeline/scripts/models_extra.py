@@ -3,9 +3,12 @@
 
 The file merges channel-declared model facts (quotas, channel prices,
 remark thresholds) from every collector: each watcher owns exactly one
-``channels`` section and rewrites only that section, so writers must be
-serialized (the CI graph orders the goat job after the go job).  Public card
-data is not stored here — planning fills it from ``data/all_models.json``.
+``channels`` section and updates only that section's contract fields, so
+writers must be serialized (the CI graph orders the goat job after the go
+job).  A record field outside the channel's contract (e.g. a hand-maintained
+``exclude``) belongs to the human maintainers: merges refresh contract
+fields and leave every other field untouched.  Public card data is not
+stored here — planning fills it from ``data/all_models.json``.
 """
 
 from __future__ import annotations
@@ -15,7 +18,7 @@ import os
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping
 
 SCHEMA_VERSION = 1
 DEFAULT_EXTRA_PATH = Path("data/models_extra.json")
@@ -24,12 +27,6 @@ DEFAULT_EXTRA_PATH = Path("data/models_extra.json")
 # are served by self-built AxonHub models mapped by arena score, never by a
 # channel's own claude list (ADR 0012).
 EXCLUDED_ID_PREFIXES = ("claude",)
-
-# Speed-marketing variants of a base model are never adopted; the record is
-# kept with an ``exclude`` reason so the planning layer can skip it and the
-# omission stays auditable.  Series names like ``-flash`` do not match.
-SPEED_VARIANT_SUFFIXES = ("-fast", "-highspeed")
-SPEED_VARIANT_EXCLUDE_REASON = "speed-variant (fast/highspeed)"
 
 
 class ExtraStoreError(ValueError):
@@ -40,16 +37,6 @@ def is_excluded_model(model_id: str) -> bool:
     """Return True for channel claude models this pipeline must not collect."""
 
     return model_id.strip().lower().startswith(EXCLUDED_ID_PREFIXES)
-
-
-def speed_variant_exclude(model_id: str) -> Optional[str]:
-    """Return the exclude reason for speed-marketing variants, else None."""
-
-    lowered = model_id.strip().lower()
-    for suffix in SPEED_VARIANT_SUFFIXES:
-        if lowered.endswith(suffix):
-            return SPEED_VARIANT_EXCLUDE_REASON
-    return None
 
 
 def load_document(path: Path) -> dict[str, Any]:
@@ -79,12 +66,24 @@ def update_channel(
     channel: str,
     models: Mapping[str, Mapping[str, Any]],
 ) -> None:
-    """Rewrite one channel section atomically, leaving other sections alone."""
+    """Merge one channel section atomically, leaving other sections alone.
+
+    Scraped records carry the channel's contract fields only.  A model the
+    channel still declares keeps its record's hand-maintained fields (any
+    key the scrape does not produce, such as ``exclude``) while its contract
+    fields refresh; a model that leaves the channel declaration leaves the
+    section with its whole record.
+    """
 
     document = load_document(path)
-    document["channels"][channel] = {
-        model_id: dict(record) for model_id, record in sorted(models.items())
-    }
+    section = document["channels"].get(channel, {})
+    merged: dict[str, dict[str, Any]] = {}
+    for model_id, record in sorted(models.items()):
+        old = section.get(model_id)
+        merged[model_id] = (
+            {**old, **dict(record)} if isinstance(old, Mapping) else dict(record)
+        )
+    document["channels"][channel] = merged
     document["updated_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     write_json_atomic(path, document)
 

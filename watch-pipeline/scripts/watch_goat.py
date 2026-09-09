@@ -36,7 +36,6 @@ from error_state import clear_error, error_dump_path, persist_error
 from models_extra import (
     DEFAULT_EXTRA_PATH,
     is_excluded_model,
-    speed_variant_exclude,
     update_channel,
 )
 
@@ -257,9 +256,6 @@ def build_goat_fields(
         "tok_s": tok_s,
         "cost": cost,
     }
-    exclude_reason = speed_variant_exclude(to_model_id(slug))
-    if exclude_reason:
-        record["exclude"] = exclude_reason
     return record
 
 

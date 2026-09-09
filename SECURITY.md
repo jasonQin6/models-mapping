@@ -23,10 +23,10 @@
 
 - 全部 AxonHub 变更由 `axonhub-admin` 在交互会话中按其 `SKILL.md` 的执行程序执行（ADR 0009）：AskUserQuestion 确认 → 读远端现状 → GraphQL 逐项变更 → 逐项回读验证 → 汇报。确认材料为 catalog plan 与 `models.csv`，二者独立确认，未经明确认可不执行写入。
 - 写入输入来自 `model-registry` 的离线产物（models_mapping.py 的 plan JSON 与 `models.csv`）；plan 为纯目标态、无指纹与陈旧性机制，过期直接重新生成，远端漂移由 read-before-write 在执行时发现并报告。
-- 变更范围以 `config/model-decisions.json` 的 managed scope 为准；scope 同时被变换与写入消费，变更时两侧复核。
+- 变更范围以 `data/models_extra.json` 的渠道节为准（AxonHub 渠道名 = 节名）；该清单同时被变换与写入消费，增删渠道节时两侧复核。
 - 四条护栏：只碰托管渠道；保留非托管关联与外部引用（被外部 channel 引用或被 association 精确引用的全局对象只保留并报告，不删除）；read-before-write；write-then-verify，无猜测性重试或无关回滚。
 - 执行时核验托管渠道的 `autoSyncSupportedModels` 必须关闭——发现开启则报告并征询，不得在开启状态下写入策展清单。
-- 写入仅替换已确认的渠道 `supportedModels`、模型卡目标值与 managed templates 的 `modelMappings`，保留维护集合外的人工 mappings、非映射字段与 remark 的 `manual` 内容；部分失败逐项报告。
+- 写入仅替换已确认的渠道 `supportedModels` 与模型卡目标值，保留维护集合外的人工 mappings、非映射字段与 remark 的 `manual` 内容（API-key profile templates 不再由本项目维护，ADR 0014）；部分失败逐项报告。
 - 不存在任何无人值守写入（ADR 0010 的快照推送线已退役，服务器端清理步骤见 `axonhub-admin/deploy-vol-server-push.md`）；写入只发生在交互式 agent 会话内，CI（GitHub Actions）永不写 AxonHub，也不持有其凭据。
 
 ## 事件响应

@@ -9,17 +9,16 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 
-from models_mapping import (
+from models_mapping import (  # noqa: E402
     PlanningError,
     dedupe_registry,
     extract_series,
+    load_csv_requests,
     main,
     plan_from,
     score_match,
     supersede_variants,
 )
-
-REPO = Path(__file__).resolve().parents[2]
 
 
 def _rec(rp5h=None, quota=None, name="X", **kw):
@@ -36,25 +35,19 @@ def _arena_doc(scores: dict[str, float]) -> dict:
     return {"schema_version": 1, "models": models}
 
 
-def _decisions(channels=None, models=(), overrides=()):
+def _arena_models(arena: dict[str, float]) -> dict:
     return {
-        "channels": channels or {"opencode-go": "opencode-go", "commandcode-goat": "commandcode"},
-        "excluded": {},
-        "supplements": {},
-        "overrides": {},
+        model_id: {"rating": entry["arena_score"], "rank": entry["arena_rank"]}
+        for model_id, entry in _arena_doc(arena)["models"].items()
     }
 
 
-def _plan(sections, cards=None, arena=None, requests=(), decisions=None):
+def _plan(sections, cards=None, arena=None, requests=()):
     return plan_from(
         sections,
         cards=cards or {},
-        arena_models={
-            model_id: {"rating": entry["arena_score"], "rank": entry["arena_rank"]}
-            for model_id, entry in _arena_doc(arena or {})["models"].items()
-        },
-        request_models=requests,
-        decisions=decisions or _decisions(),
+        arena_models=_arena_models(arena or {}),
+        requests=requests,
     )
 
 
@@ -63,9 +56,46 @@ def _request_rows(rows: list[dict[str, str]]) -> dict[str, dict[str, str]]:
 
 
 def test_extract_series_only_matches_claude_gpt() -> None:
-    assert extract_series("claude-haiku-4.5") == "claude"
+    assert extract_series("claude-haiku-4-5") == "claude"
     assert extract_series("gpt-5.5") == "gpt"
     assert extract_series("muse-spark-1.2") == ""
+
+
+def test_load_csv_requests_reads_claude_rows_and_ignores_the_rest(tmp_path: Path) -> None:
+    path = tmp_path / "models.csv"
+    path.write_text(
+        "model_id,role,arena_score,rp5h,mapping\n"
+        "muse-spark-1.2,candidate,1200,800,\n"
+        "claude-opus-5,request,1687.61,,muse-spark-1.2\n"
+        "gpt-5.5,request,1500,,\n"
+        "gemini-3.7-flash,request,1500,,\n",
+        encoding="utf-8",
+    )
+    warnings: list[dict] = []
+
+    requests = load_csv_requests(path, warnings)
+
+    assert requests == [{"model_id": "claude-opus-5"}]
+    assert {w["model"] for w in warnings} == {"gpt-5.5", "gemini-3.7-flash"}
+    assert all(w["type"] == "non_claude_request_ignored" for w in warnings)
+
+
+def test_load_csv_requests_missing_file_is_blocking(tmp_path: Path) -> None:
+    with pytest.raises(PlanningError):
+        load_csv_requests(tmp_path / "missing.csv", [])
+
+
+def test_load_csv_requests_duplicate_request_is_blocking(tmp_path: Path) -> None:
+    path = tmp_path / "models.csv"
+    path.write_text(
+        "model_id,role,arena_score,rp5h,mapping\n"
+        "claude-opus-5,request,,,\n"
+        "claude-opus-5,request,,,\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(PlanningError):
+        load_csv_requests(path, [])
 
 
 def test_dedupe_keeps_highest_rp5h_channel_and_reports() -> None:
@@ -114,8 +144,11 @@ def test_plan_moves_model_between_channels_in_supported_lists() -> None:
     _rows, plan = _plan(sections)
 
     assert plan["channels"]["opencode-go"]["supportedModels"] == []
-    assert plan["channels"]["commandcode"]["supportedModels"] == ["deepseek-v4-flash", "kimi-k2.5"]
-    assert plan["providers"] == {"opencode-go": "opencode-go", "commandcode-goat": "commandcode"}
+    assert plan["channels"]["commandcode-goat"]["supportedModels"] == [
+        "deepseek-v4-flash",
+        "kimi-k2.5",
+    ]
+    assert "providers" not in plan
 
 
 def test_free_fill_recomputes_from_owning_channel() -> None:
@@ -128,8 +161,7 @@ def test_free_fill_recomputes_from_owning_channel() -> None:
     _rows, plan = _plan(sections, arena={"paid": 1500.0})
 
     models = {m["modelID"]: m for m in plan["models"]}
-    import json as _json
-    remark = _json.loads(models["freebie"]["input"]["remark"])
+    remark = json.loads(models["freebie"]["input"]["remark"])
     assert remark["rp5h"] == 500
     assert remark["usage_quota"] == 60
     assert any(w["type"] == "free_default_filled" and w["provider"] == "commandcode-goat" for w in plan["warnings"])
@@ -144,8 +176,8 @@ def test_claude_mapping_uses_formula_and_baseline_routing() -> None:
         },
     }
     requests = [
-        {"model_id": "claude-haiku-4.5", "arena_model_id": "claude-haiku-4-5", "enabled": True},
-        {"model_id": "claude-opus-5", "enabled": True},
+        {"model_id": "claude-haiku-4-5"},
+        {"model_id": "claude-opus-5"},
     ]
     arena = {"muse-spark-1.2": 1200.0, "qwen3.8-max": 1600.0, "claude-haiku-4-5": 1150.0, "claude-opus-5": 1700.0}
 
@@ -153,9 +185,9 @@ def test_claude_mapping_uses_formula_and_baseline_routing() -> None:
 
     request_rows = _request_rows(rows)
     # Free fill: the lowest-scored request takes the lowest-scored free model.
-    assert request_rows["claude-haiku-4.5"]["mapping"] == "freebie"
+    assert request_rows["claude-haiku-4-5"]["mapping"] == "freebie"
     mapping_by_request = {m["request_model"]: m for m in plan["report"]["mappings"]}
-    assert mapping_by_request["claude-haiku-4.5"]["match_confidence"] == "free_fill"
+    assert mapping_by_request["claude-haiku-4-5"]["match_confidence"] == "free_fill"
     # Free pool exhausted: the remaining request uses the formula over
     # non-free candidates (closest score wins over the far-above one).
     assert request_rows["claude-opus-5"]["mapping"] == "qwen3.8-max"
@@ -164,37 +196,6 @@ def test_claude_mapping_uses_formula_and_baseline_routing() -> None:
     assert candidate_by_id["muse-spark-1.2"]["arena_score"] == "1200"
     # fill_free_records re-derived the free quota from the owning channel max.
     assert candidate_by_id["freebie"]["rp5h"] == "800"
-
-
-def test_gpt_requests_are_pass_through() -> None:
-    requests = [
-        {"model_id": "claude-haiku-4.5", "enabled": True},
-        {"model_id": "gpt-5.5", "enabled": True},
-    ]
-    sections = {"opencode-go": {"muse-spark-1.2": _rec(rp5h=800)}}
-
-    rows, plan = _plan(sections, arena={"muse-spark-1.2": 1200.0, "claude-haiku-4.5": 1150.0}, requests=requests)
-
-    request_rows = _request_rows(rows)
-    assert set(request_rows) == {"claude-haiku-4.5"}
-    assert all(m["request_model"] != "gpt-5.5" for m in plan["report"]["mappings"])
-
-
-def test_mapping_override_wins_and_reports() -> None:
-    decisions = _decisions()
-    decisions["overrides"] = {"claude-opus-5": {"target_model": "muse-spark-1.2", "reason": "manual pick"}}
-    requests = [{"model_id": "claude-opus-5", "enabled": True}]
-    sections = {"opencode-go": {"muse-spark-1.2": _rec(rp5h=800), "qwen3.8-max": _rec(rp5h=900)}}
-
-    rows, plan = _plan(
-        sections,
-        arena={"muse-spark-1.2": 1200.0, "qwen3.8-max": 1600.0, "claude-opus-5": 1700.0},
-        requests=requests,
-        decisions=decisions,
-    )
-
-    assert _request_rows(rows)["claude-opus-5"]["mapping"] == "muse-spark-1.2"
-    assert plan["report"]["mappings"][0]["match_confidence"] == "override"
 
 
 def test_channel_cost_wins_over_card_cost() -> None:
@@ -217,30 +218,48 @@ def test_missing_card_warns_and_falls_back_to_channel_name() -> None:
     assert plan["models"][0]["input"]["name"] == "Goat Only Model"
 
 
-def test_exclude_removes_from_list_and_plans_removal() -> None:
-    decisions = _decisions()
-    decisions["excluded"] = {"commandcode-goat": {"minimax-m2.5": "Missing mapping-critical RP5H"}}
-    sections = {"commandcode-goat": {"minimax-m2.5": _rec(rp5h=None), "kimi-k2.5": _rec(rp5h=900)}}
+def test_manual_exclude_on_record_skips_model() -> None:
+    sections = {
+        "commandcode-goat": {
+            "minimax-m2.5": _rec(rp5h=None, exclude="Missing mapping-critical RP5H"),
+            "kimi-k2.5": _rec(rp5h=900),
+        },
+    }
 
-    _rows, plan = _plan(sections, decisions=decisions)
+    _rows, plan = _plan(sections)
 
-    assert plan["channels"]["commandcode"]["supportedModels"] == ["kimi-k2.5"]
-    assert plan["removals"] == [
-        {"modelID": "minimax-m2.5", "reason": "Missing mapping-critical RP5H", "note": plan["removals"][0]["note"]}
-    ]
+    assert plan["channels"]["commandcode-goat"]["supportedModels"] == ["kimi-k2.5"]
+    assert all(m["modelID"] != "minimax-m2.5" for m in plan["models"])
+    assert any(
+        w["type"] == "manual_excluded" and w["model"] == "minimax-m2.5"
+        and w["reason"] == "Missing mapping-critical RP5H"
+        for w in plan["warnings"]
+    )
+    assert "removals" not in plan
 
 
-def test_unknown_channel_is_rejected() -> None:
-    sections = {"some-new-channel": {"solo": _rec(rp5h=100)}}
+def test_speed_variant_ids_are_derived_as_excluded() -> None:
+    sections = {
+        "commandcode-goat": {
+            "glm-5.2-fast": _rec(rp5h=138),
+            "kimi-k2.5": _rec(rp5h=None),
+        },
+    }
 
-    with pytest.raises(PlanningError):
-        _plan(sections)
+    _rows, plan = _plan(sections)
+
+    assert all(m["modelID"] != "glm-5.2-fast" for m in plan["models"])
+    assert plan["channels"]["commandcode-goat"]["supportedModels"] == ["kimi-k2.5"]
+    assert any(
+        w["type"] == "speed_variant_excluded" and w["model"] == "glm-5.2-fast"
+        for w in plan["warnings"]
+    )
 
 
 def test_request_without_arena_score_is_blocking() -> None:
     sections = {"opencode-go": {"muse-spark-1.2": _rec(rp5h=800)}}
 
-    _rows, plan = _plan(sections, requests=[{"model_id": "claude-opus-5", "enabled": True}])
+    _rows, plan = _plan(sections, requests=[{"model_id": "claude-opus-5"}])
 
     assert any(e["code"] == "request_arena_missing" for e in plan["report"]["errors"])
     assert plan["report"]["counts"]["errors"] >= 1
@@ -253,38 +272,22 @@ def test_alias_merges_cross_channel_naming() -> None:
         "commandcode-goat": {"tencent-hy3": _rec(rp5h=7080)},
     }
 
-    rows, plan = plan_from(
+    _rows, plan = plan_from(
         sections,
         aliases=aliases,
         cards={},
         arena_models={},
-        request_models=[],
-        decisions=_decisions(),
+        requests=[],
     )
 
     # One canonical model, owned by the goat channel (7080 > 4300).
     models = {m["modelID"]: m for m in plan["models"]}
     assert set(models) == {"hy3"}
-    assert models["hy3"]["channel"] == "commandcode"
+    assert models["hy3"]["channel"] == "commandcode-goat"
     assert models["hy3"]["channelAliases"] == {"commandcode-goat": "tencent-hy3"}
     # Channel lists keep the native id each channel actually exposes.
-    assert plan["channels"]["commandcode"]["supportedModels"] == ["tencent-hy3"]
+    assert plan["channels"]["commandcode-goat"]["supportedModels"] == ["tencent-hy3"]
     assert plan["channels"]["opencode-go"]["supportedModels"] == []
-
-
-def test_collector_excluded_records_are_skipped() -> None:
-    sections = {
-        "commandcode-goat": {
-            "glm-5.2-fast": _rec(rp5h=138, exclude="speed-variant (fast/highspeed)"),
-            "kimi-k2.5": _rec(rp5h=None),
-        },
-    }
-
-    _rows, plan = plan_from(sections, cards={}, arena_models={}, request_models=[], decisions=_decisions())
-
-    assert all(m["modelID"] != "glm-5.2-fast" for m in plan["models"])
-    assert plan["channels"]["commandcode"]["supportedModels"] == ["kimi-k2.5"]
-    assert any(w["type"] == "collector_excluded" and w["model"] == "glm-5.2-fast" for w in plan["warnings"])
 
 
 def test_free_variant_supersedes_plain_original() -> None:
@@ -293,7 +296,7 @@ def test_free_variant_supersedes_plain_original() -> None:
         "commandcode-goat": {"longcat-2.0-free": _rec(rp5h=None)},
     }
 
-    _rows, plan = plan_from(sections, cards={}, arena_models={}, request_models=[], decisions=_decisions())
+    _rows, plan = _plan(sections)
 
     models = {m["modelID"]: m for m in plan["models"]}
     assert set(models) == {"longcat-2.0-free"}
@@ -302,7 +305,7 @@ def test_free_variant_supersedes_plain_original() -> None:
         for w in plan["warnings"]
     )
     assert plan["channels"]["opencode-go"]["supportedModels"] == []
-    assert plan["channels"]["commandcode"]["supportedModels"] == ["longcat-2.0-free"]
+    assert plan["channels"]["commandcode-goat"]["supportedModels"] == ["longcat-2.0-free"]
 
 
 def test_contributor_variant_supersedes_plain_original() -> None:
@@ -313,7 +316,7 @@ def test_contributor_variant_supersedes_plain_original() -> None:
         },
     }
 
-    _rows, plan = plan_from(sections, cards={}, arena_models={}, request_models=[], decisions=_decisions())
+    _rows, plan = _plan(sections)
 
     models = {m["modelID"] for m in plan["models"]}
     assert models == {"muse-spark-1.2-contributor"}
@@ -329,7 +332,7 @@ def test_rp5h_missing_low_arena_excluded_high_arena_review() -> None:
     }
     arena = {"glm-5": 1435.72}
 
-    _rows, plan = plan_from(sections, cards={}, arena_models=_arena_doc(arena)["models"], request_models=[], decisions=_decisions())
+    _rows, plan = plan_from(sections, cards={}, arena_models=_arena_models(arena), requests=[])
 
     models = {m["modelID"] for m in plan["models"]}
     assert models == {"kimi-k2.5"}
@@ -341,40 +344,21 @@ def test_rp5h_missing_low_arena_excluded_high_arena_review() -> None:
 
 def test_missing_arena_defaults_to_1500_and_enters_scoring() -> None:
     sections = {"opencode-go": {"omen-alpha": _rec(rp5h=11600)}}
-    requests = [{"model_id": "claude-sonnet-5", "enabled": True}]
+    requests = [{"model_id": "claude-sonnet-5"}]
     arena = {"claude-sonnet-5": 1536.91, "muse-spark-1.3-contributor": 1622.48}
     sections["opencode-go"]["muse-spark-1.3-contributor"] = _rec(rp5h=45300)
 
     rows, plan = plan_from(
         sections,
         cards={},
-        arena_models=_arena_doc(arena)["models"],
-        request_models=requests,
-        decisions=_decisions(),
+        arena_models=_arena_models(arena),
+        requests=requests,
     )
 
     assert any(w["type"] == "arena_defaulted" and w["model"] == "omen-alpha" for w in plan["warnings"])
     candidate_by_id = {row["model_id"]: row for row in rows if row["role"] == "candidate"}
     # The defaulted model participates in scoring (no hard-coded mapping).
     assert candidate_by_id["omen-alpha"]["arena_score"] == "1500"
-
-
-def test_request_pinned_arena_score_skips_lookup() -> None:
-    sections = {"opencode-go": {"omen-alpha": _rec(rp5h=11600)}}
-    requests = [{"model_id": "claude-sonnet-5", "arena_score": 1536.91, "enabled": True}]
-
-    rows, plan = plan_from(
-        sections,
-        cards={},
-        arena_models={},
-        request_models=requests,
-        decisions=_decisions(),
-    )
-
-    request_rows = _request_rows(rows)
-    assert request_rows["claude-sonnet-5"]["arena_score"] == "1536.91"
-    assert request_rows["claude-sonnet-5"]["mapping"] == "omen-alpha"
-    assert plan["report"]["errors"] == []
 
 
 def test_free_fill_pairs_lowest_request_with_lowest_free_model() -> None:
@@ -390,9 +374,9 @@ def test_free_fill_pairs_lowest_request_with_lowest_free_model() -> None:
         "opencode-go": {"longcat-2.0": _rec(rp5h=1540)},
     }
     requests = [
-        {"model_id": "claude-haiku-4.5", "arena_model_id": "claude-haiku-4-5", "enabled": True},
-        {"model_id": "claude-sonnet-4-6", "enabled": True},
-        {"model_id": "claude-opus-5", "enabled": True},
+        {"model_id": "claude-haiku-4-5"},
+        {"model_id": "claude-sonnet-4-6"},
+        {"model_id": "claude-opus-5"},
     ]
     arena = {
         "claude-haiku-4-5": 1328.9,
@@ -406,21 +390,17 @@ def test_free_fill_pairs_lowest_request_with_lowest_free_model() -> None:
     rows, plan = plan_from(
         sections,
         cards={},
-        arena_models={
-            model_id: {"rating": entry["arena_score"], "rank": entry["arena_rank"]}
-            for model_id, entry in _arena_doc(arena)["models"].items()
-        },
-        request_models=requests,
-        decisions=_decisions(),
+        arena_models=_arena_models(arena),
+        requests=requests,
     )
 
     request_rows = _request_rows(rows)
-    assert request_rows["claude-haiku-4.5"]["mapping"] == "laguna-s-2.1-free"
+    assert request_rows["claude-haiku-4-5"]["mapping"] == "laguna-s-2.1-free"
     assert request_rows["claude-sonnet-4-6"]["mapping"] == "longcat-2.0-free"
     # Free pool exhausted -> formula over non-free candidates.
     assert request_rows["claude-opus-5"]["mapping"] == "muse-spark-1.3-contributor"
     mapping_by_request = {m["request_model"]: m for m in plan["report"]["mappings"]}
-    assert mapping_by_request["claude-haiku-4.5"]["match_confidence"] == "free_fill"
+    assert mapping_by_request["claude-haiku-4-5"]["match_confidence"] == "free_fill"
     assert mapping_by_request["claude-opus-5"]["match_confidence"] in ("high", "medium", "none")
 
 
@@ -433,7 +413,7 @@ def test_score_formula_ignores_price_and_quota() -> None:
     )
 
 
-def test_main_end_to_end_writes_csv_and_plan(tmp_path: Path) -> None:
+def test_main_round_trips_csv_request_rows_and_writes_plan(tmp_path: Path) -> None:
     extra = tmp_path / "models_extra.json"
     extra.write_text(json.dumps({
         "schema_version": 1,
@@ -441,56 +421,52 @@ def test_main_end_to_end_writes_csv_and_plan(tmp_path: Path) -> None:
     }), encoding="utf-8")
     arena = tmp_path / "arena.json"
     arena.write_text(json.dumps(_arena_doc({"muse-spark-1.2": 1200.0, "claude-opus-5": 1700.0})), encoding="utf-8")
-    requests = tmp_path / "request-models.json"
-    requests.write_text(json.dumps({"schema_version": 1, "models": [{"model_id": "claude-opus-5", "enabled": True}]}), encoding="utf-8")
-    decisions = tmp_path / "model-decisions.json"
-    decisions.write_text(json.dumps({
-        "schema_version": 1,
-        "scope": {"channels": {"opencode-go": "opencode-go"}},
-        "models": [],
-        "mapping_overrides": [],
-    }), encoding="utf-8")
     cards = tmp_path / "all_models.json"
     cards.write_text(json.dumps({}), encoding="utf-8")
-    csv_out = tmp_path / "models.csv"
+    csv_path = tmp_path / "models.csv"
+    csv_path.write_text(
+        "model_id,role,arena_score,rp5h,mapping\n"
+        "claude-opus-5,request,,,\n",
+        encoding="utf-8",
+    )
     plan_out = tmp_path / "plan.json"
 
     rc = main([
         "--extra", str(extra), "--cards", str(cards), "--arena", str(arena),
-        "--request-models", str(requests), "--model-decisions", str(decisions),
-        "--csv-output", str(csv_out), "--plan-output", str(plan_out),
+        "--csv", str(csv_path), "--plan-output", str(plan_out),
     ])
 
     assert rc == 0
-    assert "claude-opus-5,request" in csv_out.read_text(encoding="utf-8")
+    text = csv_path.read_text(encoding="utf-8")
+    # The request row keeps its id; arena score and mapping are recomputed.
+    assert "claude-opus-5,request,1700,," in text
+    assert "muse-spark-1.2,candidate,1200,800," in text
     plan = json.loads(plan_out.read_text(encoding="utf-8"))
-    assert plan["schema_version"] == 2
+    assert plan["schema_version"] == 3
     assert plan["channels"]["opencode-go"]["supportedModels"] == ["muse-spark-1.2"]
+    assert "removals" not in plan and "providers" not in plan
 
 
 def test_main_fail_on_errors_exits_nonzero(tmp_path: Path) -> None:
     extra = tmp_path / "models_extra.json"
-    extra.write_text(json.dumps({"schema_version": 1, "channels": {"opencode-go": {}}}), encoding="utf-8")
-    arena = tmp_path / "arena.json"
-    arena.write_text(json.dumps(_arena_doc({})), encoding="utf-8")
-    requests = tmp_path / "request-models.json"
-    requests.write_text(json.dumps({"schema_version": 1, "models": [{"model_id": "claude-opus-5", "enabled": True}]}), encoding="utf-8")
-    decisions = tmp_path / "model-decisions.json"
-    decisions.write_text(json.dumps({
+    extra.write_text(json.dumps({
         "schema_version": 1,
-        "scope": {"channels": {"opencode-go": "opencode-go"}},
-        "models": [],
-        "mapping_overrides": [],
+        "channels": {"opencode-go": {"muse-spark-1.2": _rec(rp5h=800)}},
     }), encoding="utf-8")
+    arena = tmp_path / "arena.json"
+    arena.write_text(json.dumps(_arena_doc({"muse-spark-1.2": 1200.0})), encoding="utf-8")
     cards = tmp_path / "cards.json"
     cards.write_text("{}", encoding="utf-8")
-
-    csv_out = tmp_path / "models.csv"
+    csv_path = tmp_path / "models.csv"
+    csv_path.write_text(
+        "model_id,role,arena_score,rp5h,mapping\n"
+        "claude-opus-5,request,,,\n",
+        encoding="utf-8",
+    )
 
     rc = main([
         "--extra", str(extra), "--cards", str(cards), "--arena", str(arena),
-        "--request-models", str(requests), "--model-decisions", str(decisions),
-        "--csv-output", str(csv_out),
+        "--csv", str(csv_path),
         "--fail-on-errors",
     ])
 

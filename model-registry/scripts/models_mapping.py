@@ -15,12 +15,14 @@ and produces everything the AxonHub write path consumes:
 3. Card assembly: public card fields come from ``data/all_models.json``
    (models.dev); channel ``cost`` values win where present.  A model without
    a card is planned with channel-claimed data only and reported.
-4. Claude mapping: fixed Claude request models are mapped to the candidate
-   pool by the Arena/RP5H/proximity formula (baseline routing included);
+4. Claude mapping: the hand-maintained ``role=request`` rows of
+   ``models.csv`` are the fixed Claude request models, mapped to the
+   candidate pool by the Arena/RP5H/proximity formula (free fill included);
    GPT request models are pass-through and never enter the mapping.
-5. Outputs: ``models.csv`` (the reviewable mapping suggestion table) and a
-   schema-2 catalog plan (per-channel exact ``supportedModels`` plus model
-   card targets) for the axonhub-admin interactive write path.
+5. Outputs: ``models.csv`` — regenerated in place: its request rows are the
+   input, every other cell is computed — and a schema-3 catalog plan
+   (per-channel exact ``supportedModels`` plus model card targets) for the
+   axonhub-admin interactive write path.
 
 Pure offline planning: no credentials, no network, no AxonHub writes.
 """
@@ -38,13 +40,12 @@ from typing import Any, Mapping, Optional, Sequence
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
-from csv_io import write_mapping  # noqa: E402
+from csv_io import read_mapping, write_mapping  # noqa: E402
 from name_matching import find_best_match, normalize_arena_name  # noqa: E402
 
-PLAN_SCHEMA_VERSION = 2
+PLAN_SCHEMA_VERSION = 3
 EXTRA_SCHEMA_VERSION = 1
 REMARK_FIELDS = ("rp5h", "usage_quota", "context_threshold", "peak_hours", "retention")
-REMOVAL_NOTE = "执行时核验外部引用与外部渠道使用，再删除全局模型对象"
 FREE_USAGE_QUOTA_DEFAULT = 60
 DEFAULT_WEIGHTS = {
     "score": 0.35,
@@ -176,84 +177,36 @@ def load_arena(path: Path) -> dict[str, dict[str, Any]]:
     return lookup
 
 
-def load_request_models(path: Path) -> list[dict[str, Any]]:
-    """Load enabled Claude request models; GPT entries are pass-through."""
+def load_csv_requests(
+    path: Path, warnings: list[dict[str, Any]]
+) -> list[dict[str, str]]:
+    """Read the hand-maintained request rows from the mapping workspace.
 
-    payload = load_json(path)
-    if not isinstance(payload, Mapping):
-        raise PlanningError(f"{path} is not a JSON object")
-    models = payload.get("models")
-    if not isinstance(models, list):
-        raise PlanningError(f"{path} carries no models list")
-    requests: list[dict[str, Any]] = []
-    for entry in models:
-        if not isinstance(entry, Mapping):
-            raise PlanningError(f"{path} has a non-object model entry")
-        model_id = str(entry.get("model_id") or "").strip()
-        if not model_id:
-            raise PlanningError(f"{path} has a model entry without model_id")
-        if entry.get("enabled") is False:
+    Only ``role=request`` rows of the Claude series enter the mapping; any
+    other request row (GPT pass-through or a stray series) is reported and
+    ignored.  Candidate rows are generated output and never read back.
+    """
+
+    try:
+        rows = read_mapping(path)
+    except OSError as exc:
+        raise PlanningError(f"cannot read {path}: {exc}") from exc
+    except ValueError as exc:
+        raise PlanningError(str(exc)) from exc
+    requests: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for row in rows:
+        model_id = str(row.get("model_id") or "").strip()
+        if not model_id or str(row.get("role") or "").strip() != "request":
             continue
         if extract_series(model_id) != "claude":
-            continue  # GPT series: pass-through, not part of the mapping.
-        requests.append(dict(entry))
+            warnings.append({"type": "non_claude_request_ignored", "model": model_id})
+            continue
+        if model_id in seen:
+            raise PlanningError(f"{path} has duplicate request rows for {model_id}")
+        seen.add(model_id)
+        requests.append({"model_id": model_id})
     return requests
-
-
-def load_decisions(path: Path) -> dict[str, Any]:
-    """Load model decisions: scope, per-model excludes/supplements, overrides."""
-
-    payload = load_json(path)
-    if not isinstance(payload, Mapping):
-        raise PlanningError(f"{path} is not a JSON object")
-    scope = _as_dict(payload.get("scope"))
-    raw_channels = _as_dict(scope.get("channels"))
-    channels = {
-        str(provider): str(channel)
-        for provider, channel in raw_channels.items()
-        if str(channel).strip()
-    }
-    if not channels:
-        raise PlanningError(f"{path} scope.channels must map providers to channels")
-    excluded: dict[str, dict[str, str]] = {}
-    supplements: dict[str, dict[str, dict[str, Any]]] = {}
-    seen: set[tuple[str, str]] = set()
-    for entry in payload.get("models") or []:
-        if not isinstance(entry, Mapping):
-            raise PlanningError(f"{path} has a non-object decision entry")
-        provider = str(entry.get("provider") or "").strip()
-        model_id = str(entry.get("model_id") or "").strip()
-        action = str(entry.get("action") or "").strip()
-        reason = str(entry.get("reason") or "").strip()
-        if not provider or not model_id or not action or not reason:
-            raise PlanningError(f"{path} decision entries need provider/model_id/action/reason")
-        key = (provider, model_id)
-        if key in seen:
-            raise PlanningError(f"{path} has duplicate decisions for {provider}/{model_id}")
-        seen.add(key)
-        if action == "exclude":
-            excluded.setdefault(provider, {})[model_id] = reason
-        elif action == "supplement":
-            fields = _as_dict(entry.get("fields"))
-            bad = sorted(set(fields) - set(REMARK_FIELDS))
-            if bad:
-                raise PlanningError(f"{path} supplement for {model_id} has unknown fields {bad}")
-            supplements.setdefault(provider, {})[model_id] = fields
-        else:
-            raise PlanningError(f"{path} has unknown decision action {action!r}")
-    overrides: dict[str, dict[str, str]] = {}
-    for entry in payload.get("mapping_overrides") or []:
-        if not isinstance(entry, Mapping):
-            raise PlanningError(f"{path} has a non-object mapping override")
-        request_model = str(entry.get("request_model") or "").strip()
-        target_model = str(entry.get("target_model") or "").strip()
-        if not request_model or not target_model:
-            raise PlanningError(f"{path} mapping overrides need request_model/target_model")
-        overrides[request_model] = {
-            "target_model": target_model,
-            "reason": str(entry.get("reason") or ""),
-        }
-    return {"channels": channels, "excluded": excluded, "supplements": supplements, "overrides": overrides}
 
 
 # ---------------------------------------------------------------------------
@@ -261,9 +214,24 @@ def load_decisions(path: Path) -> dict[str, Any]:
 
 VARIANT_SUFFIXES = ("-free", "-contributor")
 _VARIANT_PRIORITY = {"-free": 0, "-contributor": 1}
+# Speed-marketing variants of a base model are never adopted; planning
+# derives the exclusion from the id so the store keeps no derived state.
+# Series names like ``-flash`` do not match.
+SPEED_VARIANT_SUFFIXES = ("-fast", "-highspeed")
+SPEED_VARIANT_EXCLUDE_REASON = "speed-variant (fast/highspeed)"
 DEFAULT_ARENA_SCORE = 1500.0
 FREE_DEFAULT_ARENA_SCORE = 1500.0
 RP5H_MISSING_EXCLUDE_THRESHOLD = 1500.0
+
+
+def speed_variant_exclude(model_id: str) -> Optional[str]:
+    """Return the derived exclude reason for speed-marketing ids, else None."""
+
+    lowered = model_id.strip().lower()
+    for suffix in SPEED_VARIANT_SUFFIXES:
+        if lowered.endswith(suffix):
+            return SPEED_VARIANT_EXCLUDE_REASON
+    return None
 
 
 def _rp5h_of(record: Mapping[str, Any]) -> Optional[float]:
@@ -331,10 +299,11 @@ def dedupe_registry(
 ) -> dict[str, dict[str, Any]]:
     """Build the registry: one winning record per canonical id.
 
-    Records the collector stamped with ``exclude`` never represent their
-    model; among the rest the highest-rp5h channel wins (duplicate warning).
-    Each entry carries the channel's native id plus the alias map needed to
-    route channel-exposed ids back to the canonical model.
+    Excluded records never represent their model: either a hand-maintained
+    ``exclude`` reason on the record or a derived speed-marketing id suffix.
+    Among the rest the highest-rp5h channel wins (duplicate warning).  Each
+    entry carries the channel's native id plus the alias map needed to route
+    channel-exposed ids back to the canonical model.
     """
 
     registry: dict[str, dict[str, Any]] = {}
@@ -343,8 +312,12 @@ def dedupe_registry(
         for channel, (native_id, record) in members.items():
             reason = record.get("exclude")
             if reason:
+                warnings.append({"type": "manual_excluded", "model": native_id, "reason": reason})
+                continue
+            speed_reason = speed_variant_exclude(native_id)
+            if speed_reason:
                 warnings.append(
-                    {"type": "collector_excluded", "model": native_id, "reason": reason}
+                    {"type": "speed_variant_excluded", "model": native_id, "reason": speed_reason}
                 )
                 continue
             active[channel] = (native_id, record)
@@ -650,24 +623,23 @@ def build_plan(
     extra_path: Path,
     cards_path: Path,
     arena_path: Path,
-    request_models_path: Path,
-    decisions_path: Path,
+    csv_path: Path,
 ) -> tuple[list[dict[str, str]], dict[str, Any]]:
     """Load the snapshots and run the planning pipeline."""
 
+    warnings: list[dict[str, Any]] = []
     sections = load_extra_sections(extra_path)
     aliases = load_extra_aliases(extra_path)
     cards = load_cards(cards_path)
     arena_models = load_arena(arena_path)
-    request_models = load_request_models(request_models_path)
-    decisions = load_decisions(decisions_path)
+    requests = load_csv_requests(csv_path, warnings)
     return plan_from(
         sections,
         aliases=aliases,
         cards=cards,
         arena_models=arena_models,
-        request_models=request_models,
-        decisions=decisions,
+        requests=requests,
+        warnings=warnings,
     )
 
 
@@ -677,53 +649,21 @@ def plan_from(
     aliases: Mapping[str, str] | None = None,
     cards: Mapping[str, Mapping[str, Any]],
     arena_models: Mapping[str, Mapping[str, Any]],
-    request_models: Sequence[Mapping[str, Any]],
-    decisions: Mapping[str, Any],
+    requests: Sequence[Mapping[str, Any]],
+    warnings: list[dict[str, Any]] | None = None,
 ) -> tuple[list[dict[str, str]], dict[str, Any]]:
     """Run the offline planning pipeline; return (csv rows, plan)."""
 
     aliases = aliases or {}
-    warnings: list[dict[str, Any]] = []
+    warnings: list[dict[str, Any]] = list(warnings) if warnings else []
     errors: list[dict[str, Any]] = []
     ineligible: list[dict[str, Any]] = []
 
-    unknown = sorted(set(sections) - set(decisions["channels"]))
-    if unknown:
-        raise PlanningError(
-            f"models_extra channels {unknown} are not in scope.channels {sorted(decisions['channels'])}"
-        )
-
-    # Registry: alias-normalised groups, collector excludes dropped, one
+    # Registry: alias-normalised groups, excluded records dropped, one
     # winning channel per canonical id, then variant groups resolved.
     registry = dedupe_registry(sections, aliases, warnings)
     registry = supersede_variants(registry, warnings)
     fill_free_records(registry, warnings)
-
-    def _find(model_id: str, provider: str | None = None) -> Optional[str]:
-        for key, entry in registry.items():
-            if provider is not None and entry["channel"] != provider:
-                continue
-            if model_id in (key, entry["native_id"]):
-                return key
-        return None
-
-    for provider, per_provider in sorted(decisions["excluded"].items()):
-        for model_id in sorted(per_provider):
-            key = _find(model_id, provider)
-            if key is not None:
-                del registry[key]
-    excluded_rows = [
-        {"modelID": model_id, "reason": reason, "note": REMOVAL_NOTE}
-        for provider, per_provider in sorted(decisions["excluded"].items())
-        for model_id, reason in sorted(per_provider.items())
-    ]
-    for provider, per_provider in sorted(decisions["supplements"].items()):
-        for model_id, fields in sorted(per_provider.items()):
-            key = _find(model_id, provider)
-            if key is not None:
-                registry[key]["record"].update(fields)
-            else:
-                warnings.append({"type": "supplement_unknown_model", "model": model_id})
 
     # Candidate pool: arena match (no match defaults to 1500 for non-free
     # models so beta models stay reviewable), then rp5h-missing triage.
@@ -794,32 +734,27 @@ def plan_from(
     for canonical in rp5h_excluded:
         del registry[canonical]
 
-    # Claude request mapping (baseline routing + formula + overrides).
+    # Claude request mapping (baseline routing + formula).
     mappings: list[dict[str, Any]] = []
     request_rows: list[dict[str, str]] = []
     scored_requests: list[dict[str, Any]] = []
-    for request in request_models:
+    for request in requests:
         model_id = str(request.get("model_id") or "").strip()
-        pinned = _number(request.get("arena_score"))
-        if pinned is not None:
-            score = pinned
-        else:
-            arena_key = str(request.get("arena_model_id") or model_id)
-            match, match_type = find_best_match(arena_key, dict(arena_models))
-            score = _number((match or {}).get("rating"))
-            if match is None or score is None:
-                errors.append(
-                    _report_item(
-                        "request_arena_missing",
-                        f"request model {model_id} has no arena score",
-                        model=model_id,
-                    )
+        match, match_type = find_best_match(model_id, dict(arena_models))
+        score = _number((match or {}).get("rating"))
+        if match is None or score is None:
+            errors.append(
+                _report_item(
+                    "request_arena_missing",
+                    f"request model {model_id} has no arena score",
+                    model=model_id,
                 )
-                continue
-            if match_type != "direct_match":
-                warnings.append(
-                    {"type": "request_arena_fallback", "model": model_id, "match_type": match_type}
-                )
+            )
+            continue
+        if match_type != "direct_match":
+            warnings.append(
+                {"type": "request_arena_fallback", "model": model_id, "match_type": match_type}
+            )
         scored_requests.append({**request, "arena_score": score})
     if not scored_requests:
         warnings.append({"type": "empty_claude_series", "message": "no enabled claude-* request models"})
@@ -827,7 +762,7 @@ def plan_from(
     # Mapping order: (1) every request is scored by the formula over
     # non-free candidates; (2) free fill — the free pool (ascending) is
     # paired with the requests (ascending arena score), replacing the
-    # lowest-scored requests' formula targets; (3) overrides apply last.
+    # lowest-scored requests' formula targets.
     scored_requests.sort(key=lambda item: (float(item["arena_score"]), str(item["model_id"])))
     free_candidates = sorted(
         (c for c in candidates if "free" in c["model_id"].lower()),
@@ -855,20 +790,6 @@ def plan_from(
         model_id = str(request["model_id"])
         score = float(request["arena_score"])
         target, confidence = resolved[model_id]
-        override = decisions["overrides"].get(model_id)
-        if override:
-            target = override["target_model"]
-            confidence = "override"
-        if target is not None and not any(c["model_id"] == target for c in candidates):
-            errors.append(
-                _report_item(
-                    "invalid_mapping_override_target",
-                    f"target {target} for {model_id} is not in the candidate pool",
-                    model=model_id,
-                    target=target,
-                )
-            )
-            target = None
         if target is None:
             errors.append(
                 _report_item(
@@ -910,19 +831,17 @@ def plan_from(
         )
     ]
 
-    # Plan: channel lists keep native ids (routing); global models use the
+    # Plan: channel lists keep native ids (routing); the AxonHub channel
+    # name is the models_extra section name; global models use the
     # canonical id with channelAliases describing per-channel exposure.
-    provider_channels = decisions["channels"]
     channels: dict[str, dict[str, Any]] = {
-        provider_channels[provider]: {"supportedModels": []}
-        for provider in sorted(sections)
+        provider: {"supportedModels": []} for provider in sorted(sections)
     }
     for canonical in sorted(registry):
         entry = registry[canonical]
-        axon_channel = provider_channels[entry["channel"]]
-        channels.setdefault(axon_channel, {"supportedModels": []})
-        if entry["native_id"] not in channels[axon_channel]["supportedModels"]:
-            channels[axon_channel]["supportedModels"].append(entry["native_id"])
+        channel_models = channels[entry["channel"]]["supportedModels"]
+        if entry["native_id"] not in channel_models:
+            channel_models.append(entry["native_id"])
     for channel_node in channels.values():
         channel_node["supportedModels"] = sorted(channel_node["supportedModels"])
 
@@ -930,7 +849,7 @@ def plan_from(
     for canonical in sorted(registry):
         entry = registry[canonical]
         record = entry["record"]
-        axon_channel = provider_channels[entry["channel"]]
+        axon_channel = entry["channel"]
         card = cards.get(canonical) or cards.get(entry["native_id"])
         if card is None:
             warnings.append({"type": "card_missing", "model": canonical, "provider": entry["channel"]})
@@ -963,10 +882,8 @@ def plan_from(
 
     plan = {
         "schema_version": PLAN_SCHEMA_VERSION,
-        "providers": dict(sorted(provider_channels.items())),
         "channels": dict(sorted(channels.items())),
         "models": plan_models,
-        "removals": excluded_rows,
         "warnings": warnings,
         "report": {
             "errors": errors,
@@ -977,7 +894,6 @@ def plan_from(
                 "channels": len(channels),
                 "candidates": len(candidate_rows),
                 "requests": len(request_rows),
-                "removals": len(excluded_rows),
                 "warnings": len(warnings),
                 "errors": len(errors),
             },
@@ -1023,9 +939,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--extra", type=Path, default=Path("data/models_extra.json"))
     parser.add_argument("--cards", type=Path, default=Path("data/all_models.json"))
     parser.add_argument("--arena", type=Path, default=Path("data/arena.json"))
-    parser.add_argument("--request-models", type=Path, default=Path("config/request-models.json"))
-    parser.add_argument("--model-decisions", type=Path, default=Path("config/model-decisions.json"))
-    parser.add_argument("--csv-output", type=Path, default=Path("models.csv"))
+    parser.add_argument(
+        "--csv",
+        type=Path,
+        default=Path("models.csv"),
+        help="mapping workspace; request rows are read as input, then the table is regenerated",
+    )
     parser.add_argument("--plan-output", type=Path, default=None)
     parser.add_argument("--fail-on-errors", action="store_true")
     args = parser.parse_args(argv)
@@ -1035,14 +954,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             extra_path=args.extra,
             cards_path=args.cards,
             arena_path=args.arena,
-            request_models_path=args.request_models,
-            decisions_path=args.model_decisions,
+            csv_path=args.csv,
         )
     except PlanningError as exc:
         print(f"models-mapping: {exc}", file=sys.stderr)
         return 1
 
-    write_mapping(args.csv_output, rows)
+    write_mapping(args.csv, rows)
     if args.plan_output:
         write_json(args.plan_output, report)
     print(render_report(report))

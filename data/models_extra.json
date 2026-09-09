@@ -71,7 +71,6 @@
           "input": 0.28,
           "output": 0.56
         },
-        "exclude": "speed-variant (fast/highspeed)",
         "name": "DeepSeek V4 Flash Fast",
         "rp5h": 1040,
         "tok_s": null,
@@ -161,7 +160,6 @@
           "input": 3.0,
           "output": 10.25
         },
-        "exclude": "speed-variant (fast/highspeed)",
         "name": "GLM-5.2 Fast",
         "rp5h": 138,
         "tok_s": null,
@@ -307,7 +305,6 @@
           "input": 1.9,
           "output": 8.0
         },
-        "exclude": "speed-variant (fast/highspeed)",
         "name": "Kimi K2.7 Code HighSpeed",
         "rp5h": 181,
         "tok_s": null,
@@ -841,6 +838,7 @@
           "input": 0.3,
           "output": 1.2
         },
+        "exclude": "Missing mapping-critical RP5H",
         "name": "MiniMax M2.5",
         "peak_hours": null,
         "retention": null,
@@ -1038,13 +1036,14 @@
         "tok_s": null,
         "usage_quota": null
       },
-      "sensenova-v1-fast": {
+      "sensenova-u1-fast": {
         "context_threshold": null,
         "cost": {
           "input": 0,
           "output": 0
         },
-        "name": "SenseNova V1 Fast",
+        "exclude": "image-generation endpoint (/v1/images/generations), not Chat Completions",
+        "name": "SenseNova U1 Fast",
         "peak_hours": null,
         "retention": null,
         "rp5h": null,

@@ -32,7 +32,6 @@ omen-alpha,candidate,1500,11600,
 qwen3.7-flash,candidate,1500,,
 qwen3.8-27b,candidate,1500,4790,
 sensenova-6.8-flash-lite,candidate,1500,,
-sensenova-v1-fast,candidate,1500,,
 step-3.5-flash,candidate,1500,3510,
 minimax-m3,candidate,1487.3,3200,
 step-3.7-flash,candidate,1479,1670,
@@ -44,9 +43,9 @@ mimo-v2.5,candidate,1437.71,30100,
 inkling,candidate,1408.68,396,
 inkling-small,candidate,1405,709,
 minimax-m2.7,candidate,1398.47,3400,
-claude-haiku-4.5,request,1328.9,,laguna-s-2.1-free
+claude-haiku-4-5,request,1328.9,,laguna-s-2.1-free
 claude-sonnet-4-6,request,1521.49,,longcat-2.0-free
-claude-sonnet-5,request,1536.91,,omen-alpha
+claude-sonnet-5,request,1536.91,,deepseek-v4-flash
 claude-opus-4-6,request,1546.01,,deepseek-v4-flash
 claude-fable-5,request,1629.05,,muse-spark-1.3-contributor
 claude-opus-5,request,1687.61,,muse-spark-1.3-contributor

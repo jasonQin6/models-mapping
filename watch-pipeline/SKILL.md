@@ -39,8 +39,8 @@ Each script persists failures to `watch-pipeline/reference/<channel>/last-error.
 
 ## Snapshot invariants
 
-- `data/models_extra.json` is the shared store `{schema_version, updated_at, channels}`; each collector rewrites **only its own** `channels.<channel>` section via `models_extra.update_channel` (read-modify-write, atomic), so writers must serialize — CI orders goat after go.
-- Sections carry channel-declared facts only (`rp5h`, `usage_quota`, `cost{}`, remark thresholds, goat `tok_s`); card data is never collected here — planning fills it from `data/all_models.json` (ADR 0012).
+- `data/models_extra.json` is the shared store `{schema_version, updated_at, channels}`; each collector updates **only its own** `channels.<channel>` section via `models_extra.update_channel` (read-modify-write, field-level merge, atomic), so writers must serialize — CI orders goat after go. Contract fields refresh in place; hand-maintained fields on surviving records (e.g. `exclude`) are preserved, and ids that left the channel declaration are removed with their record.
+- Sections carry channel-declared facts only (`rp5h`, `usage_quota`, `cost{}`, remark thresholds, goat `tok_s`); card data is never collected here — planning fills it from `data/all_models.json` (ADR 0012). Speed-marketing variants (`-fast`/`-highspeed`) are collected and derived as excluded at planning time; record-level `exclude` reasons are hand-maintained.
 - Channel-provided `claude-*` models are not collected: Claude is served by self-built AxonHub models mapped by arena score (ADR 0012).
 - The go section's keys are exactly the go.mdx model ids (ADR 0011); an id that leaves the document leaves the section.
 - The goat section's keys are the channel's entitlement facts; GOAT hard gates: main-table rows skipped for missing columns, `to_model_id` collisions, zero models, or a count outside `expected_count` in `reference/goat/extra.json` fail the run with no write (partial lists must never publish).

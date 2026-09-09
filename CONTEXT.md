@@ -15,7 +15,7 @@ _Avoid_: Candidate（当模型只是在描述目录成员时）
 **Protocol channel**：承载同一协议模型调用的 AxonHub 通道。一个模型可以因协议不同而属于不同通道。
 _Avoid_: Model association, route
 
-**Managed channel**：`supportedModels` 必须由本项目维护为显式 allowlist 的 AxonHub channel。判定标准是上游模型清单（如 `/v1/models` 返回值）超出账号实际可用集合、需要人工策展，而非是否恰好有写权限。当前托管哪些渠道是易变事实，由配置记录，术语表不枚举渠道。维护方式：渠道清单由 model-registry 依据 `models_extra.json` 去重规划，经 axonhub-admin 交互式写入（AxonHub 自带同步关闭；ADR 0012）。
+**Managed channel**：`supportedModels` 必须由本项目维护为显式 allowlist 的 AxonHub channel。判定标准是上游模型清单（如 `/v1/models` 返回值）超出账号实际可用集合、需要人工策展，而非是否恰好有写权限。当前托管哪些渠道是易变事实，由 `models_extra.json` 的渠道节记录（AxonHub 渠道名 = 节名），术语表不枚举渠道。维护方式：渠道清单由 model-registry 依据 `models_extra.json` 去重规划，经 axonhub-admin 交互式写入（AxonHub 自带同步关闭；ADR 0012）。
 _Avoid_: Any enabled channel, provider channel
 
 **Entitlement**：账号在某渠道实际有权使用的模型集合。上游广告的模型清单可能超出 entitlement；托管渠道的目录必须是 entitlement 的显式 allowlist，其事实来源因渠道而异。
@@ -36,7 +36,7 @@ _Avoid_: Tombstone, stale model
 **Model variant**：同一基础模型的衍生 id（如 `-free`、`-contributor`、`-fast` 后缀）。尺寸后缀（如 `-27b`）是模型 id 的一部分，不构成变种关系。
 _Avoid_: Alias（别名指跨渠道对同一 id 的拼写归一）
 
-**Model decision**：对登记内缺失数据模型作出的、带理由的人工 exclude 或 supplement 事实。
+**Model decision**：对登记内模型作出的人工 exclude 事实，带理由记录于 `models_extra.json` 对应记录的 `exclude` 字段，采集重写必须保留。
 _Avoid_: CSV edit, inferred fallback
 
 ## 下游映射
@@ -50,11 +50,8 @@ _Avoid_: Target assignment（将关系与模型混为一谈）
 **Mapping**：一个 request model 与一个 candidate model 之间的一对一兼容关系。
 _Avoid_: Fallback chain, channel routing
 
-**Managed template**：由本项目维护 canonical mapping 的 `stable`、`claude`、`gpt` API-key profile template。维护范围外的 mappings 作为人工事实保留。
-_Avoid_: Any profile template, dated template
-
-**Mapping workspace**：由 Arena 数据、OpenCode 补充数据和固定 request model 集合确定性生成的审核表；它是映射建议的可审查快照，不是 AxonHub 的运行时状态。
-_Avoid_: Source of truth, handoff CSV
+**Mapping workspace**：`models.csv` 映射审查表。`role=request` 行是人工维护的请求模型清单（该清单的事实源）；其余单元格——candidate 行、Arena 分、RP5H、`mapping` 列——由 Arena 数据与登记数据确定性生成，是映射建议的可审查快照，不是 AxonHub 的运行时状态。
+_Avoid_: handoff CSV
 
 **Free fill**：free 模型作为 request model 专属供给的分配机制；free 池耗尽后剩余 request 由公式在非 free 候选上承接。
 _Avoid_: Baseline routing, free priority
