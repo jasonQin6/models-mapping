@@ -28,7 +28,7 @@ description: 本仓对 AxonHub 部署（https://axon.jasonqin.site）的全链�
 | 任务 | 何时 | 流程 |
 | --- | --- | --- |
 | 重算规划与评审 | 快照更新后重算 `models.csv` 与双 plan；评审映射建议 | [replan.md](references/replan.md) |
-| 同步渠道清单 | 把 channel-plan 应用到 `supportedModels`；刷新屏蔽差集正则 | [channel-sync.md](references/channel-sync.md) |
+| 同步渠道清单 | autoSync 渠道的屏蔽正则治理（`autoSyncModelPattern`）与回读校验；手工静态渠道的 `supportedModels` 维护 | [channel-sync.md](references/channel-sync.md) |
 | 同步模型 | 把 model-plan 增量应用：建实体、改卡/成本/备注、启用、清理 | [model-sync.md](references/model-sync.md) |
 | 应用 Claude 映射 | `models.csv` 确认后写请求模型的关联路由 | [mapping-apply.md](references/mapping-apply.md) |
 | 配置非 Claude 路由 | `channelPriority` 链、free 变种合并、回退与时段门控 | [routing.md](references/routing.md) |
@@ -85,9 +85,11 @@ loop:
    `updateModelStatus(id, enabled)` 或 `bulkEnableModels(ids)` 翻转。
 9. **修改没有 bulk mutation**：批量改成本/备注/卡片就是逐条 `updateModel` 循环（npx 每次约
    2s 启动开销，可接受）。创建用 `bulkCreateModels(inputs: […])` 一次完成。
-10. **循环内两处机械检查**：要写 `supportedModels` 人工清单的渠道，其
-    `autoSyncSupportedModels` 必须为关（开着会被每小时上游同步覆盖，停手报告）；
-    删除前查关联引用——被任何其他模型的 association 规则引用的模型保留并报告，不删。
+10. **删除前查关联引用**——被任何其他模型的 association 规则引用的模型保留并报告，不删。
+
+单渠道/单字段的小治理更新（如 [channel-sync.md](references/channel-sync.md) 的正则
+写入）可短路本循环：确认目标值 → 一次 mutate → 回读该对象。任务文档标注了短路权
+的以任务文档为准。
 
 ## 对账读的标准查询
 
