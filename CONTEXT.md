@@ -15,7 +15,7 @@ _Avoid_: Candidate（当模型只是在描述目录成员时）
 **Protocol channel**：承载同一协议模型调用的 AxonHub 通道。一个模型可以因协议不同而属于不同通道。
 _Avoid_: Model association, route
 
-**Managed channel**：`supportedModels` 必须由本项目维护为显式 allowlist 的 AxonHub channel。判定标准是上游模型清单（如 `/v1/models` 返回值）超出账号实际可用集合、需要人工策展，而非是否恰好有写权限。当前托管哪些渠道是易变事实，由 `models_extra.json` 的渠道节记录（AxonHub 渠道名 = 节名），术语表不枚举渠道。维护方式：渠道清单由 model-registry 依据 `models_extra.json` 去重规划，经 axonhub-admin 交互式写入（AxonHub 自带同步关闭；ADR 0012）。
+**Managed channel**：`supportedModels` 必须由本项目维护为显式 allowlist 的 AxonHub channel。判定标准是上游模型清单（如 `/v1/models` 返回值）超出账号实际可用集合、需要人工策展，而非是否恰好有写权限。当前托管哪些渠道是易变事实，由 `models_extra.json` 的渠道节记录（AxonHub 渠道名 = 节名），术语表不枚举渠道。维护方式：渠道清单由 axonhub-admin 的规划阶段依据 `models_extra.json` 去重规划，经同一 skill 的写入流程交互式写入（AxonHub 自带同步关闭；ADR 0012）。
 _Avoid_: Any enabled channel, provider channel
 
 **Entitlement**：账号在某渠道实际有权使用的模型集合。上游广告的模型清单可能超出 entitlement；托管渠道的目录必须是 entitlement 的显式 allowlist，其事实来源因渠道而异。

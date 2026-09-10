@@ -16,7 +16,7 @@ A ``cardRef`` of null (``card_missing`` models) renders the default card,
 matching what the planner would have produced.
 
 Usage:
-    python3 .agents/skills/model-registry/scripts/assemble_card.py --id glm-5.3
+    python3 .agents/skills/axonhub-admin/scripts/assemble_card.py --id glm-5.3
 """
 
 from __future__ import annotations

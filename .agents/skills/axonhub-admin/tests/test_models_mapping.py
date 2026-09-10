@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for the model-registry planner (dedupe, fill, cards, Claude mapping)."""
+"""Tests for the offline planner (axonhub-admin): dedupe, fill, cards, Claude mapping."""
 
 import json
 import sys
@@ -671,6 +671,8 @@ def test_main_fail_on_errors_exits_nonzero(tmp_path: Path) -> None:
     rc = main([
         "--extra", str(extra), "--cards", str(cards), "--arena", str(arena),
         "--csv", str(csv_path),
+        "--channel-plan", str(tmp_path / "channel-plan.json"),
+        "--model-plan", str(tmp_path / "model-plan.json"),
         "--fail-on-errors",
     ])
 

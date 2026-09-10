@@ -5,7 +5,7 @@ description: Maintain the collection layer — the watch_* scrapers behind .gith
 
 # Watch Pipeline
 
-This skill is the maintenance manual for the collection layer. It owns `.agents/skills/watch-pipeline/scripts/` (the `watch_*.py` scrapers plus `models_extra.py`, the shared models-extra store, and `error_state.py`), their tests, and the per-channel `reference/` directories. It does NOT own the model-registry planning layer and never writes AxonHub. Collection stores raw facts only: name normalization, matching, and derived-value backfill (free quotas, prices) live in the planning layer.
+This skill is the maintenance manual for the collection layer. It owns `.agents/skills/watch-pipeline/scripts/` (the `watch_*.py` scrapers plus `models_extra.py`, the shared models-extra store, and `error_state.py`), their tests, and the per-channel `reference/` directories. It does NOT own the planning layer (that is axonhub-admin's offline planning phase) and never writes AxonHub. Collection stores raw facts only: name normalization, matching, and derived-value backfill (free quotas, prices) live in the planning layer.
 
 ## Channels
 
@@ -45,5 +45,12 @@ Each script persists failures to `reference/<channel>/last-error.json` inside th
 - Channel-provided `claude-*` models are not collected: Claude is served by self-built AxonHub models mapped by arena score (ADR 0012).
 - The go section's keys are exactly the go.mdx model ids (ADR 0011); an id that leaves the document leaves the section.
 - The goat section's keys are the channel's entitlement facts; GOAT hard gates: main-table rows skipped for missing columns, `to_model_id` collisions, or zero models fail the run with no write (partial lists must never publish).
-- `watch_arena.py` owns only `data/arena.json`; joining Arena ids to OpenCode ids happens in `model-registry`, never here.
+- `watch_arena.py` owns only `data/arena.json`; joining Arena ids to OpenCode ids happens in `axonhub-admin`'s planning phase (`models_mapping.py`), never here.
 - Success messages: `watch-arena: wrote N models ...` / `watch-go: N Go models -> ...` / `watch-goat: N models -> ...`.
+
+## CI security
+
+- Third-party Actions are pinned to reviewed versions or commit SHAs with minimal permissions (typically `contents: write`); credentials enter only via GitHub Secrets, and the workflow never holds AxonHub credentials.
+- Committing is serialized by `concurrency` per output file; each job writes only its own snapshot.
+- Never interpolate scraped page content, commit messages, or branch names into shell commands.
+- CI runs no tests — the schema/hard-gate checks are built into the scripts themselves (before write); maintainers run `pytest` locally.

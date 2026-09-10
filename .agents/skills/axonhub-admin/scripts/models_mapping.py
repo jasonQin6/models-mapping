@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline model-registry planner: dedupe, fill, and map.
+"""Offline planner of the axonhub-admin skill: dedupe, fill, and map.
 
 Pipeline position: watch-pipeline collects channel-declared facts into
 ``data/models_extra.json`` (plus ``data/all_models.json`` for public cards and

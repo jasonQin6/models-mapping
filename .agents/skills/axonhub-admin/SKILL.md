@@ -1,18 +1,38 @@
 ---
 name: axonhub-admin
-description: 执行本仓库对 AxonHub 部署（https://axon.jasonqin.site）的受控写操作——模型目录、渠道清单、关联路由、成本与备注的批量读写。作为 axonhub-cli 的 wrapper：工具机制（token、endpoint、find/query/mutate 用法）以 axonhub-cli skill 为准，本文持有治理逻辑、执行纪律与部署约定。仓库外的一次性通用查询用 axonhub-cli。
+description: 本仓对 AxonHub 部署（https://axon.jasonqin.site）的全链路治理：离线重算模型注册表与 Claude 映射建议（models.csv、data/channel-plan.json、data/model-plan.json），以及用户确认后的受控写入——渠道 supportedModels 清单、模型卡与成本备注、关联路由、屏蔽正则、批量重建。凡任务涉及重算规划、评审映射表、生成/应用 plan、同步渠道或模型到 AxonHub，都先用本 skill。工具机制（token、endpoint、find/query/mutate 用法）以 axonhub-cli skill 为准；仓库外的一次性通用查询也用 axonhub-cli。
 ---
 
 # AxonHub Admin
 
 对 AxonHub 的管理操作全部走 `/admin/graphql`，鉴权用 JWT token（不是静态 key）。
-本 skill 是 axonhub-cli 的 wrapper：**怎么连、怎么调**见 axonhub-cli；**做什么、按什么纪律做**见本文。
+本 skill 是 axonhub-cli 的 wrapper：**怎么连、怎么调**见 axonhub-cli；**做什么、
+按什么纪律做**见本文与 `references/` 的任务流程。
 
 ## 定位与分层
 
-- **axonhub-cli**：通用工具机制——token 获取、endpoint 配置、`find`/`query`/`mutate` 的语法与参数。本文不复制其正文，机制细节以它为准。
-- **axonhub-admin（本文）**：三类对象的治理逻辑（渠道清单 / 模型卡 / 关联路由，见 `references/` 文档）、数据源约定、执行循环、部署怪癖。
-- 通道规则：**读可以用 curl**（直接 POST GraphQL，输出是干净 JSON，便于 jq 解析）；**写必须走 graphql-cli**（token 经 `endpoint login` 注入，凭据不散落在命令历史）。
+- 两阶段：**离线规划**（只消费仓库内快照，不联网、不持凭据、可随时重跑）→
+  **受控写入**（交互会话、凭据、逐次确认）。
+- 采集只发生在 watch-pipeline（另一 skill）；CI（GitHub Actions）永不写
+  AxonHub，也不持有其凭据。
+- 写入与变换使用**独立的确认材料**，确认其一不授权另一。
+- 通道规则：**读可以用 curl**（直接 POST GraphQL，输出是干净 JSON，便于 jq
+  解析）；**写必须走 graphql-cli**（token 经 `endpoint login` 注入，凭据不
+  散落在命令历史）。
+
+## 任务导航
+
+按任务类型读对应流程文档；所有写任务共用本文后续的 Token、执行循环、对账读
+与部署怪癖。
+
+| 任务 | 何时 | 流程 |
+| --- | --- | --- |
+| 重算规划与评审 | 快照更新后重算 `models.csv` 与双 plan；评审映射建议 | [replan.md](references/replan.md) |
+| 同步渠道清单 | 把 channel-plan 应用到 `supportedModels`；刷新屏蔽差集正则 | [channel-sync.md](references/channel-sync.md) |
+| 同步模型 | 把 model-plan 增量应用：建实体、改卡/成本/备注、启用、清理 | [model-sync.md](references/model-sync.md) |
+| 应用 Claude 映射 | `models.csv` 确认后写请求模型的关联路由 | [mapping-apply.md](references/mapping-apply.md) |
+| 配置非 Claude 路由 | `channelPriority` 链、free 变种合并、回退与时段门控 | [routing.md](references/routing.md) |
+| 批量重建 | 目录清空/迁移后的整体重建 | [rebuild.md](references/rebuild.md) |
 
 ## Token
 
@@ -22,14 +42,16 @@ description: 执行本仓库对 AxonHub 部署（https://axon.jasonqin.site）�
 3. 注入 graphql-cli：`npx -y @axonhub/graphql-cli endpoint login axonhub --type token --token "$TOKEN"`。
 4. 校验：`curl -X POST .../admin/graphql` 查 `{ me { id email } }`，HTTP 200 且有 `data.me` 即通过；401 则回第 2 步重取。
 
-JWT 是凭据：只出现在 Authorization 头和环境变量里，不写入文件、提交或日志。
+JWT 是凭据：只出现在 Authorization 头和环境变量里，不打印、不复制、不写入
+文件、提交、plan/CSV 或日志。`AXONHUB_JWT`（本 skill，浏览器会话 token）与
+`AXONHUB_TOKEN`（axonhub-cli，signin 接口换得）机制不同、互不通用。
 
 ## 执行循环（所有批量写操作的标准流程）
 
 ```text
 loop:
   1  state  = 对账读()               # 只认线上状态
-  2  plan   = 生成工作清单(state)     # 顺序规则见下
+  2  plan   = 生成工作清单(state)     # 顺序规则见各任务文档
   3  确认(plan)                      # 展示工作清单，请求一次确认
   4  for item in plan:
        out = graphql-cli mutate MUT -e axonhub -v '{"id":…,"input":{…}}'
@@ -88,16 +110,9 @@ loop:
 | 文件 | 内容 | 权威范围 |
 | --- | --- | --- |
 | AxonHub 内置目录 | 21 开发者 453 模型（实测 2026-09-10），含能力位/成本/上限/日期 | 主流模型卡片首选来源 |
-| `data/models_extra.json` | 渠道节（每渠道的模型、cost、free 标记、exclude）、顶层 `aliases` | 渠道清单与渠道侧成本 |
+| `data/models_extra.json` | 渠道节（每渠道的模型、cost、free 标记、exclude）、顶层 `aliases`、`blocklist` | 渠道清单与渠道侧成本 |
 | `data/all_models.json` | models.dev 快照卡片 | 卡片补充来源（覆盖不全，缺卡走人工兜底，不臆造） |
 | `data/arena.json` | leaderboard 分数（`arena_score`/`organization`/`effort`） | 备注 `manual` 字段的 `arena_score: <分>` 标签 |
-
-## 对象规则文档（references/）
-
-- [channel.md](references/channel.md) — 渠道 `supportedModels` 清单的规划与治理规则（别名、去重、变种、free 语义）
-- [models.md](references/models.md) — 模型卡与备注的组装规则（单一卡片来源、写时组装、渠道 cost 逐字段覆盖）
-- [associations.md](references/associations.md) — 关联路由（Claude 请求模型按分数映射、其余模型自映射的路由约定）
-- [batch-creation.md](references/batch-creation.md) — 批量（重）建模型的 playbook（payload 约定、软删清理）
 
 ## 部署怪癖与已知事实
 
@@ -115,7 +130,15 @@ loop:
   `settings.modelMappings`（from=裸 ID，to=前缀 ID）；模型侧 association 链
   （`channel_model` 钉渠道+精确 ID / `model` 全局精确 ID / `regex` 全局正则）。
 
+## 事件响应
+
+怀疑凭据泄露时：立即撤销并轮换 `AXONHUB_JWT`、GitHub Secrets 及服务器密钥 →
+检查 Actions 日志、AxonHub 审计与服务日志、最近快照提交 diff → 核对模型卡、
+remark、channel supported-models 与 associations 变更 → 确认完整性前保持
+workflows disabled，dry-run 验证后再恢复。
+
 ## 文档维护
 
-治理逻辑只维护在本目录这些 markdown 里；执行流程多次跑稳后再考虑固化为脚本。
-`model-registry` 是遗留的离线规划 skill（其 scripts/tests 仍被本文引用），待本 skill 验证可用后整体删除。
+治理逻辑与任务流程只维护在本目录 markdown；流程多次跑稳后再固化为脚本。
+`scripts/` 与 `tests/` 现含离线规划器（`models_mapping.py`）、写时组装
+（`assemble_card.py`）及其测试，校验：`python3 -m pytest -q`。
