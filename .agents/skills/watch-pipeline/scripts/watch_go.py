@@ -78,7 +78,7 @@ def parse_price(value: str) -> Optional[float]:
     value = value.strip()
     if value in ('-', '', 'N/A'):
         return None
-    value = value.replace('$', '').replace(',', '').strip()
+    value = value.replace('$', '').replace(',', '').replace('*', '').strip()
     try:
         return float(value)
     except ValueError:
@@ -133,14 +133,6 @@ def parse_table_lines(table_lines: List[str]) -> List[dict]:
     return rows
 
 
-def extract_section(text: str, heading: str) -> Optional[str]:
-    pattern = rf'^#{{1,3}}\s+{re.escape(heading)}.*?\n(.*?)(?=^#{{1,3}}\s|\Z)'
-    match = re.search(pattern, text, re.MULTILINE | re.DOTALL)
-    if match:
-        return match.group(1)
-    return None
-
-
 def merge_model(existing: dict, new_data: dict) -> dict:
     """Merge new_data into existing, only overwriting if new value is not None/empty."""
     result = dict(existing)
@@ -150,94 +142,126 @@ def merge_model(existing: dict, new_data: dict) -> dict:
     return result
 
 
+def _table_headers(table_lines: List[str]) -> List[str]:
+    """Column headers of a markdown table (empty when not a table)."""
+    if not table_lines:
+        return []
+    return [h.strip() for h in table_lines[0].split('|')[1:-1]]
+
+
+def _find_table_by_headers(
+    tables: List[List[str]], required: tuple
+) -> Optional[List[str]]:
+    """First table whose header row carries all ``required`` columns."""
+    for table in tables:
+        headers = _table_headers(table)
+        if all(col in headers for col in required):
+            return table
+    return None
+
+
 def parse_mdx(content: str) -> Dict[str, dict]:
     """Parse the go.mdx tables into raw model records.
 
-    Reads three tables — usage limits (rp5h), pricing (the four prices plus
-    usage_quota) and endpoints.  Variant rows of one model in the pricing
-    table collapse to the row with the cheapest output price.  The parser
-    transcribes declarations only: undeclared cells stay ``None`` and no
-    value is derived from other rows — free-model backfill and any other
-    cleaning belong to the planning layer (models_mapping.py).
+    Tables are located by header signature, never by position: upstream
+    reshuffles sections (2026-09: pricing moved to the top of "Usage
+    limits" with the monthly quota column renamed ``Monthly limit``,
+    requests moved under an "Estimated requests" subsection), and a
+    positional reader then transcribed the pricing table as requests,
+    silently nulling every rp5h/cost field in the store.
+
+    Reads three tables — requests (rp5h), pricing (the four prices plus
+    usage_quota, historically the ``Usage`` column) and endpoints.
+    Variant rows of one model in the pricing table collapse to the row
+    with the cheapest output price.  The parser transcribes declarations
+    only: undeclared cells stay ``None`` and no value is derived from
+    other rows — free-model backfill and any other cleaning belong to the
+    planning layer (models_mapping.py).
+
+    Raises ValueError on structural drift (a signature table missing or
+    yielding no values) so the run fails loudly instead of publishing a
+    field-stripped section.
     """
 
     models = {}
+    all_tables = find_tables_in_text(content)
 
-    # 1. Usage limits section
-    usage_section = extract_section(content, 'Usage limits')
-    if usage_section:
-        tables = find_tables_in_text(usage_section)
+    # 1. Requests table (rp5h)
+    requests_table = _find_table_by_headers(
+        all_tables, ('Model', 'requests per 5 hour')
+    )
+    if requests_table is None:
+        raise ValueError('go.mdx drift: requests table (requests per 5 hour) not found')
+    for row in parse_table_lines(requests_table):
+        raw_name = row.get('Model', '').strip()
+        key = normalize_model_key(raw_name)
+        if not key:
+            continue
+        models[key] = {
+            'name': raw_name,
+            'rp5h': parse_int_or_none(row.get('requests per 5 hour', '-')),
+        }
+    if not any(m.get('rp5h') is not None for m in models.values()):
+        raise ValueError('go.mdx drift: requests table parsed but no rp5h values')
 
-        # First table: rp5h
-        if tables:
-            rows = parse_table_lines(tables[0])
-            for row in rows:
-                raw_name = row.get('Model', '').strip()
-                key = normalize_model_key(raw_name)
-                if not key:
-                    continue
-                models[key] = {
-                    'name': raw_name,
-                    'rp5h': parse_int_or_none(row.get('requests per 5 hour', '-')),
-                }
+    # 2. Pricing table.  Variant rows of one model (conditions in the Model
+    # cell) collapse to the row with the cheapest output price.  The monthly
+    # dollar allowance appears as "Usage" (old) or "Monthly limit" (new).
+    pricing_table = _find_table_by_headers(all_tables, ('Model', 'Input', 'Output'))
+    if pricing_table is None:
+        raise ValueError('go.mdx drift: pricing table (Input/Output) not found')
+    rows = parse_table_lines(pricing_table)
+    cheapest: Dict[str, dict] = {}
+    for row in rows:
+        raw_name = row.get('Model', '').strip()
+        key = normalize_model_key(raw_name)
+        if not key:
+            continue
+        record = {
+            'name': re.sub(r'\s*\([^)]+\)', '', raw_name).strip() or raw_name,
+            'price_input': parse_price(row.get('Input', '-')),
+            'price_output': parse_price(row.get('Output', '-')),
+            'price_cached_read': parse_price(row.get('Cached Read', '-')),
+            'price_cached_write': parse_price(row.get('Cached Write', '-')),
+            'usage_quota': parse_price(row.get('Usage') or row.get('Monthly limit') or '-'),
+        }
+        if record['price_output'] is None:
+            continue
+        current = cheapest.get(key)
+        if current is None or record['price_output'] < current['price_output']:
+            cheapest[key] = record
+    if not cheapest:
+        raise ValueError('go.mdx drift: pricing table parsed but no priced rows')
+    for key, record in cheapest.items():
+        name = record.pop('name')
+        if key not in models:
+            models[key] = {'name': name}
+        models[key] = merge_model(models[key], record)
 
-        # Second table: pricing.  Variant rows of one model (conditions in
-        # the Model cell) collapse to the row with the cheapest output price.
-        if len(tables) >= 2:
-            rows = parse_table_lines(tables[1])
-            cheapest: Dict[str, dict] = {}
-            for row in rows:
-                raw_name = row.get('Model', '').strip()
-                key = normalize_model_key(raw_name)
-                if not key:
-                    continue
-                record = {
-                    'name': re.sub(r'\s*\([^)]+\)', '', raw_name).strip() or raw_name,
-                    'price_input': parse_price(row.get('Input', '-')),
-                    'price_output': parse_price(row.get('Output', '-')),
-                    'price_cached_read': parse_price(row.get('Cached Read', '-')),
-                    'price_cached_write': parse_price(row.get('Cached Write', '-')),
-                    'usage_quota': parse_price(row.get('Usage', '-')),
-                }
-                if record['price_output'] is None:
-                    continue
-                current = cheapest.get(key)
-                if current is None or record['price_output'] < current['price_output']:
-                    cheapest[key] = record
-
-            for key, record in cheapest.items():
-                name = record.pop('name')
-                if key not in models:
-                    models[key] = {'name': name}
-                models[key] = merge_model(models[key], record)
-
-    # 2. Endpoints table
-    endpoints_section = extract_section(content, 'Endpoints')
-    if endpoints_section:
-        tables = find_tables_in_text(endpoints_section)
-        if tables:
-            rows = parse_table_lines(tables[0])
-            for row in rows:
-                raw_name = row.get('Model', '').strip()
-                key = normalize_model_key(raw_name)
-                if not key:
-                    continue
-                model_id = row.get('Model ID', '').strip()
-                endpoint = row.get('Endpoint', '').strip()
-                protocol = 'unknown'
-                if '/responses' in endpoint:
-                    protocol = 'responses'
-                elif '/messages' in endpoint:
-                    protocol = 'messages'
-                elif '/completions' in endpoint:
-                    protocol = 'completions'
-                if key not in models:
-                    models[key] = {'name': raw_name}
-                models[key] = merge_model(models[key], {
-                    'model_id': model_id,
-                    'endpoint': endpoint,
-                    'protocol': protocol,
-                })
+    # 3. Endpoints table
+    endpoints_table = _find_table_by_headers(all_tables, ('Model', 'Model ID'))
+    if endpoints_table is not None:
+        for row in parse_table_lines(endpoints_table):
+            raw_name = row.get('Model', '').strip()
+            key = normalize_model_key(raw_name)
+            if not key:
+                continue
+            model_id = row.get('Model ID', '').strip()
+            endpoint = row.get('Endpoint', '').strip()
+            protocol = 'unknown'
+            if '/responses' in endpoint:
+                protocol = 'responses'
+            elif '/messages' in endpoint:
+                protocol = 'messages'
+            elif '/completions' in endpoint:
+                protocol = 'completions'
+            if key not in models:
+                models[key] = {'name': raw_name}
+            models[key] = merge_model(models[key], {
+                'model_id': model_id,
+                'endpoint': endpoint,
+                'protocol': protocol,
+            })
 
     return models
 

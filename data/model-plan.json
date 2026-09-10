@@ -7,7 +7,7 @@
         {
           "channel": "commandcode-goat",
           "priority": 0,
-          "rp5h": 18200.0
+          "rp5h": 30800.0
         },
         {
           "channel": "opencode-go",
@@ -22,16 +22,16 @@
       ],
       "input": {
         "cost": {
-          "cacheRead": 0.007,
+          "cacheRead": 0.003,
           "cacheWrite": 0,
-          "input": 0.22,
-          "output": 0.66
+          "input": 0.15,
+          "output": 0.6
         },
         "developer": "deepseek",
         "group": "deepseek-flash",
         "icon": "DeepSeek",
         "name": "DeepSeek V4 Flash",
-        "remark": "{\"manual\":\"\",\"rp5h\":18200,\"usage_quota\":60.0}",
+        "remark": "{\"manual\":\"\",\"rp5h\":30800,\"usage_quota\":60.0}",
         "type": "chat"
       },
       "modelID": "deepseek-v4-flash"
@@ -102,6 +102,32 @@
         "type": "chat"
       },
       "modelID": "deepseek-v4-pro"
+    },
+    {
+      "cardRef": "deepseek/deepseek-v4.1-flash",
+      "channel": "commandcode-goat",
+      "channelPriority": [
+        {
+          "channel": "commandcode-goat",
+          "priority": 0,
+          "rp5h": 30800.0
+        }
+      ],
+      "input": {
+        "cost": {
+          "cacheRead": 0.003,
+          "cacheWrite": 0,
+          "input": 0.15,
+          "output": 0.6
+        },
+        "developer": "deepseek",
+        "group": "deepseek-flash",
+        "icon": "DeepSeek",
+        "name": "DeepSeek V4.1 Flash",
+        "remark": "{\"manual\":\"\",\"rp5h\":30800,\"usage_quota\":4060.0}",
+        "type": "chat"
+      },
+      "modelID": "deepseek-v4.1-flash"
     },
     {
       "cardRef": "google/gemini-3.7-flash",
@@ -400,19 +426,11 @@
     },
     {
       "cardRef": "tencent/hy3",
-      "channel": "commandcode-goat",
-      "channelAliases": {
-        "commandcode-goat": "tencent-hy3"
-      },
+      "channel": "opencode-go",
       "channelPriority": [
         {
-          "channel": "commandcode-goat",
-          "priority": 0,
-          "rp5h": 7080.0
-        },
-        {
           "channel": "opencode-go",
-          "priority": 1,
+          "priority": 0,
           "rp5h": 4300.0
         }
       ],
@@ -427,7 +445,7 @@
         "group": "hy",
         "icon": "Default",
         "name": "Hy3",
-        "remark": "{\"manual\":\"\",\"rp5h\":7080,\"usage_quota\":70.0}",
+        "remark": "{\"manual\":\"\",\"rp5h\":4300,\"usage_quota\":60.0}",
         "type": "chat"
       },
       "modelID": "hy3"
@@ -634,7 +652,7 @@
         "group": "commandcode-goat",
         "icon": "Default",
         "name": "Laguna S 2.1",
-        "remark": "{\"manual\":\"\",\"rp5h\":18200,\"usage_quota\":60}",
+        "remark": "{\"manual\":\"\",\"rp5h\":30800,\"usage_quota\":60}",
         "type": "chat"
       },
       "modelID": "laguna-s-2.1-free"
@@ -685,8 +703,34 @@
         "developer": "commandcode-goat",
         "group": "commandcode-goat",
         "icon": "Default",
+        "name": "Ling 3.0 Flash Sante",
+        "remark": "{\"manual\":\"\",\"rp5h\":30800,\"usage_quota\":60}",
+        "type": "chat"
+      },
+      "modelID": "ling-3.0-flash-sante-free"
+    },
+    {
+      "cardRef": null,
+      "channel": "commandcode-goat",
+      "channelPriority": [
+        {
+          "channel": "commandcode-goat",
+          "priority": 0,
+          "rp5h": null
+        }
+      ],
+      "input": {
+        "cost": {
+          "cacheRead": 0.0,
+          "cacheWrite": 0,
+          "input": 0.0,
+          "output": 0.0
+        },
+        "developer": "commandcode-goat",
+        "group": "commandcode-goat",
+        "icon": "Default",
         "name": "LongCat 2.0",
-        "remark": "{\"manual\":\"\",\"rp5h\":18200,\"usage_quota\":60}",
+        "remark": "{\"manual\":\"\",\"rp5h\":30800,\"usage_quota\":60}",
         "type": "chat"
       },
       "modelID": "longcat-2.0-free"
@@ -1196,8 +1240,8 @@
   ],
   "report": {
     "counts": {
-      "intersection": 25,
-      "models": 40
+      "intersection": 24,
+      "models": 42
     }
   },
   "schema_version": 1,
@@ -1210,6 +1254,11 @@
     {
       "model": "ling-3.0-flash",
       "provider": "ant",
+      "type": "card_missing"
+    },
+    {
+      "model": "ling-3.0-flash-sante-free",
+      "provider": "commandcode-goat",
       "type": "card_missing"
     },
     {

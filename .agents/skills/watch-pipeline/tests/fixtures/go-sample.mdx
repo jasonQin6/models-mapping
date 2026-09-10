@@ -1,27 +1,34 @@
 # OpenCode Go
 
-Sample upstream document (structure mirrors the real go.mdx) used to replay
-`watch_go.py` offline in tests.
+Sample upstream document (structure mirrors the real go.mdx since its
+2026-09 reorganisation: pricing table directly under "Usage limits" with a
+bold `Monthly limit` column, requests under an "Estimated requests"
+subsection, variant rows in the pricing table) used to replay `watch_go.py`
+offline in tests.
 
 ## Usage limits
 
-OpenCode Go includes the following base limits:
+Usage limits are defined as monthly dollar amounts. Token prices are per 1M
+tokens.
 
-- **5 hour limit** — $12 of usage
+| Model                     | Input  | Output | Cached Read | Cached Write | Monthly limit |
+| ------------------------- | ------ | ------ | ----------- | ------------ | ------------- |
+| Grok 4.6                  | $0.20  | $0.80  | $0.02       | $0.10        | **$20**       |
+| Sample Bot (≤ 256K tokens) | $0.30 | $1.20  | $0.06       | $0.375       | **$60**       |
+| Sample Bot (> 256K tokens) | $0.60 | $2.40  | $0.12       | $0.75        | **$60**       |
+| Freebie                   | $0     | $0     | $0          | $0           | -             |
+| Claude Sonnet 5           | $3.00  | $15.00 | $0.30       | $0.75        | **$50**       |
 
-| Model            | requests per 5 hour | requests per week | requests per month |
-| ---------------- | ------------------- | ----------------- | ------------------ |
-| Grok 4.6         | 169                 | 423               | 845                |
-| Sample Bot       | 1,000               | 2,500             | 5,000              |
-| Freebie          | -                   | -                 | -                  |
-| Claude Sonnet 5  | 100                 | 250               | 500                |
+### Estimated requests
 
-| Model            | Input | Output | Cached Read | Cached Write | Usage |
-| ---------------- | ----- | ------ | ----------- | ------------ | ----- |
-| Grok 4.6         | $0.20 | $0.80  | $0.02       | $0.10        | $20   |
-| Sample Bot       | $0.30 | $1.20  | $0.06       | $0.375       | $60   |
-| Freebie          | $0    | $0     | $0          | $0           | -     |
-| Claude Sonnet 5  | $3.00 | $15.00 | $0.30       | $0.75        | $50   |
+The table below provides an estimated request count based on typical Go usage patterns:
+
+| Model           | requests per 5 hour | requests per week | requests per month |
+| --------------- | ------------------- | ----------------- | ------------------ |
+| Grok 4.6        | 169                 | 423               | 845                |
+| Sample Bot      | 1,000               | 2,500             | 5,000              |
+| Freebie         | -                   | -                 | -                  |
+| Claude Sonnet 5 | 100                 | 250               | 500                |
 
 ## Endpoints
 
