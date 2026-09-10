@@ -80,10 +80,16 @@ loop:
 
 ## 数据源
 
+模型卡片的来源优先级：**① AxonHub 内置目录**（`providersCatalog`，默认上游
+`ThinkInAIXYZ/PublicProviderConf` 每小时刷新，拉取失败回退二进制内嵌快照；models 页
+「批量添加」从目录条目自动组装完整卡片）→ **② `data/all_models.json`**（models.dev 快照，
+离线规划管线用）→ **③ 人工兜底**（渠道特有/最新 ID，两个源都常缺）。
+
 | 文件 | 内容 | 权威范围 |
 | --- | --- | --- |
+| AxonHub 内置目录 | 21 开发者 453 模型（实测 2026-09-10），含能力位/成本/上限/日期 | 主流模型卡片首选来源 |
 | `data/models_extra.json` | 渠道节（每渠道的模型、cost、free 标记、exclude）、顶层 `aliases` | 渠道清单与渠道侧成本 |
-| `data/all_models.json` | models.dev 快照卡片 | 模型卡事实来源（覆盖不全，缺卡走人工兜底，不臆造） |
+| `data/all_models.json` | models.dev 快照卡片 | 卡片补充来源（覆盖不全，缺卡走人工兜底，不臆造） |
 | `data/arena.json` | leaderboard 分数（`arena_score`/`organization`/`effort`） | 备注 `manual` 字段的 `arena_score: <分>` 标签 |
 
 ## 对象规则文档（references/）

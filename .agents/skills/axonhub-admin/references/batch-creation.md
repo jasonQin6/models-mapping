@@ -34,7 +34,12 @@
 - 关联接线是建完后的独立一轮（payload 里 `settings: {associations: []}`）；请求模型路由
   再按映射表走。
 
-## Payload 约定（每模型，卡片数据来自 `data/all_models.json`）
+## Payload 约定（每模型，卡片数据优先取内置目录，`data/all_models.json` 作补充）
+
+优先路径：models 页「批量添加」从 `providersCatalog` 条目组装卡片（name←display_name、
+group←family、能力位/成本/上限/日期全带）——等价的 GraphQL 流程是：查
+`providersCatalog(filtered: true)`，按下列映射从条目构造 `CreateModelInput`（实测
+`gpt-5.5` 一次成型，卡片完整）。目录没有的 ID 再查 `data/all_models.json`，都没有才人工兜底。
 
 - `developer` — models.dev 的厂商前缀归一化为 AxonHub 英文厂商词表：
   `zai-org`/`zhipuai` → `zai`，`meituan` → `longcat`，`moonshotai` → `moonshot`，
