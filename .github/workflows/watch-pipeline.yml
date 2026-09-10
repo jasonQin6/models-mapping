@@ -68,7 +68,7 @@ jobs:
 
       - name: Update opencode-go section of models_extra
         run: |
-          python3 watch-pipeline/scripts/watch_go.py "$RUNNER_TEMP/go.mdx" \
+          python3 .agents/skills/watch-pipeline/scripts/watch_go.py "$RUNNER_TEMP/go.mdx" \
             --extra data/models_extra.json
 
       - name: Commit models_extra
@@ -77,6 +77,11 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "40985853+github-actions[bot]@users.noreply.github.com"
           git add data/models_extra.json
+          # A success clears the channel's last-error.json; commit its
+          # removal in the same batch as the data change.
+          if [ -d .agents/skills/watch-pipeline/reference/go ]; then
+            git add .agents/skills/watch-pipeline/reference/go
+          fi
           if git diff --cached --quiet; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "No opencode-go changes"
@@ -92,7 +97,9 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "40985853+github-actions[bot]@users.noreply.github.com"
-          git add watch-pipeline/reference/go/
+          if [ -d .agents/skills/watch-pipeline/reference/go ]; then
+            git add .agents/skills/watch-pipeline/reference/go
+          fi
           if ! git diff --cached --quiet; then
             git commit -m "watch-go: record failure state"
             git pull --rebase origin "$GITHUB_REF_NAME"
@@ -115,7 +122,7 @@ jobs:
 
       - name: Update commandcode-goat section of models_extra
         run: |
-          python3 watch-pipeline/scripts/watch_goat.py \
+          python3 .agents/skills/watch-pipeline/scripts/watch_goat.py \
             --extra data/models_extra.json
 
       - name: Commit models_extra
@@ -124,6 +131,11 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "40985853+github-actions[bot]@users.noreply.github.com"
           git add data/models_extra.json
+          # A success clears the channel's last-error.json; commit its
+          # removal in the same batch as the data change.
+          if [ -d .agents/skills/watch-pipeline/reference/goat ]; then
+            git add .agents/skills/watch-pipeline/reference/goat
+          fi
           if git diff --cached --quiet; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "No goat changes"
@@ -139,7 +151,9 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "40985853+github-actions[bot]@users.noreply.github.com"
-          git add watch-pipeline/reference/goat/
+          if [ -d .agents/skills/watch-pipeline/reference/goat ]; then
+            git add .agents/skills/watch-pipeline/reference/goat
+          fi
           if ! git diff --cached --quiet; then
             git commit -m "watch-goat: record failure state"
             git pull --rebase origin "$GITHUB_REF_NAME"
@@ -162,7 +176,7 @@ jobs:
 
       - name: Fetch arena data
         run: |
-          python3 watch-pipeline/scripts/watch_arena.py --top-n 0 --output data/arena.json
+          python3 .agents/skills/watch-pipeline/scripts/watch_arena.py --top-n 0 --output data/arena.json
 
       - name: Commit arena snapshot
         id: commit
@@ -170,6 +184,11 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "40985853+github-actions[bot]@users.noreply.github.com"
           git add data/arena.json
+          # A success clears the channel's last-error.json; commit its
+          # removal in the same batch as the data change.
+          if [ -d .agents/skills/watch-pipeline/reference/arena ]; then
+            git add .agents/skills/watch-pipeline/reference/arena
+          fi
           if git diff --cached --quiet; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "No Arena snapshot changes"
@@ -185,7 +204,9 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "40985853+github-actions[bot]@users.noreply.github.com"
-          git add watch-pipeline/reference/arena/
+          if [ -d .agents/skills/watch-pipeline/reference/arena ]; then
+            git add .agents/skills/watch-pipeline/reference/arena
+          fi
           if ! git diff --cached --quiet; then
             git commit -m "watch-arena: record failure state"
             git pull --rebase origin "$GITHUB_REF_NAME"

@@ -1,6 +1,6 @@
 ---
 name: axonhub-admin
-description: Execute this repository's governed AxonHub write program — confirmed catalog plans (channel supportedModels, model cards), mapping tables (request-model associations), batch model creation, and the deployment's routing patterns and quirks. Use for any AxonHub work within the managed scope; generic one-off resource queries from the command line belong to the axonhub-cli skill.
+description: Execute this repository's governed AxonHub write program — confirmed channel-plan allowlists, incremental model-plan entries (cards assembled via assemble_card.py), mapping tables (request-model associations), batch model creation, and the deployment's routing patterns and quirks. Use for any AxonHub work within the managed scope; generic one-off resource queries from the command line belong to the axonhub-cli skill.
 ---
 
 # AxonHub Admin
@@ -33,19 +33,20 @@ Every AxonHub write happens in an interactive session by following this program.
 
 ### The four guardrails (hard, non-negotiable)
 
-1. **Touch managed channels only.** The managed set is the channel sections of `data/models_extra.json` (`ant`, `commandcode-goat`, `opencode-go`, `sensenova`); the AxonHub channel name equals the section name. Nothing outside it is created, updated, or deleted — even when the GraphQL response makes it easy. API-key profile templates are not managed by this project: the former `stable`/`claude`/`gpt` maintenance flow is retired (ADR 0014), and template mappings live directly in the AxonHub UI.
+1. **Touch managed channels only.** The managed set is the channel sections of `data/models_extra.json` (currently `ant`, `commandcode-goat`, `opencode-go`, `sensenova` — re-read the file at run start); the AxonHub channel name equals the section name. Nothing outside it is created, updated, or deleted — even when the GraphQL response makes it easy. API-key profile templates are not managed by this project: the former `stable`/`claude`/`gpt` maintenance flow is retired (ADR 0014), and template mappings live directly in the AxonHub UI.
 2. **Preserve unmanaged associations and external references.** Association lists are replaced per model: keep every rule that does not belong to this write. A model object referenced by an external (non-managed) channel's `supportedModels`, or by any association of another model, is never deleted — retain it and report.
 3. **Read before write.** Fetch the live object immediately before each mutation. Never write from the plan alone or from a cached read; live state is the only write basis.
 4. **Write then verify; retry only with verification.** Read back every write and compare field by field. This deployment intermittently rejects valid payloads with `unknown field` (see quirks below); such failures may be retried with a short backoff — writes are wholesale replacements, so re-issuing the same confirmed input is idempotent, and every retry is followed by a fresh read-back. Persistent errors are shape problems (e.g. a bare `when` condition), not flakes: fix the input shape or report the item, never retry blindly.
 
 ### Confirmation (AskUserQuestion)
 
-Two independent confirmations; confirming one never authorizes the other:
+Three independent confirmations; confirming one never authorizes the others:
 
-- **Catalog plan** — the offline plan JSON from `model-registry/scripts/models_mapping.py` (schema 3, desired state): per-channel exact bare-ID `supportedModels`, target model-card values for every included model, `warnings`.
+- **Channel plan** — `data/channel-plan.json` (schema 1, desired state): per-channel exact bare-ID `supportedModels`. This artifact replaces AxonHub's autoSync as the authoritative "models this channel may serve" list (ADR 0017).
+- **Model plan** — `data/model-plan.json` (schema 1, incremental): per-model `cardRef`, merged `cost`, `remark`, derived meta, `channelPriority` chains. Full AxonHub inputs are assembled per model at write time with `python3 .agents/skills/model-registry/scripts/assemble_card.py --id <modelID>` (cards are referenced from `all_models.json`, never copied into the plan).
 - **Mapping table** — `models.csv` (the only mapping review artifact): `request → mapping` rows for the fixed request models.
 
-For each confirmation, show the artifact next to live state (current channel lists, current request-model targets) so the diff is visible, then ask. Execute only the confirmed set; anything the user declines is skipped and reported.
+For each confirmation, show the artifact next to live state (current channel lists, current model cards, current request-model targets) so the diff is visible, then ask. Execute only the confirmed set; anything the user declines is skipped and reported.
 
 ### Read remote state (before any write)
 
@@ -63,12 +64,12 @@ Done when: you can name each managed channel's ID, its exact `supportedModels`, 
 
 ### Execution-time check: autoSyncSupportedModels must be off
 
-AxonHub's hourly upstream sync overwrites a channel's `supportedModels` with `manualModels ∪ 上游全量`, which erases the curated catalog. For every managed channel: if `autoSyncSupportedModels` is enabled, **stop for that channel** — report it and ask the user how to proceed (disable it first or skip the channel); never write a curated list while it is on.
+AxonHub's hourly upstream sync overwrites a channel's `supportedModels` with `manualModels` plus the channel's full upstream list, which erases the curated catalog. For every managed channel: if `autoSyncSupportedModels` is enabled, **stop for that channel** — report it and ask the user how to proceed (disable it first or skip the channel); never write a curated list while it is on.
 
-### Apply the catalog plan, item by item
+### Apply the plans, item by item
 
-- **Channels** — for each planned channel: `updateChannel(id, input: { supportedModels: <exact plan list> })`. This is a wholesale replacement: legacy vendor-prefixed entries disappear with it. Prefix routing is that channel's own `auto-trim`/`modelMappings` setting, never the plan's or the agent's job. Do not merge with the remote list. **Exception — static free channels (`ant`, `sensenova`, ADR 0013):** the plan's `supportedModels` for them contains only the channel-exclusive models (dedupe keeps one winning channel per canonical ID), so wholesale-applying it would strip the shared models they also serve. Their authoritative list is the hand-maintained `models_extra.json` static section plus live state; only association/card writes for their exclusive models follow the normal flow.
-- **Models** — for each `models[]` entry in the plan: read the live model; if absent, `createModel` with the plan's `input` (then enable it); if present, `updateModel` with only the fields that differ. `CreateModelInput` requires `settings`, which the offline plan cannot carry: the executor supplies defaults — a `channel_model` rule pinning the model to its planned channel plus `disableDeveloperSettingsInheritance: false` and `default` load-balancer/trace-sticky strategies. When writing `remark`, parse the remote remark and keep its `manual` field — the plan's computed fields replace the old computed values only. For existing models, leave `settings` untouched except where the mapping section below applies.
+- **Channels** (from `data/channel-plan.json`) — for each planned channel: `updateChannel(id, input: { supportedModels: <exact plan list> })`. This is a wholesale replacement: legacy vendor-prefixed entries disappear with it. Prefix routing is that channel's own `auto-trim`/`modelMappings` setting, never the plan's or the agent's job. Do not merge with the remote list. **Exception — static free channels (`ant`, `sensenova`, ADR 0013):** the plan's `supportedModels` for them contains only the channel-exclusive models (dedupe keeps one winning channel per canonical ID), so wholesale-applying it would strip the shared models they also serve. Their authoritative list is the hand-maintained `models_extra.json` static section plus live state; only association/card writes for their exclusive models follow the normal flow.
+- **Models** (from `data/model-plan.json`) — for each entry: read the live model; if absent, `createModel` with the assembled input (`assemble_card.py --id`, plus `settings` defaults below) and enable it; if present, `updateModel` with only the fields that differ. `CreateModelInput` requires `settings`, which the plan cannot carry: the executor supplies defaults — a `channel_model` chain following the entry's `channelPriority` (ADR 0016) plus `disableDeveloperSettingsInheritance: false` and `default` load-balancer/trace-sticky strategies. When writing `remark`, parse the remote remark and keep its `manual` field — the plan's computed fields replace the old computed values only. For existing models, leave `settings` untouched except where the mapping section below applies.
 - **Retiring a live global model** — the plan has no removals section (ADR 0014): when a model leaves the plan and the user confirms it should go, check every external (non-managed) channel's `supportedModels` and all models' associations (`channel_model.modelId`, `modelId.modelId`) for references; retain and report on any external use, otherwise `deleteModel(id)` as a standalone confirmed operation.
 - **Never write unmanaged objects**: a model that appears in the plan for one channel but has associations to other channels keeps those associations (guardrail 2) — when updating its `settings.associations`, replace only the rules that point at this managed channel.
 
@@ -93,61 +94,18 @@ After all items: a per-item report — written+verified, unchanged (already corr
 
 Every managed channel's `supportedModels` is written through the interactive
 catalog-plan flow above (ADR 0012). The former unattended vol-server push
-(`apply_channel_models.py`, ADR 0010) is retired; server-side teardown steps
-live in `deploy-vol-server-push.md`.
+(`apply_channel_models.py`, ADR 0010) is retired.
 
 ## Batch model creation via GraphQL (proven 2026-09-09)
 
-Bulk (re)creation after a catalog wipe: payloads come from the
-`models_extra.json ∩ all_models.json` intersection, cards from
-`all_models.json`. Tooling: the `axonhub-cli` skill (`graphql-cli`), or raw
-GraphQL over `node:https`.
-
-- Mutations MUST pass the input as **variables** (`-v '{"input": …}'`); an
-  inline JSON object literal is invalid GraphQL (`Expected Name, found
-  String`).
-- **CLI output is noisy** (npm notices) and its JSON is not always cleanly
-  parseable — a mutation can succeed on the server while local parsing
-  reports failure. After every pass, reconcile against live state
-  (`models(first: 100)`) and only re-issue what is actually missing.
-- **Soft-deleted rows block creation.** Deleted models are invisible to
-  `models` but keep their ID: `createModel` fails with `model name 'x'
-  already exists`. They are still enumerable via `node(id:
-  "gid://axonhub/Model/<n>") { … on Model { modelID } }` — the node lookup
-  bypasses the soft-delete interceptor, so probing ascending IDs rebuilds
-  the full inventory. Purge with `deleteModel(id)`: the resolver context
-  skips the soft-delete interceptor, making it a hard delete.
-  `bulkDeleteModels(ids)` returned `true` but was observed NOT to purge —
-  verify every purge by the succeeding `createModel`, never by the return
-  value.
-- **Enable after create**: `createModel` and the web UI both start models
-  `disabled`; flip with `updateModelStatus(id, enabled)`.
-- Association wiring is a separate pass after creation
-  (`settings: {associations: []}` in the payload); request-model routing
-  then follows the mapping table.
-
-Payload conventions (per model, card data from `all_models.json`):
-
-- `developer` — the models.dev vendor prefix normalized to AxonHub's English
-  vendor vocabulary: `zai-org`/`zhipuai` → `zai`, `meituan` → `longcat`,
-  `moonshotai` → `moonshot`, `deepseek-ai` → `deepseek`.
-- `icon` — lobe-icons name per vendor (DeepSeek, ChatGLM, Qwen, Moonshot,
-  XAI, Hunyuan, LongCat, XiaomiMiMo, Meta, NVIDIA, Step, Gemini, OpenAI);
-  empty string when unsure.
-- `group` — the card's `family`.
-- `type` — `chat`; image-generation endpoints (e.g. `sensenova-u1-fast`,
-  `POST /v1/images/generations`, no image input, not Chat Completions) are
-  `image_generation` with modalities `input: [text]` / `output: [image]`,
-  `vision: false`, and are excluded from the chat registry via the
-  `models_extra.json` record `exclude` flag.
-- `modelCard` — `reasoning: {supported, default}` ← `reasoning`; `toolCall`
-  ← `tool_call`; `temperature` ← `temperature` (default true); `vision` ←
-  `image` in modalities.input; `modalities` and `limit` verbatim; `cost` ←
-  `{input, output, cacheRead: cache_read, cacheWrite: cache_write}`;
-  `knowledge`, `releaseDate` ← `release_date`, `lastUpdated` ←
-  `last_updated` when present.
-- `settings` — `{associations: []}`; omit the optional strategy fields
-  (deployment quirk above).
+Bulk (re)creation after a catalog wipe: payloads come from the intersection
+of `models_extra.json` and `all_models.json`, cards from `all_models.json`.
+The playbook — variables (`-v`) not inline JSON, noisy-output reconciliation,
+soft-delete purging, enable-after-create, and the per-model payload
+conventions — lives in
+[reference/batch-creation.md](reference/batch-creation.md); read it before any
+bulk operation. One-off model writes follow the interactive program above
+instead.
 
 ## Reference
 
@@ -156,9 +114,9 @@ Payload conventions (per model, card data from `all_models.json`):
 Upstream providers expose models under vendor-prefixed IDs (`deepseek/deepseek-v4-flash`, `zai-org/GLM-5.3`), while AxonHub Model entities use bare IDs (`deepseek-v4-flash`). Associations match **exact strings**, so a bare model ID never matches a prefixed channel entry on its own. Two fixes, often combined:
 
 1. **Channel-side**: add `settings.modelMappings` (`from` = bare ID, `to` = prefixed ID). The `from` becomes a routable entry on that channel.
-2. **Model-side**: use a `regex` association instead of exact `channel_model`/`model` bindings. Pattern `(?i)(^|/)deepseek-v4-flash$` matches the bare ID, any vendor prefix, and is case-insensitive. Escape dots (`kimi-k2\.7-code`).
+2. **Model-side**: write the association chain from the plan's `channelPriority` (ADR 0016) — a `channel_model` rule per serving channel, priority ascending as rp5h descends (p0 = the plan's `channel`); prefixed upstreams need that channel's `modelMappings` making the bare ID routable. The former global-`regex` default is retired (ADR 0016): replace leftover regex rules when the model's associations are next written.
 
-Association types: `channel_model` (pinned channel + exact ID), `model` (exact ID across all channels), `regex` (global), plus channel-scoped/tagged variants. Prefer `regex` unless the user wants a model locked to specific channels.
+Association types: `channel_model` (pinned channel + exact ID), `model` (exact ID across all channels), `regex` (global), plus channel-scoped/tagged variants. Default to the `channelPriority` chain; bind tighter (`channel_model` pin only) when the user wants a model locked to specific channels.
 
 ### GraphQL input shapes
 
@@ -177,7 +135,7 @@ Association types: `channel_model` (pinned channel + exact ID), `model` (exact I
 The association conventions — fallback chains, cross-channel pools,
 priority demotion, time-gated routing, free-variant merging (e.g.
 `ling-3.0-flash` → ant's `vl`/`sante`/`fin`) — are owned by
-`model-registry/reference/associations.md`; this skill executes the
+`.agents/skills/model-registry/reference/associations.md`; this skill executes the
 confirmed shapes and verifies every one with
 `queryModelChannelConnections(associations: $assocs) { channel { id name } models { requestModel actualModel source } }`.
 

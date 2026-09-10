@@ -39,7 +39,7 @@ upgrade_bonus = 0.1
 `proximity` is `1` when every candidate has the same score. The penalty
 applies only when the candidate is below the request's score, the upgrade
 bonus only when above. Prices and `usage_quota` are source metadata, not
-mapping-score dimensions; they reach AxonHub through the catalog plan
+mapping-score dimensions; they reach AxonHub through the model plan
 (see [models.md](models.md)).
 
 Mapping order:
@@ -64,22 +64,28 @@ Scores come from the leaderboard, hand assignments (`manual: true`
 records in `data/arena.json`, preserved across collection runs), or the
 defaults below. The matching chain strips a fixed set of variant suffixes
 (`-contributor`, `-free`, `-vl` — `MATCH_VARIANT_SUFFIXES` in
-`model-registry/scripts/name_matching.py`): a variant the board does not
+`.agents/skills/model-registry/scripts/name_matching.py`): a variant the board does not
 list inherits
 its base model's score (`ling-3.0-flash-vl` <- `ling-3.0-flash`), so one
 hand-assigned base record covers every variant. Arena ids keep the
 board's parameter-size suffixes verbatim (`qwen3.8-27b`), so channel ids
 carrying the size direct-match.
 
-- A non-free model with no Arena match defaults to 1500 (warning,
-  `arena_defaulted`) so beta models stay in the pool.
+- A non-free model with no Arena match carries no score at all
+  (`arena_missing`, ADR 0015) — it is listed with an empty `arena_score`
+  and never enters the mapping pool; with no `rp5h` either it is excluded
+  (`rp5h_missing_excluded`).
+- A `version_downgrade` or `prefix_match` hit is rejected
+  (`arena_borrowed_rejected`): the score belongs to a different model or a
+  name family, never silently to this id.
 - A free model whose stripped base is also absent defaults to 1500 too
   and stays in the pool, reachable through free fill regardless of score.
 - A request missing from the board is a blocking error
   (`request_arena_missing`) until a hand assignment lands.
 
-Confidence: Arena direct matches are high; variant-suffix and
-version-downgrade matches medium; prefix matches and free defaults low.
+Confidence: Arena direct matches are high; variant-suffix (same-model)
+matches medium; free defaults low. Downgrade and prefix hits no longer
+produce a mapping target at all (ADR 0015).
 An unmatched model carrying an alphabetic tail outside the registry (say
 `-vq`) raises `unrecognized_variant_suffix` — it is never silently
 scored. Human triage picks one: hand-assign an Arena record for the full
@@ -95,15 +101,21 @@ bare-ID model to the channel entries that serve it. Premise: upstream
 providers expose vendor-prefixed ids (`deepseek/deepseek-v4-flash`) while
 AxonHub Model entities use bare ids, and associations match exact
 strings. The two fixes — channel-side `settings.modelMappings` and
-model-side `regex` associations — are axonhub-admin's model-ID gotcha;
+model-side association chains — are axonhub-admin's model-ID gotcha;
 association types: `channel_model` (pinned channel + exact id), `model`
 (exact id across all channels), `regex` (global pattern).
 
-- **Channel selection** — one channel serves the id: a `channel_model`
-  pin (plus that channel's `modelMappings` making the bare id routable).
-  Several channels serve it: one global `regex` at p0 matching the bare id
-  everywhere (`(?i)(^|/)deepseek-v4-flash$`) — the default; locking a
-  model to specific channels is the exception.
+- **Channel selection** — the planner emits `channelPriority` per model
+  (`data/model-plan.json`, ADR 0016): every managed channel actively
+  serving the id, ordered by descending `rp5h`. The association default
+  is a `channel_model` chain following that order — p0 primary (the
+  dedupe winning channel), later entries the fallback order; a
+  single-channel model degrades to a p0 pin. The commandcode-goat ∩
+  opencode-go intersection (post-alias) is the set of models with a real
+  fallback chain. The former global-`regex` default
+  (`(?i)(^|/)deepseek-v4-flash$` everywhere) is retired (ADR 0016);
+  locking a model to specific channels remains the exception it always
+  was.
 - **Priority configuration** — ascending priority numbers are the
   fallback order: p0 primary, p1/p2 fallbacks. A fallback chain is same
   `channel_model` rules on one channel with ascending priorities.

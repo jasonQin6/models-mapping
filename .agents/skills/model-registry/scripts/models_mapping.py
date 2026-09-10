@@ -20,9 +20,14 @@ and produces everything the AxonHub write path consumes:
    candidate pool by the Arena/RP5H/proximity formula (free fill included);
    GPT request models are pass-through and never enter the mapping.
 5. Outputs: ``models.csv`` — regenerated in place: its request rows are the
-   input, every other cell is computed — and a schema-3 catalog plan
-   (per-channel exact ``supportedModels`` plus model card targets) for the
-   axonhub-admin interactive write path.
+   input, every other cell is computed — plus two per-object plans written
+   under ``data/`` (ADR 0017): ``channel-plan.json`` (each channel's exact
+   ``supportedModels`` desired state) and ``model-plan.json`` (incremental
+   model entries: card reference into ``data/all_models.json``, merged
+   cost end values, remarks, and rp5h-priority association chains).
+   ``assemble_card.py`` renders a plan entry into the full AxonHub input
+   at write time, so the plan never duplicates ``all_models.json``
+   content.
 
 Pure offline planning: no credentials, no network, no AxonHub writes.
 """
@@ -44,8 +49,21 @@ from name_matching import (  # noqa: E402
     unrecognized_variant_suffix,
 )
 
-PLAN_SCHEMA_VERSION = 3
+CHANNEL_PLAN_SCHEMA_VERSION = 1
+MODEL_PLAN_SCHEMA_VERSION = 1
 EXTRA_SCHEMA_VERSION = 1
+# Warnings travel with the artifact they explain; everything else serves the
+# models.csv review workflow and stays on stderr only (ADR 0017).
+CHANNEL_PLAN_WARNINGS = frozenset(
+    {
+        "duplicate_model_across_sources",
+        "speed_variant_excluded",
+        "manual_excluded",
+        "variant_superseded",
+        "free_default_filled",
+    }
+)
+MODEL_PLAN_WARNINGS = frozenset({"card_missing", "missing_remark_fields"})
 REMARK_FIELDS = ("rp5h", "usage_quota")
 FREE_USAGE_QUOTA_DEFAULT = 60
 # Fallback for free models whose channel offers no non-free rp5h to derive from.
@@ -126,20 +144,27 @@ def load_extra_sections(path: Path) -> dict[str, dict[str, dict[str, Any]]]:
     return sections
 
 
-def load_cards(path: Path) -> dict[str, dict[str, Any]]:
-    """Load the models.dev flat ``vendor/model`` catalog indexed by bare id."""
+def load_cards(path: Path) -> tuple[dict[str, dict[str, Any]], dict[str, str]]:
+    """Load the models.dev flat ``vendor/model`` catalog.
+
+    Returns ``(cards, refs)``: ``cards`` indexes every card by bare id for
+    planning; ``refs`` keeps the original ``vendor/model`` key so the model
+    plan can reference the card instead of copying it (ADR 0017).
+    """
 
     payload = load_json(path)
     if not isinstance(payload, Mapping):
         raise PlanningError(f"{path} is not a JSON object")
     cards: dict[str, dict[str, Any]] = {}
+    refs: dict[str, str] = {}
     for key, value in payload.items():
         if not isinstance(value, Mapping):
             continue
         bare_id = str(key).rsplit("/", 1)[-1].strip()
         if bare_id and bare_id not in cards:
             cards[bare_id] = dict(value)
-    return cards
+            refs[bare_id] = str(key)
+    return cards, refs
 
 
 def load_arena(path: Path) -> dict[str, dict[str, Any]]:
@@ -222,9 +247,12 @@ _VARIANT_PRIORITY = {"-free": 0, "-contributor": 1}
 # Series names like ``-flash`` do not match.
 SPEED_VARIANT_SUFFIXES = ("-fast", "-highspeed")
 SPEED_VARIANT_EXCLUDE_REASON = "speed-variant (fast/highspeed)"
-DEFAULT_ARENA_SCORE = 1500.0
 FREE_DEFAULT_ARENA_SCORE = 1500.0
 RP5H_MISSING_EXCLUDE_THRESHOLD = 1500.0
+# The two collected channels whose shared models drive channel-priority
+# associations (ADR 0016); the static sections (ant, sensenova) are not part
+# of the intersection.
+INTERSECTION_CHANNELS = ("commandcode-goat", "opencode-go")
 
 
 def speed_variant_exclude(model_id: str) -> Optional[str]:
@@ -344,6 +372,9 @@ def dedupe_registry(
             "channel_aliases": {
                 channel: nid for channel, (nid, _rec) in active.items() if nid != canonical
             },
+            # Every active serving channel with its declared rp5h; drives the
+            # channel-priority association plan (ADR 0016).
+            "serving": {channel: _rp5h_of(rec) for channel, (_nid, rec) in active.items()},
         }
     return registry
 
@@ -608,7 +639,7 @@ def _confidence(match_type: str) -> str:
         return "high"
     if match_type in ("variant_suffix", "version_downgrade"):
         return "medium"
-    if match_type in ("prefix_match", "free_default"):
+    if match_type == "prefix_match":
         return "low"
     return "none"
 
@@ -637,19 +668,20 @@ def build_plan(
     cards_path: Path,
     arena_path: Path,
     csv_path: Path,
-) -> tuple[list[dict[str, str]], dict[str, Any]]:
+) -> tuple[list[dict[str, str]], dict[str, Any], dict[str, Any]]:
     """Load the snapshots and run the planning pipeline."""
 
     warnings: list[dict[str, Any]] = []
     sections = load_extra_sections(extra_path)
     aliases = load_extra_aliases(extra_path)
-    cards = load_cards(cards_path)
+    cards, card_refs = load_cards(cards_path)
     arena_models = load_arena(arena_path)
     requests = load_csv_requests(csv_path, warnings)
     return plan_from(
         sections,
         aliases=aliases,
         cards=cards,
+        card_refs=card_refs,
         arena_models=arena_models,
         requests=requests,
         warnings=warnings,
@@ -663,9 +695,14 @@ def plan_from(
     cards: Mapping[str, Mapping[str, Any]],
     arena_models: Mapping[str, Mapping[str, Any]],
     requests: Sequence[Mapping[str, Any]],
+    card_refs: Mapping[str, str] | None = None,
     warnings: list[dict[str, Any]] | None = None,
-) -> tuple[list[dict[str, str]], dict[str, Any]]:
-    """Run the offline planning pipeline; return (csv rows, plan)."""
+) -> tuple[list[dict[str, str]], dict[str, Any], dict[str, Any]]:
+    """Run the offline planning pipeline.
+
+    Returns ``(csv_rows, channel_plan, model_plan)``: the regenerated
+    mapping workspace plus the two AxonHub-object plans (ADR 0017).
+    """
 
     aliases = aliases or {}
     warnings: list[dict[str, Any]] = list(warnings) if warnings else []
@@ -688,9 +725,6 @@ def plan_from(
         # Freeness is a declared channel fact (`free: true`), never guessed
         # from the id spelling.
         is_free = record.get("free") is True
-        # is_free=False keeps the free_default 0-score fallback out of the
-        # way: variant suffixes inherit their base model's score in the
-        # chain, and remaining free models default below.
         match, match_type = find_best_match(canonical, dict(arena_models))
         arena_score = _number((match or {}).get("rating"))
         if match_type == "no_match":
@@ -704,19 +738,26 @@ def plan_from(
                     }
                 )
             if is_free:
+                # Free reachability: free fill must stay able to pair every
+                # request even when the board never listed the model.
                 arena_score = FREE_DEFAULT_ARENA_SCORE
                 match_type = "free_defaulted"
                 warnings.append(
                     {"type": "arena_defaulted", "model": canonical, "score": FREE_DEFAULT_ARENA_SCORE}
                 )
             else:
-                arena_score = DEFAULT_ARENA_SCORE
-                warnings.append(
-                    {"type": "arena_defaulted", "model": canonical, "score": DEFAULT_ARENA_SCORE}
-                )
-        elif match_type not in ("direct_match", "free_default"):
+                # No invented standing: an unlisted non-free model carries no
+                # score and stays out of the mapping pool (ADR 0015).
+                arena_score = None
+                match_type = "arena_missing"
+                warnings.append({"type": "arena_missing", "model": canonical})
+        elif match_type in ("version_downgrade", "prefix_match"):
+            # Borrowed scores put another version's or a name family's
+            # standing on this id; only same-model variant suffixes inherit
+            # (ADR 0015).
+            arena_score = None
             warnings.append(
-                {"type": "candidate_arena_fallback", "model": canonical, "match_type": match_type}
+                {"type": "arena_borrowed_rejected", "model": canonical, "match_type": match_type}
             )
         rp5h = _number(record.get("rp5h"))
         if not is_free and rp5h is None:
@@ -786,7 +827,12 @@ def plan_from(
         (c for c in candidates if c["free"]),
         key=lambda c: ((c["arena_score"] if c["arena_score"] is not None else 0.0), c["model_id"]),
     )
-    non_free_candidates = [c for c in candidates if not c["free"]]
+    # Candidates without an arena standing (arena_missing or a rejected
+    # borrowed score) cannot enter the formula: proximity and the arena term
+    # are undefined for them (ADR 0015).
+    non_free_candidates = [
+        c for c in candidates if not c["free"] and c["arena_score"] is not None
+    ]
 
     resolved: dict[str, tuple[Optional[str], str]] = {}
     for request in scored_requests:
@@ -869,10 +915,10 @@ def plan_from(
         record = entry["record"]
         axon_channel = entry["channel"]
         card = cards.get(canonical) or cards.get(entry["native_id"])
+        card_ref = (card_refs or {}).get(canonical) or (card_refs or {}).get(entry["native_id"])
         if card is None:
             warnings.append({"type": "card_missing", "model": canonical, "provider": entry["channel"]})
         merged = dict(card or {})
-        merged["cost"] = _merge_channel_cost(card or {}, record)
         developer, icon, group = _model_meta(merged, axon_channel)
         remark = {"manual": ""}
         for field in REMARK_FIELDS:
@@ -880,54 +926,97 @@ def plan_from(
         missing = [field for field in REMARK_FIELDS if remark[field] is None]
         if missing:
             warnings.append({"type": "missing_remark_fields", "model": canonical, "fields": missing})
+        # Incremental entry (ADR 0017): the card itself is referenced via
+        # ``cardRef`` (assemble_card.py renders the AxonHub shape at write
+        # time); only derived meta and channel-declared end values ship.
         model_entry = {
             "modelID": canonical,
             "channel": axon_channel,
+            "cardRef": card_ref if card is not None else None,
             "input": {
-                "modelID": canonical,
                 "name": str(merged.get("name") or record.get("name") or canonical),
                 "developer": developer,
                 "type": "chat",
                 "icon": icon,
                 "group": group,
-                "modelCard": model_card(merged),
+                "cost": _merge_channel_cost(card or {}, record),
                 "remark": remark_json(remark),
             },
         }
         if entry["channel_aliases"]:
             model_entry["channelAliases"] = dict(sorted(entry["channel_aliases"].items()))
+        # Association plan (ADR 0016): channel_model rules chained by
+        # descending rp5h — p0 is the primary channel, later entries are the
+        # fallback order. Single-channel models degrade to a p0 pin.
+        ranked_channels = sorted(
+            entry["serving"].items(),
+            key=lambda item: (-(item[1] if item[1] is not None else -1.0), item[0]),
+        )
+        model_entry["channelPriority"] = [
+            {"channel": channel, "rp5h": rp5h, "priority": priority}
+            for priority, (channel, rp5h) in enumerate(ranked_channels)
+        ]
         plan_models.append(model_entry)
 
-    plan = {
-        "schema_version": PLAN_SCHEMA_VERSION,
+    # Two object plans (ADR 0017): the channel allowlist artifact and the
+    # incremental model artifact; run-level report data stays in-memory
+    # for the stderr summary only.
+    channel_warnings = [w for w in warnings if w["type"] in CHANNEL_PLAN_WARNINGS]
+    model_warnings = [w for w in warnings if w["type"] in MODEL_PLAN_WARNINGS]
+    intersection_count = sum(
+        1
+        for entry in registry.values()
+        if all(channel in entry["serving"] for channel in INTERSECTION_CHANNELS)
+    )
+    channel_plan = {
+        "schema_version": CHANNEL_PLAN_SCHEMA_VERSION,
         "channels": dict(sorted(channels.items())),
-        "models": plan_models,
-        "warnings": warnings,
+        "warnings": channel_warnings,
         "report": {
-            "errors": errors,
-            "ineligible": ineligible,
-            "mappings": mappings,
             "counts": {
-                "models": len(plan_models),
                 "channels": len(channels),
-                "candidates": len(candidate_rows),
-                "requests": len(request_rows),
-                "warnings": len(warnings),
-                "errors": len(errors),
+                "supportedModels": sum(
+                    len(node["supportedModels"]) for node in channels.values()
+                ),
             },
         },
     }
-    return candidate_rows + request_rows, plan
+    model_plan = {
+        "schema_version": MODEL_PLAN_SCHEMA_VERSION,
+        "models": plan_models,
+        "warnings": model_warnings,
+        "report": {
+            "counts": {
+                "models": len(plan_models),
+                "intersection": intersection_count,
+            },
+        },
+    }
+    report = {
+        "errors": errors,
+        "ineligible": ineligible,
+        "mappings": mappings,
+        "warnings": warnings,
+        "counts": {
+            "models": len(plan_models),
+            "channels": len(channels),
+            "candidates": len(candidate_rows),
+            "requests": len(request_rows),
+            "warnings": len(warnings),
+            "errors": len(errors),
+            "intersection": intersection_count,
+        },
+    }
+    return candidate_rows + request_rows, channel_plan, model_plan, report
 
 
-def render_report(plan: Mapping[str, Any]) -> str:
+def render_report(report: Mapping[str, Any]) -> str:
     """Human-readable summary of the planning run."""
 
-    report = plan["report"]
     lines = [json.dumps(report["counts"], ensure_ascii=False, sort_keys=True)]
     for item in report["errors"]:
         lines.append(f"ERROR [{item['code']}] {item['message']}")
-    for warning in plan["warnings"]:
+    for warning in report["warnings"]:
         fields = " ".join(f"{key}={warning[key]!r}" for key in warning if key != "type")
         lines.append(f"WARNING [{warning['type']}] {fields}")
     for item in report["ineligible"]:
@@ -963,12 +1052,23 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         default=Path("models.csv"),
         help="mapping workspace; request rows are read as input, then the table is regenerated",
     )
-    parser.add_argument("--plan-output", type=Path, default=None)
+    parser.add_argument(
+        "--channel-plan",
+        type=Path,
+        default=Path("data/channel-plan.json"),
+        help="channel allowlist plan written after the run (supportedModels desired state)",
+    )
+    parser.add_argument(
+        "--model-plan",
+        type=Path,
+        default=Path("data/model-plan.json"),
+        help="incremental model plan written after the run (cards by reference, costs, remarks)",
+    )
     parser.add_argument("--fail-on-errors", action="store_true")
     args = parser.parse_args(argv)
 
     try:
-        rows, report = build_plan(
+        rows, channel_plan, model_plan, report = build_plan(
             extra_path=args.extra,
             cards_path=args.cards,
             arena_path=args.arena,
@@ -979,13 +1079,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 1
 
     write_mapping(args.csv, rows)
-    if args.plan_output:
-        write_json(args.plan_output, report)
+    write_json(args.channel_plan, channel_plan)
+    write_json(args.model_plan, model_plan)
     print(render_report(report))
-    if args.fail_on_errors and report["report"]["errors"]:
+    if args.fail_on_errors and report["errors"]:
         print(
-            f"models-mapping: {len(report['report']['errors'])} blocking error(s); "
-            "plan is for inspection only",
+            f"models-mapping: {len(report['errors'])} blocking error(s); "
+            "plans are for inspection only",
             file=sys.stderr,
         )
         return 1

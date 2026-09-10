@@ -2,11 +2,15 @@
 
 The first AxonHub object this project plans: each managed channel's
 `supportedModels`, the exact bare-ID allowlist. The AxonHub channel name
-equals its `data/models_extra.json` section name, and the catalog plan's
-`channels` section carries one exact, sorted native-id list per section.
-Which channels are managed is recorded by the sections themselves
-(ADR 0012); `ant` and `sensenova` are hand-maintained static sections no
-watcher may write (ADR 0013).
+equals its `data/models_extra.json` section name, and the generated
+`data/channel-plan.json` (schema 1) carries one exact, sorted native-id
+list per section. The artifact replaces AxonHub's
+`autoSyncSupportedModels`: upstream auto-sync must stay off on every
+managed channel, and the plan is the authoritative manual source of
+"which models this channel may serve" (ADR 0017). Which channels are
+managed is recorded by the sections themselves (ADR 0012); `ant` and
+`sensenova` are hand-maintained static sections no watcher may write
+(ADR 0013).
 
 The candidate universe starts from every record in the channel sections
 (channel-provided `claude-*` models are never collected — Claude is

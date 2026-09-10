@@ -37,13 +37,26 @@ def _arena_models(arena: dict[str, float]) -> dict:
     return {model_id: {"rating": score} for model_id, score in arena.items()}
 
 
-def _plan(sections, cards=None, arena=None, requests=()):
-    return plan_from(
+def _plan(sections, cards=None, arena=None, requests=(), aliases=None):
+    # Aggregate view over the two plans for legacy assertions: channels from
+    # the channel plan, models from the model plan, and the full run-level
+    # warnings/report (artifact warning routing has its own test below).
+    # Test cards are keyed by bare id, so refs map bare -> bare.
+    rows, channel_plan, model_plan, report = plan_from(
         sections,
+        aliases=aliases,
         cards=cards or {},
+        card_refs={key: key for key in (cards or {})},
         arena_models=_arena_models(arena or {}),
         requests=requests,
     )
+    merged = {
+        "channels": channel_plan["channels"],
+        "models": model_plan["models"],
+        "warnings": report["warnings"],
+        "report": report,
+    }
+    return rows, merged
 
 
 def _request_rows(rows: list[dict[str, str]]) -> dict[str, dict[str, str]]:
@@ -187,7 +200,8 @@ def test_free_fill_recomputes_from_owning_channel() -> None:
 
 def test_variant_suffix_candidate_inherits_base_score() -> None:
     # -vl on the candidate side reaches the base model's hand-assigned
-    # arena record through the chain's variant-suffix layer.
+    # arena record through the chain's variant-suffix layer; same-model
+    # inheritance is accepted silently (ADR 0015).
     sections = {"ant": {"ling-3.0-flash-vl": _rec(name="Ling 3.0 Flash VL", rp5h=500)}}
     arena = {"ling-3.0-flash": 1458.0}
 
@@ -195,10 +209,7 @@ def test_variant_suffix_candidate_inherits_base_score() -> None:
 
     candidates = {row["model_id"]: row for row in rows if row["role"] == "candidate"}
     assert candidates["ling-3.0-flash-vl"]["arena_score"] == "1458"
-    assert any(
-        w["type"] == "candidate_arena_fallback" and w["match_type"] == "variant_suffix"
-        for w in plan["warnings"]
-    )
+    assert not any(w["type"] == "candidate_arena_fallback" for w in plan["warnings"])
 
 
 def test_unrecognized_variant_suffix_surfaces_for_triage() -> None:
@@ -254,13 +265,13 @@ def test_free_record_zeroes_silent_cost_fields() -> None:
     _rows, plan = _plan(sections, cards={"free-a": card, "paid": dict(card)}, arena={})
 
     models = {m["modelID"]: m for m in plan["models"]}
-    assert models["free-a"]["input"]["modelCard"]["cost"] == {
+    assert models["free-a"]["input"]["cost"] == {
         "input": 0,
         "output": 0,
         "cacheRead": 0,
         "cacheWrite": 0,
     }
-    assert models["paid"]["input"]["modelCard"]["cost"] == {
+    assert models["paid"]["input"]["cost"] == {
         "input": 2,
         "output": 8,
         "cacheRead": 0.2,
@@ -305,9 +316,9 @@ def test_channel_cost_wins_over_card_cost() -> None:
 
     _rows, plan = _plan(sections, cards=cards)
 
-    card = plan["models"][0]["input"]["modelCard"]
-    assert card["cost"] == {"input": 0.22, "output": 0.66, "cacheRead": 0, "cacheWrite": 0}
-    assert card["limit"] == {"context": 128000, "output": 8192}
+    entry = plan["models"][0]
+    assert entry["input"]["cost"] == {"input": 0.22, "output": 0.66, "cacheRead": 0, "cacheWrite": 0}
+    assert entry["cardRef"] == "deepseek-v4-flash"
 
 
 def test_missing_card_warns_and_falls_back_to_channel_name() -> None:
@@ -343,7 +354,7 @@ def test_speed_variant_ids_are_derived_as_excluded() -> None:
     sections = {
         "commandcode-goat": {
             "glm-5.2-fast": _rec(rp5h=138),
-            "kimi-k2.5": _rec(rp5h=None),
+            "kimi-k2.5": _rec(rp5h=900),
         },
     }
 
@@ -373,7 +384,7 @@ def test_alias_merges_cross_channel_naming() -> None:
         "commandcode-goat": {"tencent-hy3": _rec(rp5h=7080)},
     }
 
-    _rows, plan = plan_from(
+    _rows, channel_plan, model_plan, _report = plan_from(
         sections,
         aliases=aliases,
         cards={},
@@ -382,19 +393,19 @@ def test_alias_merges_cross_channel_naming() -> None:
     )
 
     # One canonical model, owned by the goat channel (7080 > 4300).
-    models = {m["modelID"]: m for m in plan["models"]}
+    models = {m["modelID"]: m for m in model_plan["models"]}
     assert set(models) == {"hy3"}
     assert models["hy3"]["channel"] == "commandcode-goat"
     assert models["hy3"]["channelAliases"] == {"commandcode-goat": "tencent-hy3"}
     # Channel lists keep the native id each channel actually exposes.
-    assert plan["channels"]["commandcode-goat"]["supportedModels"] == ["tencent-hy3"]
-    assert plan["channels"]["opencode-go"]["supportedModels"] == []
+    assert channel_plan["channels"]["commandcode-goat"]["supportedModels"] == ["tencent-hy3"]
+    assert channel_plan["channels"]["opencode-go"]["supportedModels"] == []
 
 
 def test_free_variant_supersedes_plain_original() -> None:
     sections = {
         "opencode-go": {"longcat-2.0": _rec(rp5h=11400)},
-        "commandcode-goat": {"longcat-2.0-free": _rec(rp5h=None)},
+        "commandcode-goat": {"longcat-2.0-free": _rec(rp5h=None, free=True)},
     }
 
     _rows, plan = _plan(sections)
@@ -428,38 +439,122 @@ def test_rp5h_missing_low_arena_excluded_high_arena_review() -> None:
     sections = {
         "commandcode-goat": {
             "glm-5": _rec(rp5h=None),          # arena 1435 < 1500 -> excluded
-            "kimi-k2.5": _rec(rp5h=None),      # no arena -> defaulted 1500 -> review
+            "kimi-k2.5": _rec(rp5h=None),      # no arena standing -> excluded too
         },
     }
     arena = {"glm-5": 1435.72}
 
-    _rows, plan = plan_from(sections, cards={}, arena_models=_arena_models(arena), requests=[])
+    _rows, _channel_plan, model_plan, _report = plan_from(sections, cards={}, arena_models=_arena_models(arena), requests=[])
 
-    models = {m["modelID"] for m in plan["models"]}
-    assert models == {"kimi-k2.5"}
-    assert any(w["type"] == "rp5h_missing_excluded" and w["model"] == "glm-5" for w in plan["warnings"])
-    assert any(w["type"] == "rp5h_missing_review" and w["model"] == "kimi-k2.5" for w in plan["warnings"])
-    assert any(w["type"] == "arena_defaulted" and w["model"] == "kimi-k2.5" for w in plan["warnings"])
-    assert {"modelID": "kimi-k2.5", "reason": "missing_rp5h"} in plan["report"]["ineligible"]
+    models = {m["modelID"] for m in model_plan["models"]}
+    assert models == set()
+    assert any(w["type"] == "rp5h_missing_excluded" and w["model"] == "glm-5" for w in _report["warnings"])
+    # No invented 1500: an unlisted model has no standing, so the missing-rp5h
+    # triage excludes it instead of reviewing it (ADR 0015).
+    assert any(w["type"] == "arena_missing" and w["model"] == "kimi-k2.5" for w in _report["warnings"])
+    assert any(w["type"] == "rp5h_missing_excluded" and w["model"] == "kimi-k2.5" for w in _report["warnings"])
 
 
-def test_missing_arena_defaults_to_1500_and_enters_scoring() -> None:
+def test_missing_arena_leaves_candidate_unscored_out_of_mapping() -> None:
     sections = {"opencode-go": {"omen-alpha": _rec(rp5h=11600)}}
     requests = [{"model_id": "claude-sonnet-5"}]
     arena = {"claude-sonnet-5": 1536.91, "muse-spark-1.3-contributor": 1622.48}
     sections["opencode-go"]["muse-spark-1.3-contributor"] = _rec(rp5h=45300)
 
-    rows, plan = plan_from(
+    rows, _channel_plan, _model_plan, report = plan_from(
         sections,
         cards={},
         arena_models=_arena_models(arena),
         requests=requests,
     )
 
-    assert any(w["type"] == "arena_defaulted" and w["model"] == "omen-alpha" for w in plan["warnings"])
+    assert any(w["type"] == "arena_missing" and w["model"] == "omen-alpha" for w in report["warnings"])
     candidate_by_id = {row["model_id"]: row for row in rows if row["role"] == "candidate"}
-    # The defaulted model participates in scoring (no hard-coded mapping).
-    assert candidate_by_id["omen-alpha"]["arena_score"] == "1500"
+    # Listed for review, but with no invented score.
+    assert candidate_by_id["omen-alpha"]["arena_score"] == ""
+    # The unscored candidate cannot win the formula: the only scored
+    # non-free candidate takes the request.
+    assert _request_rows(rows)["claude-sonnet-5"]["mapping"] == "muse-spark-1.3-contributor"
+
+
+def test_borrowed_arena_scores_are_rejected() -> None:
+    # version_downgrade (qwen3.7-plus -> qwen3.6-plus) and prefix_match
+    # (qwen3.8-flash -> the qwen3.8-* family) borrow another model's
+    # standing; both are rejected with an empty score (ADR 0015).
+    sections = {
+        "commandcode-goat": {
+            "qwen3.7-plus": _rec(rp5h=4300),
+            "qwen3.8-flash": _rec(rp5h=5400),
+        },
+    }
+    arena = {"qwen3.6-plus": 1460.01, "qwen3.8-flash-27b": 1600.0}
+
+    rows, plan = _plan(sections, arena=arena)
+
+    rejected = {w["model"]: w["match_type"] for w in plan["warnings"] if w["type"] == "arena_borrowed_rejected"}
+    assert rejected == {"qwen3.7-plus": "version_downgrade", "qwen3.8-flash": "prefix_match"}
+    candidates = {row["model_id"]: row for row in rows if row["role"] == "candidate"}
+    assert candidates["qwen3.7-plus"]["arena_score"] == ""
+    assert candidates["qwen3.8-flash"]["arena_score"] == ""
+
+
+def test_channel_priority_orders_by_rp5h_and_counts_intersection() -> None:
+    # Two collected channels declare the same canonical (via the alias map):
+    # the higher rp5h is p0, the null-rp5h static section trails last.
+    sections = {
+        "commandcode-goat": {"tencent-hy3": _rec(rp5h=7080)},
+        "opencode-go": {"hy3": _rec(rp5h=4300)},
+        "ant": {"hy3": _rec(rp5h=None)},
+        "sensenova": {"solo": _rec(rp5h=100)},
+    }
+
+    _rows, _channel_plan, model_plan, report = plan_from(
+        sections,
+        aliases={"tencent-hy3": "hy3"},
+        cards={},
+        arena_models=_arena_models({}),
+        requests=[],
+    )
+
+    models = {m["modelID"]: m for m in model_plan["models"]}
+    assert [step["channel"] for step in models["hy3"]["channelPriority"]] == [
+        "commandcode-goat", "opencode-go", "ant",
+    ]
+    assert [step["priority"] for step in models["hy3"]["channelPriority"]] == [0, 1, 2]
+    assert models["hy3"]["channelPriority"][0]["rp5h"] == 7080.0
+    assert models["hy3"]["channelPriority"][2]["rp5h"] is None
+    # Single-channel models degrade to a p0 pin.
+    assert [step["channel"] for step in models["solo"]["channelPriority"]] == ["sensenova"]
+    assert model_plan["report"]["counts"]["intersection"] == 1
+
+
+def test_plans_split_warnings_by_artifact() -> None:
+    # ADR 0017: channel-plan carries the allowlist warnings, model-plan the
+    # card/remark ones, and arena/mapping warnings stay out of both.
+    sections = {
+        "opencode-go": {"omen-alpha": _rec(rp5h=11600)},
+        "commandcode-goat": {"omen-alpha": _rec(rp5h=900), "free-a": _rec(rp5h=None, free=True)},
+    }
+    arena = {"omen-alpha": 1460.01}
+
+    _rows, channel_plan, model_plan, report = plan_from(
+        sections,
+        cards={},
+        arena_models=_arena_models(arena),
+        requests=[],
+    )
+
+    assert channel_plan["schema_version"] == 1
+    channel_types = {w["type"] for w in channel_plan["warnings"]}
+    assert "duplicate_model_across_sources" in channel_types
+    assert "free_default_filled" in channel_types
+    assert model_plan["schema_version"] == 1
+    model_types = {w["type"] for w in model_plan["warnings"]}
+    assert "card_missing" in model_types
+    assert not (channel_types & model_types)
+    # Arena and mapping workflow warnings never enter an artifact.
+    assert "arena_defaulted" in {w["type"] for w in report["warnings"]}
+    assert all("arena" not in t for t in channel_types | model_types)
 
 
 def test_free_fill_pairs_lowest_request_with_lowest_free_model() -> None:
@@ -488,7 +583,7 @@ def test_free_fill_pairs_lowest_request_with_lowest_free_model() -> None:
         "paid-filler": 1200.0,
     }
 
-    rows, plan = plan_from(
+    rows, _channel_plan, _model_plan, report = plan_from(
         sections,
         cards={},
         arena_models=_arena_models(arena),
@@ -500,7 +595,7 @@ def test_free_fill_pairs_lowest_request_with_lowest_free_model() -> None:
     assert request_rows["claude-sonnet-4-6"]["mapping"] == "longcat-2.0-free"
     # Free pool exhausted -> formula over non-free candidates.
     assert request_rows["claude-opus-5"]["mapping"] == "muse-spark-1.3-contributor"
-    mapping_by_request = {m["request_model"]: m for m in plan["report"]["mappings"]}
+    mapping_by_request = {m["request_model"]: m for m in report["mappings"]}
     assert mapping_by_request["claude-haiku-4-5"]["match_confidence"] == "free_fill"
     assert mapping_by_request["claude-opus-5"]["match_confidence"] in ("high", "medium", "none")
 
@@ -534,7 +629,9 @@ def test_main_round_trips_csv_request_rows_and_writes_plan(tmp_path: Path) -> No
 
     rc = main([
         "--extra", str(extra), "--cards", str(cards), "--arena", str(arena),
-        "--csv", str(csv_path), "--plan-output", str(plan_out),
+        "--csv", str(csv_path),
+        "--channel-plan", str(tmp_path / "channel-plan.json"),
+        "--model-plan", str(plan_out),
     ])
 
     assert rc == 0
@@ -542,10 +639,16 @@ def test_main_round_trips_csv_request_rows_and_writes_plan(tmp_path: Path) -> No
     # The request row keeps its id; arena score and mapping are recomputed.
     assert "claude-opus-5,request,1700,," in text
     assert "muse-spark-1.2,candidate,1200,800," in text
-    plan = json.loads(plan_out.read_text(encoding="utf-8"))
-    assert plan["schema_version"] == 3
-    assert plan["channels"]["opencode-go"]["supportedModels"] == ["muse-spark-1.2"]
-    assert "removals" not in plan and "providers" not in plan
+    channel_plan = json.loads((tmp_path / "channel-plan.json").read_text(encoding="utf-8"))
+    assert channel_plan["schema_version"] == 1
+    assert channel_plan["channels"]["opencode-go"]["supportedModels"] == ["muse-spark-1.2"]
+    model_plan = json.loads(plan_out.read_text(encoding="utf-8"))
+    assert model_plan["schema_version"] == 1
+    entry = model_plan["models"][0]
+    assert entry["modelID"] == "muse-spark-1.2"
+    assert "modelCard" not in entry["input"]
+    assert entry["input"]["cost"] == {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0}
+    assert "removals" not in model_plan and "providers" not in model_plan
 
 
 def test_main_fail_on_errors_exits_nonzero(tmp_path: Path) -> None:

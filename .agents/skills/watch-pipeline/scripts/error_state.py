@@ -1,9 +1,10 @@
 """Persistent error-state helpers shared by the watch-pipeline scripts.
 
-On failure a watcher writes ``watch-pipeline/reference/<channel>/last-error.json``
-so agents can discover and fix breakage without reading CI logs. The file is
-removed on the next successful run, so its existence means "needs fixing".
-Dumps of upstream pages (failed-page.html) live in the same channel directory.
+On failure a watcher writes ``reference/<channel>/last-error.json`` inside
+the skill directory so agents can discover and fix breakage without reading
+CI logs. The file is removed on the next successful run, so its existence
+means "needs fixing". Dumps of upstream pages (failed-page.html) live in the
+same channel directory.
 """
 
 from __future__ import annotations
@@ -15,8 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-REFERENCE_ROOT = REPO_ROOT / "watch-pipeline" / "reference"
+REFERENCE_ROOT = Path(__file__).resolve().parents[1] / "reference"
 
 
 def error_path(channel: str) -> Path:

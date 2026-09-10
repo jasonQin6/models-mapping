@@ -94,28 +94,29 @@ def normalize_arena_name(name: str) -> Tuple[str, Optional[str]]:
 def find_best_match(
     csv_id: str,
     arena_lookup: Dict[str, dict],
-    is_free: bool = False
 ) -> Tuple[Optional[dict], str]:
     """Find the best matching arena entry for a CSV model_id.
-    
-    Implements a 5-layer fallback chain:
+
+    Implements a 4-layer fallback chain:
       1. Direct match
       2. Known variant suffix (contributor/free/vl) -> base model
       3. Version downgrade (e.g., qwen3.7-plus -> qwen3.6-plus)
       4. Prefix match with wildcard (e.g., claude-haiku -> claude-haiku-*)
-      5. Free model default (arena_score=0) if is_free=True
+
+    A free model with no match carries no default here: the planner applies
+    its own default score (1500, ``arena_defaulted``) so every free model
+    stays reachable for free fill.
 
     Args:
         csv_id: normalized model_id from CSV
         arena_lookup: dict mapping arena model_id -> arena entry dict
-        is_free: if True, return a default entry when no match found
 
     Returns:
         (arena_entry, match_type) where:
         - arena_entry: dict with keys {rating, organization, effort}
-          or None if no match found and not is_free
+          or None if no match found
         - match_type: one of 'direct_match', 'variant_suffix', 'version_downgrade',
-          'prefix_match', 'free_default', 'no_match'
+          'prefix_match', 'no_match'
     """
     # Layer 1: Direct match
     if csv_id in arena_lookup:
@@ -149,14 +150,6 @@ def find_best_match(
     
     if candidates:
         return (max(candidates, key=lambda e: e['rating']), 'prefix_match')
-    
-    # Layer 5: Free model default
-    if is_free:
-        return ({
-            'rating': 0,
-            'organization': 'Unknown',
-            'effort': None,
-        }, 'free_default')
 
     return (None, 'no_match')
 

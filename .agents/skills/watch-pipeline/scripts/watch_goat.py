@@ -212,7 +212,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         "--dump-html",
         type=Path,
         default=None,
-        help="Where to dump HTML when the page structure changes (default: watch-pipeline/reference/goat/failed-page.html)",
+        help="Where to dump HTML when the page structure changes (default: .agents/skills/watch-pipeline/reference/goat/failed-page.html)",
     )
     args = ap.parse_args(argv)
 

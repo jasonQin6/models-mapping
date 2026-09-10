@@ -208,23 +208,11 @@ class TestFindBestMatch:
         assert result["rating"] == 1350.0  # 3.5 has higher rating (1350 > 1300)
         assert match_type == "prefix_match"
 
-    def test_free_model_default(self):
-        result, match_type = find_best_match("ox-alpha-free", self.arena_lookup, is_free=True)
-        assert result is not None
-        assert result["rating"] == 0
-        assert result["organization"] == "Unknown"
-        assert match_type == "free_default"
-    
     def test_no_match_returns_none(self):
         result, match_type = find_best_match("nonexistent-model", self.arena_lookup)
         assert result is None
         assert match_type == "no_match"
-    
-    def test_no_match_free_false_returns_none(self):
-        result, match_type = find_best_match("nonexistent-model", self.arena_lookup, is_free=False)
-        assert result is None
-        assert match_type == "no_match"
-    
+
     def test_fallback_priority_direct_beats_contributor(self):
         # If both direct and contributor match exist, direct wins
         self.arena_lookup["test-model-contributor"] = {
@@ -318,7 +306,3 @@ class TestMatchEvidence:
         # no_match
         _, match_type = find_best_match("nonexistent-model", self.arena_lookup)
         assert match_type == "no_match"
-        
-        # free_default
-        _, match_type = find_best_match("free-model", self.arena_lookup, is_free=True)
-        assert match_type == "free_default"

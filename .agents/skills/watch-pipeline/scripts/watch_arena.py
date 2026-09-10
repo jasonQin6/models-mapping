@@ -111,7 +111,7 @@ def parse_arena_html(html: str, top_n: int = 0) -> List[dict]:
 
     Each record carries the board's display name verbatim; normalization to
     comparable ids (including effort extraction) happens at planning time in
-    ``model-registry/scripts/name_matching.py``.
+    ``.agents/skills/model-registry/scripts/name_matching.py``.
     """
 
     entries = _find_entries_array(html)
