@@ -1,153 +1,115 @@
 ---
 name: axonhub-admin
-description: Execute this repository's governed AxonHub write program — confirmed channel-plan allowlists, incremental model-plan entries (cards assembled via assemble_card.py), mapping tables (request-model associations), batch model creation, and the deployment's routing patterns and quirks. Use for any AxonHub work within the managed scope; generic one-off resource queries from the command line belong to the axonhub-cli skill.
+description: 执行本仓库对 AxonHub 部署（https://axon.jasonqin.site）的受控写操作——模型目录、渠道清单、关联路由、成本与备注的批量读写。作为 axonhub-cli 的 wrapper：工具机制（token、endpoint、find/query/mutate 用法）以 axonhub-cli skill 为准，本文持有治理逻辑、执行纪律与部署约定。仓库外的一次性通用查询用 axonhub-cli。
 ---
 
 # AxonHub Admin
 
-Operate AxonHub over HTTP as an agent. All management operations live on one endpoint, `/admin/graphql`, and authenticate with a **JWT token** — never a static key. The token comes from the user's logged-in AxonHub browser tab.
+对 AxonHub 的管理操作全部走 `/admin/graphql`，鉴权用 JWT token（不是静态 key）。
+本 skill 是 axonhub-cli 的 wrapper：**怎么连、怎么调**见 axonhub-cli；**做什么、按什么纪律做**见本文。
 
-## Step 1 — Obtain the token
+## 定位与分层
 
-The live JWT is read from a logged-in AxonHub browser session via the
-**browser-use skill**, then used for the rest of the run:
+- **axonhub-cli**：通用工具机制——token 获取、endpoint 配置、`find`/`query`/`mutate` 的语法与参数。本文不复制其正文，机制细节以它为准。
+- **axonhub-admin（本文）**：三类对象的治理逻辑（渠道清单 / 模型卡 / 关联路由，见 `references/` 文档）、数据源约定、执行循环、部署怪癖。
+- 通道规则：**读可以用 curl**（直接 POST GraphQL，输出是干净 JSON，便于 jq 解析）；**写必须走 graphql-cli**（token 经 `endpoint login` 注入，凭据不散落在命令历史）。
 
-1. Check `AXONHUB_JWT` in the environment — if non-empty, use it (valid for 7 days from sign-in).
-2. Otherwise open `https://axon.jasonqin.site/` with the browser-use skill and read the token from page context: `localStorage.getItem('axonhub_access_token')`. GraphQL calls can then be issued directly from page context (`fetch("/admin/graphql", …)`, same-origin) or exported as `AXONHUB_JWT` for curl. On the Node side of the browser-use kernel `fetch` is not a global — issue the call from page context, or use `node:https` with the exported token.
-3. If no logged-in session exists, ask the user to sign in first (or supply credentials for `POST /admin/auth/signin` with `{email, password}` — the response contains the token).
+## Token
 
-Verify before proceeding:
+1. 环境变量 `AXONHUB_JWT` 非空则直接用（签发后 7 天有效）。
+2. 否则用 browser-use 打开 `https://axon.jasonqin.site/`（应已登录），在页面上下文执行
+   `localStorage.getItem('axonhub_access_token')` 取 token。
+3. 注入 graphql-cli：`npx -y @axonhub/graphql-cli endpoint login axonhub --type token --token "$TOKEN"`。
+4. 校验：`curl -X POST .../admin/graphql` 查 `{ me { id email } }`，HTTP 200 且有 `data.me` 即通过；401 则回第 2 步重取。
 
-```bash
-curl -sS -X POST "${AXONHUB_URL:-https://axon.jasonqin.site}/admin/graphql" \
-  -H "Authorization: Bearer $AXONHUB_JWT" \
-  -H "Content-Type: application/json" \
-  -d '{"query": "{ me { id email } }"}'
+JWT 是凭据：只出现在 Authorization 头和环境变量里，不写入文件、提交或日志。
+
+## 执行循环（所有批量写操作的标准流程）
+
+```text
+loop:
+  1  state  = 对账读()               # 只认线上状态
+  2  plan   = 生成工作清单(state)     # 顺序规则见下
+  3  确认(plan)                      # 展示工作清单，请求一次确认
+  4  for item in plan:
+       out = graphql-cli mutate MUT -e axonhub -v '{"id":…,"input":{…}}'
+       if out 匹配 "Error:" 或 '"errors"': 记失败   # 两种形态都要查
+  5  state2 = 对账读()               # 回读
+  assert state2 == 预期终态           # 回读是唯一权威信号
 ```
 
-Done when: HTTP 200 with `data.me`. A 401 means the token expired or was cleared — fall back to step 3 of the list above instead of retrying.
+纪律条目（每条都有实战出处）：
 
-## Step 2 — The interactive write program (ADR 0009)
+1. **先对账后执行**。写入依据只能是刚读取的线上状态；被中断/取消的运行是常态，按"剩余工作"
+   重新计算，绝不盲目重放。（实例：一次被取消的运行其实已落库 23 个创建和 4 个删除，
+   重放会造出重复模型。）
+2. **工作清单顺序规则**：删除条件按"成本已更新"的状态评估（先成本后删除判定）；满足删除
+   条件的 ID 直接从创建清单剔除（不要建了又删）；已在删除清单里的对象跳过成本/备注更新。
+3. **mutation 输入必须用 `-v` 传变量**，且按 mutation 形状嵌套为 `{"id":…, "input":{…}}`。
+   把 `modelCard`/`remark` 放在变量顶层会报 `must be defined`（HTTP 422），服务端什么都没写。
+4. **错误检测双模式**：CLI 把服务端 4xx 打成 `Error: HTTP 422: {"errors":[…]}` 行（不是干净
+   的 JSON 响应），同时响应 JSON 里也可能有 `"errors"`。只 grep 其一会把失败当成功。
+   （实例：37 条 updateModel 全部报 OK，实际全被 422 拒绝，靠回读才暴露。）
+5. **回读验证是唯一权威**。CLI 的成功输出只是线索：npm notice 噪音、多段 JSON 拼接、
+   解析失败都常见——服务端成功而本地解析报失败、反之亦然，都发生过。每项写后回读该对象，
+   结束后全量对账计数。
+6. **整体替换语义**：`UpdateModelInput` 的 `modelCard`、`UpdateChannelInput.settings`、
+   `settings.associations` 都是全量替换——必须"读全对象 → 只改目标字段 → 整体回写"。
+   只传 `cost` 会把卡片其余字段清成零值（能力位全变 ×）。
+7. **删除语义**：`deleteModel(id)` 是硬删（resolver 跳过软删拦截器，可重建同名）；
+   `bulkDeleteModels(ids)` 是软删（返回 true 但不清理，且阻塞同名重建）。以"随后的
+   createModel 成功"验证清除，不信返回值。
+8. **建后启用**：`createModel` 与 Web UI 建出的模型都是 disabled，用
+   `updateModelStatus(id, enabled)` 或 `bulkEnableModels(ids)` 翻转。
+9. **修改没有 bulk mutation**：批量改成本/备注/卡片就是逐条 `updateModel` 循环（npx 每次约
+   2s 启动开销，可接受）。创建用 `bulkCreateModels(inputs: […])` 一次完成。
+10. **循环内两处机械检查**：要写 `supportedModels` 人工清单的渠道，其
+    `autoSyncSupportedModels` 必须为关（开着会被每小时上游同步覆盖，停手报告）；
+    删除前查关联引用——被任何其他模型的 association 规则引用的模型保留并报告，不删。
 
-Every AxonHub write happens in an interactive session by following this program. There are no plan-gated apply scripts: the guardrails are this document, and the drift check is live state re-read before every write.
+## 对账读的标准查询
 
-### The four guardrails (hard, non-negotiable)
+- 渠道拆成两条查再按 id 拼接（`tags` 与 `settings` 组合查询会报错）：
+  `queryChannels(input:{first:50}) { edges { node { id name type status supportedModels manualModels autoSyncSupportedModels … } } }`
+  与 `queryChannels(input:{first:50}) { edges { node { id settings { modelMappings { from to } } } } }`
+- 模型：`models(first:100) { edges { node { id modelID name developer type status remark modelCard { … } settings { associations { … } } } } }`
+  —— 卡片字段取全（reasoning/toolCall/temperature/modalities/vision/cost/limit/knowledge/releaseDate/lastUpdated），
+  为整体回写做准备。
+- 模板类 relay 连接必须显式 `first:`，否则 `either first or last must be provided`。
+- 多个根字段合并在一个请求里会失败（如 models + queryChannels 同发返回 null），拆开发。
 
-1. **Touch managed channels only.** The managed set is the channel sections of `data/models_extra.json` (currently `ant`, `commandcode-goat`, `opencode-go`, `sensenova` — re-read the file at run start); the AxonHub channel name equals the section name. Nothing outside it is created, updated, or deleted — even when the GraphQL response makes it easy. API-key profile templates are not managed by this project: the former `stable`/`claude`/`gpt` maintenance flow is retired (ADR 0014), and template mappings live directly in the AxonHub UI.
-2. **Preserve unmanaged associations and external references.** Association lists are replaced per model: keep every rule that does not belong to this write. A model object referenced by an external (non-managed) channel's `supportedModels`, or by any association of another model, is never deleted — retain it and report.
-3. **Read before write.** Fetch the live object immediately before each mutation. Never write from the plan alone or from a cached read; live state is the only write basis.
-4. **Write then verify; retry only with verification.** Read back every write and compare field by field. This deployment intermittently rejects valid payloads with `unknown field` (see quirks below); such failures may be retried with a short backoff — writes are wholesale replacements, so re-issuing the same confirmed input is idempotent, and every retry is followed by a fresh read-back. Persistent errors are shape problems (e.g. a bare `when` condition), not flakes: fix the input shape or report the item, never retry blindly.
+## 数据源
 
-### Confirmation (AskUserQuestion)
+| 文件 | 内容 | 权威范围 |
+| --- | --- | --- |
+| `data/models_extra.json` | 渠道节（每渠道的模型、cost、free 标记、exclude）、顶层 `aliases` | 渠道清单与渠道侧成本 |
+| `data/all_models.json` | models.dev 快照卡片 | 模型卡事实来源（覆盖不全，缺卡走人工兜底，不臆造） |
+| `data/arena.json` | leaderboard 分数（`arena_score`/`organization`/`effort`） | 备注 `manual` 字段的 `arena_score: <分>` 标签 |
 
-Three independent confirmations; confirming one never authorizes the others:
+## 对象规则文档（references/）
 
-- **Channel plan** — `data/channel-plan.json` (schema 1, desired state): per-channel exact bare-ID `supportedModels`. This artifact replaces AxonHub's autoSync as the authoritative "models this channel may serve" list (ADR 0017).
-- **Model plan** — `data/model-plan.json` (schema 1, incremental): per-model `cardRef`, merged `cost`, `remark`, derived meta, `channelPriority` chains. Full AxonHub inputs are assembled per model at write time with `python3 .agents/skills/model-registry/scripts/assemble_card.py --id <modelID>` (cards are referenced from `all_models.json`, never copied into the plan).
-- **Mapping table** — `models.csv` (the only mapping review artifact): `request → mapping` rows for the fixed request models.
+- [channel.md](references/channel.md) — 渠道 `supportedModels` 清单的规划与治理规则（别名、去重、变种、free 语义）
+- [models.md](references/models.md) — 模型卡与备注的组装规则（单一卡片来源、写时组装、渠道 cost 逐字段覆盖）
+- [associations.md](references/associations.md) — 关联路由（Claude 请求模型按分数映射、其余模型自映射的路由约定）
+- [batch-creation.md](references/batch-creation.md) — 批量（重）建模型的 playbook（payload 约定、软删清理）
 
-For each confirmation, show the artifact next to live state (current channel lists, current model cards, current request-model targets) so the diff is visible, then ask. Execute only the confirmed set; anything the user declines is skipped and reported.
+## 部署怪癖与已知事实
 
-### Read remote state (before any write)
+- Server：`https://axon.jasonqin.site`（vol-server 上 nginx 反代到 `127.0.0.1:8868`）。
+  AxonHub 完整 admin schema 在 axonhub 源码仓库 `internal/server/gql/*.graphql`；本部署可能与快照有漂移，
+  形状可疑时优先用 axonhub-cli 的 `find <type> -e axonhub --input --detail` 探线上 schema。
+- `when` 条件的根必须是 group：裸 `condition` 会被拒（`root when condition must be a group`）；
+- 瞬态 `unknown field` 错误（`GRAPHQL_VALIDATION_FAILED`，部署窗口期出现、自行消失）：
+  退避重试 + 回读，不改输入形状；持续报错才是形状问题。
+- 可选 settings 字段（`disableDeveloperSettingsInheritance`/`loadBalancerStrategy`/`traceStickyMode`）
+  未变就省略——多传反而可能触发瞬态校验器。
+- GraphQL ID 是 GID（`gid://axonhub/Model/23`）；association 输入的 `channelId` 用整数。
+- 模型 ID 陷阱：上游用厂商前缀 ID（`deepseek/deepseek-v4-flash`、`zai-org/GLM-5.3`），Model 实体用
+  裸 ID（`deepseek-v4-flash`），association 按**精确字符串**匹配。两种修复：渠道侧
+  `settings.modelMappings`（from=裸 ID，to=前缀 ID）；模型侧 association 链
+  （`channel_model` 钉渠道+精确 ID / `model` 全局精确 ID / `regex` 全局正则）。
 
-Fetch channels, models, and API-key profile templates in full. Note: this
-deployment's server errors on a channels query combining `tags` with
-`settings` — fetch them in two queries and join by `id`:
+## 文档维护
 
-- Channels: `channels(first: 50) { edges { node { id name type status supportedModels manualModels autoSyncSupportedModels baseURL orderingWeight tags } } } }` and `channels(first: 50) { edges { node { id settings { modelMappings { from to } } } } }`
-- Models: `models(first: 100) { edges { node { id modelID name developer status remark modelCard { reasoning { supported default } toolCall temperature modalities { input output } vision cost { input output cacheRead cacheWrite } limit { context output } knowledge releaseDate lastUpdated } settings { disableDeveloperSettingsInheritance loadBalancerStrategy traceStickyMode associations { type priority disabled channelModel { channelId modelId } modelId { modelId } regex { pattern } } } } } } }`
-- API-key profile templates: `apiKeyProfileTemplates(first: 50) { edges { node { id name linkedProfilesCount profile { name modelMappings { from to } channelIDs channelTags channelTagsMatchMode modelIDs loadBalanceStrategy traceStickyMode quota { … } } } } }` — Relay connections require an explicit `first:` and `edges { node { … } }` wrapping; `apiKeyProfileTemplates` without `first` fails with `either first or last must be provided`.
-
-Take the **exact upstream model IDs** from the channels query's `supportedModels` — never from UI chips, screenshots, or memory. A wrong ID (e.g. `sensenova-v1-fast` for the upstream's `sensenova-u1-fast`) creates a model entity that silently routes nowhere.
-
-Done when: you can name each managed channel's ID, its exact `supportedModels`, and each affected model's `modelID`, status, and current associations.
-
-### Execution-time check: autoSyncSupportedModels must be off
-
-AxonHub's hourly upstream sync overwrites a channel's `supportedModels` with `manualModels` plus the channel's full upstream list, which erases the curated catalog. For every managed channel: if `autoSyncSupportedModels` is enabled, **stop for that channel** — report it and ask the user how to proceed (disable it first or skip the channel); never write a curated list while it is on.
-
-### Apply the plans, item by item
-
-- **Channels** (from `data/channel-plan.json`) — for each planned channel: `updateChannel(id, input: { supportedModels: <exact plan list> })`. This is a wholesale replacement: legacy vendor-prefixed entries disappear with it. Prefix routing is that channel's own `auto-trim`/`modelMappings` setting, never the plan's or the agent's job. Do not merge with the remote list. **Exception — static free channels (`ant`, `sensenova`, ADR 0013):** the plan's `supportedModels` for them contains only the channel-exclusive models (dedupe keeps one winning channel per canonical ID), so wholesale-applying it would strip the shared models they also serve. Their authoritative list is the hand-maintained `models_extra.json` static section plus live state; only association/card writes for their exclusive models follow the normal flow.
-- **Models** (from `data/model-plan.json`) — for each entry: read the live model; if absent, `createModel` with the assembled input (`assemble_card.py --id`, plus `settings` defaults below) and enable it; if present, `updateModel` with only the fields that differ. `CreateModelInput` requires `settings`, which the plan cannot carry: the executor supplies defaults — a `channel_model` chain following the entry's `channelPriority` (ADR 0016) plus `disableDeveloperSettingsInheritance: false` and `default` load-balancer/trace-sticky strategies. When writing `remark`, parse the remote remark and keep its `manual` field — the plan's computed fields replace the old computed values only. For existing models, leave `settings` untouched except where the mapping section below applies.
-- **Retiring a live global model** — the plan has no removals section (ADR 0014): when a model leaves the plan and the user confirms it should go, check every external (non-managed) channel's `supportedModels` and all models' associations (`channel_model.modelId`, `modelId.modelId`) for references; retain and report on any external use, otherwise `deleteModel(id)` as a standalone confirmed operation.
-- **Never write unmanaged objects**: a model that appears in the plan for one channel but has associations to other channels keeps those associations (guardrail 2) — when updating its `settings.associations`, replace only the rules that point at this managed channel.
-
-### Apply the mapping table, item by item
-
-- **Request models** — for each `models.csv` request row: read the live model and its target; both must exist and be enabled (a missing or disabled model is a per-item failure, reported, not fixed by creation). Then `updateModel` with `settings.associations` replaced by exactly one enabled `type=model` association targeting the confirmed candidate (`modelId: {modelId: <target>}`) — this is the one case where associations are wholesale-replaced, and it applies only to the fixed request models themselves.
-- **Templates are out of scope** — the former managed-template rebuild (`stable`/`claude`/`gpt` `modelMappings`, ADR 0014-retired) is no longer part of the write program; never modify profile templates while executing a confirmed plan.
-- **Never touch manual mappings** whose sources are outside the request set, and never modify unrelated profile fields (guardrail 2).
-
-### Verify by reading back (every write)
-
-- Channels: re-read `supportedModels` — must equal the plan list exactly.
-- Models: re-read the written fields — card values match the plan target; `remark` keeps the remote `manual` content with the plan's computed fields; associations match the intended shape (request models: exactly the one `type=model` rule; catalog models: this channel's rule added/replaced, everything else preserved).
-- Retired models: re-read the deleted `modelID` — must be absent. A retained object must still exist.
-- Routing (when the user asks or the write touches routing): `queryModelChannelConnections(associations: $assocs) { channel { id name } models { requestModel actualModel source } }` — done when the target channel resolves the expected `actualModel` with `source: mapping` or `direct`.
-
-### Report
-
-After all items: a per-item report — written+verified, unchanged (already correct), retained (external reference found), skipped (declined or blocked, with reason), failed (with the exact error). Failed and retained items are never silently dropped; the final state of every managed channel is echoed as the exact `supportedModels` list now live.
-
-## Channel lists are interactive-only
-
-Every managed channel's `supportedModels` is written through the interactive
-catalog-plan flow above (ADR 0012). The former unattended vol-server push
-(`apply_channel_models.py`, ADR 0010) is retired.
-
-## Batch model creation via GraphQL (proven 2026-09-09)
-
-Bulk (re)creation after a catalog wipe: payloads come from the intersection
-of `models_extra.json` and `all_models.json`, cards from `all_models.json`.
-The playbook — variables (`-v`) not inline JSON, noisy-output reconciliation,
-soft-delete purging, enable-after-create, and the per-model payload
-conventions — lives in
-[reference/batch-creation.md](reference/batch-creation.md); read it before any
-bulk operation. One-off model writes follow the interactive program above
-instead.
-
-## Reference
-
-### The model-ID gotcha (read before touching associations)
-
-Upstream providers expose models under vendor-prefixed IDs (`deepseek/deepseek-v4-flash`, `zai-org/GLM-5.3`), while AxonHub Model entities use bare IDs (`deepseek-v4-flash`). Associations match **exact strings**, so a bare model ID never matches a prefixed channel entry on its own. Two fixes, often combined:
-
-1. **Channel-side**: add `settings.modelMappings` (`from` = bare ID, `to` = prefixed ID). The `from` becomes a routable entry on that channel.
-2. **Model-side**: write the association chain from the plan's `channelPriority` (ADR 0016) — a `channel_model` rule per serving channel, priority ascending as rp5h descends (p0 = the plan's `channel`); prefixed upstreams need that channel's `modelMappings` making the bare ID routable. The former global-`regex` default is retired (ADR 0016): replace leftover regex rules when the model's associations are next written.
-
-Association types: `channel_model` (pinned channel + exact ID), `model` (exact ID across all channels), `regex` (global), plus channel-scoped/tagged variants. Default to the `channelPriority` chain; bind tighter (`channel_model` pin only) when the user wants a model locked to specific channels.
-
-### GraphQL input shapes
-
-- `UpdateChannelInput.settings` replaces the entire settings object — pass `modelMappings` in full.
-- `UpdateModelInput.settings.associations` replaces the entire list — fetch first, merge, write back.
-- GraphQL IDs are GIDs (`gid://axonhub/Channel/12`); association inputs take plain ints for `channelId`.
-- Association rules that pass live validation (one JSON object per rule):
-  - pinned channel: `{type: "channel_model", priority: 0, disabled: false, channelModel: {channelId: <int>, modelId: "<upstream id>"}}`
-  - global regex with channel exclusion: `{type: "regex", priority: 0, disabled: false, regex: {pattern: "(?i)(^|/)glm-5\\.2$", exclude: [{channelIds: [<int>]}]}}`
-  - exact-ID with exclusion: `{type: "model", priority: 0, modelId: {modelId: "<id>", exclude: [{channelIds: [<int>]}]}}`
-  - time-gated (see quirks — root condition must be a group): `when: {enabled: true, condition: {type: "group", logic: "AND", conditions: [{type: "condition", field: "daily_time", operator: "within", value: "22:00-08:00"}]}}`
-- `updateModel` can rename (`modelID`), retitle (`name`), and flip `status` (lowercase enums `enabled`/`disabled`/`archived`). Models created via `createModel` or the web UI start **disabled** and must be enabled separately.
-
-### Routing patterns
-
-The association conventions — fallback chains, cross-channel pools,
-priority demotion, time-gated routing, free-variant merging (e.g.
-`ling-3.0-flash` → ant's `vl`/`sante`/`fin`) — are owned by
-`.agents/skills/model-registry/reference/associations.md`; this skill executes the
-confirmed shapes and verifies every one with
-`queryModelChannelConnections(associations: $assocs) { channel { id name } models { requestModel actualModel source } }`.
-
-### Deployment quirks (verified 2026-09-09)
-
-- A `when` whose **root condition is a bare `condition`** is rejected with `invalid when condition: root when condition must be a group` — always wrap the leaf condition in `{type: "group", logic: "AND", conditions: [...]}`. Cross-midnight ranges (`22:00-08:00`) are supported; times are server-local.
-- Transient `unknown field` errors (`GRAPHQL_VALIDATION_FAILED`, erratic `variable.input.*` paths, sometimes pointing at untouched sibling fields) appear during apparent deploy windows and disappear on their own; identical payloads succeed afterwards. Handle per guardrail 4: retry with backoff + read-back, don't reshape on a flake.
-- Omit optional `settings` fields (`disableDeveloperSettingsInheritance`, `loadBalancerStrategy`, `traceStickyMode`) when unchanged — omitted fields keep their live values, and passing them unnecessarily was observed to trip the transient validator.
-- When input shapes misbehave, explore the **live** schema first: prefer the `axonhub-cli` skill's `find <type> -e axonhub --input --detail`; raw introspection (`__type(name: "ModelSettingsInput") { inputFields { name } }`) is the fallback when the CLI is unavailable. The deployment can drift from the local `internal/server/gql/*.graphql` snapshot in either direction.
-
-### Known facts about this deployment
-
-- Server: `https://axon.jasonqin.site` — the built-in default of every script; override with `AXONHUB_URL`.
-- `AXONHUB_JWT` is the agreed env-var name for the live JWT. It is a credential: use it in Authorization headers, never write it into files, commits, or logs. Credentials live only in this skill — planning (`model-registry`) is offline and needs none.
-- Ad-hoc queries, schema discovery (`find`), and CLI-based operations: use the **axonhub-cli** skill (`graphql-cli`) — it owns the generic tool mechanics; this skill owns only this repository's write program and conventions. The full admin schema lives at `internal/server/gql/*.graphql` in the axonhub repo.
+治理逻辑只维护在本目录这些 markdown 里；执行流程多次跑稳后再考虑固化为脚本。
+`model-registry` 是遗留的离线规划 skill（其 scripts/tests 仍被本文引用），待本 skill 验证可用后整体删除。
