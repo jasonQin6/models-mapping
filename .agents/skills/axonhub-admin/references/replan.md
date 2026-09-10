@@ -1,8 +1,8 @@
 # 重算规划（replan）
 
-把 watch-pipeline 快照离线重算成三份评审产物：`models.csv`（映射建议）、
-`data/channel-plan.json` 与 `data/model-plan.json`（双 plan）。纯离线：不联网、
-不持凭据、不写 AxonHub，任何时刻可以本地重跑。
+把 watch-pipeline 快照离线重算成评审产物：`models.csv`（映射建议）与
+`data/model-plan.json`（模型增量计划）。纯离线：不联网、不持凭据、不写
+AxonHub，任何时刻可以本地重跑。
 
 ## 输入（均为仓库内快照）
 
@@ -36,18 +36,18 @@
    ```bash
    python3 .agents/skills/axonhub-admin/scripts/assemble_card.py --id <modelID>
    ```
-4. 呈报评审：`models.csv` 变更摘要 + 双 plan 差异概览。用户确认后才进入
-   对应写任务（[channel-sync.md](channel-sync.md) / [model-sync.md](model-sync.md) /
-   [mapping-apply.md](mapping-apply.md)）；确认映射不等于授权写渠道或模型，
-   确认材料相互独立。
+4. 呈报评审：`models.csv` 变更摘要 + plan 差异概览。用户确认后才进入对应
+   写任务（[model-sync.md](model-sync.md) / [mapping-apply.md](mapping-apply.md)）；
+   确认映射不等于授权写渠道或模型，确认材料相互独立。
 
 ## 规划规则（评审与排障时对照；数字阈值是脚本内常量——文档解释，代码裁决）
 
 - **别名归一**——`models_extra.json` 顶层人工维护的 `aliases` 映射（如
-  `tencent-hy3` → `hy3`）合并跨渠道拼写。渠道清单保留原生 ID；注册表与
-  `plan.models[]` 用规范 ID，`channelAliases` 描述各渠道路由暴露。
-- **排除**——速度营销 ID（`-fast`/`-highspeed`）在规划期判定排除；记录级
-  `exclude` 原因同样挡在清单外（字段级合并保证跨采集轮次保留）。
+  `tencent-hy3` → `hy3`）合并跨渠道拼写。注册表与 `plan.models[]` 用规范
+  ID，`channelAliases` 描述各渠道路由暴露。
+- **排除**——记录上人工维护的 `exclude` 原因把模型挡在注册表外（字段级
+  合并保证跨采集轮次保留）；速度营销后缀（`-fast`/`-highspeed`）的屏蔽
+  规则归 [channel-sync.md](channel-sync.md) 所有，不在本文件复述。
 - **跨渠道去重**——每个 ID 一个胜出渠道：`rp5h` 最高者胜（null 输给有值，
   平局取字母序靠前渠道），每次裁决报告 `duplicate_model_across_sources`。
 - **变种分组**——同一基础模型内 `-free` 压过 `-contributor` 压过原始版；
@@ -104,19 +104,20 @@
 
 - `models.csv`——request 行保留为输入清单，其余单元格每轮重算；是映射建议
   的可审查快照，不是 AxonHub 运行时状态。
-- `channel-plan.json`（schema 1）——每渠道精确、排序的原生 ID `supportedModels`
-  期望态（按 `models_extra.json` 节名键）。
 - `model-plan.json`（schema 1）——增量条目：`modelID`、归属渠道、可选
   `channelAliases`、`channelPriority` 链（按 `rp5h` 降序的实际服务渠道）、
   `cardRef`、以及推导 meta + 渠道声明终值组成的 `input`。卡片本身绝不复制
   进计划。
+- `channel-plan.json` 仍由脚本写出，但渠道清单治理已移交
+  [channel-sync.md](channel-sync.md) 的同步正则，该产物暂无消费方，后续可
+  从脚本移除。
 - plan 是**纯目标态**：无指纹与陈旧性机制，过期整体重算；远端漂移由写任务
   的 read-before-write 在执行时发现并报告。
 
 ## 移交
 
-- **模型卡 + 渠道 `supportedModels`** → [channel-sync.md](channel-sync.md) /
-  [model-sync.md](model-sync.md)，用户确认后写入。
+- **模型卡** → [model-sync.md](model-sync.md)，用户确认后写入。渠道清单治理
+  独立于本流程（[channel-sync.md](channel-sync.md) 的同步正则，不消费规划产物）。
 - **Claude 映射** → 用户读 `models.csv` 后选择：[mapping-apply.md](mapping-apply.md)
   写入，或 AxonHub UI 手改。日常改靶直接在 UI，不进本流程。
 - **Claude 全局模型** → AxonHub 内一次手工创建，永不脚本化。

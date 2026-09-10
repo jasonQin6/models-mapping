@@ -1,6 +1,59 @@
 {
-  "aliases": {
-    "tencent-hy3": "hy3"
+  "blocklist": {
+    "commandcode-goat": [
+      {
+        "id": "google/gemini-3.1-flash-lite",
+        "reason": "tier"
+      },
+      {
+        "id": "google/gemini-3.5-flash",
+        "reason": "tier"
+      },
+      {
+        "id": "google/gemini-3.5-flash-lite",
+        "reason": "tier"
+      },
+      {
+        "id": "google/gemini-3.6-flash",
+        "reason": "tier"
+      },
+      {
+        "id": "gpt-5.3-codex",
+        "reason": "tier"
+      },
+      {
+        "id": "gpt-5.4",
+        "reason": "tier"
+      },
+      {
+        "id": "gpt-5.4-mini",
+        "reason": "tier"
+      },
+      {
+        "id": "gpt-5.5",
+        "reason": "tier"
+      },
+      {
+        "id": "gpt-5.6-terra",
+        "reason": "tier"
+      },
+      {
+        "id": "meta/muse-spark-1.1",
+        "reason": "tier"
+      },
+      {
+        "id": "sakana/fugu-ultra",
+        "reason": "tier"
+      },
+      {
+        "id": "tencent/hy3-paid",
+        "reason": "tier"
+      },
+      {
+        "id": "tencent-hy3",
+        "reason": "manual"
+      }
+    ]
   },
   "channels": {
     "ant": {
@@ -576,6 +629,7 @@
           "input": 0.14,
           "output": 0.58
         },
+        "exclude": "manual",
         "name": "Tencent Hy3",
         "rp5h": 7080,
         "tok_s": 99,
@@ -942,21 +996,5 @@
     }
   },
   "schema_version": 1,
-  "updated_at": "2026-09-10T11:46:12Z",
-  "blocklist": {
-    "commandcode-goat": [
-      "google/gemini-3.1-flash-lite",
-      "google/gemini-3.5-flash",
-      "google/gemini-3.5-flash-lite",
-      "google/gemini-3.6-flash",
-      "gpt-5.3-codex",
-      "gpt-5.4",
-      "gpt-5.4-mini",
-      "gpt-5.5",
-      "gpt-5.6-terra",
-      "meta/muse-spark-1.1",
-      "sakana/fugu-ultra",
-      "tencent/hy3-paid"
-    ]
-  }
+  "updated_at": "2026-09-10T11:46:12Z"
 }

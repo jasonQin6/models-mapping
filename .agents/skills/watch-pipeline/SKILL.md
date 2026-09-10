@@ -1,6 +1,6 @@
 ---
 name: watch-pipeline
-description: Maintain the collection layer — the watch_* scrapers behind .github/workflows/watch-pipeline.yml and their four channels (models-dev, opencode-go, GOAT, Arena). Adapt selectors when an upstream page changes, guided by the script's own parser and the persisted last-error.json. Pipeline execution belongs to CI; agents do not run full scrapes against live upstreams.
+description: Maintain the collection layer — the watch_* scrapers behind .github/workflows/watch-pipeline.yml and their four channels (models-dev, opencode-go, GOAT, Arena). Adapt selectors when an upstream page changes, guided by the script's own parser and the persisted last-error.json. Pipeline execution belongs to CI; agents do not run full scrapes against live upstreams (exception — axonhub-admin's channel-sync flow may invoke watch_arena.py to refresh data/arena.json when an Arena score is missing).
 ---
 
 # Watch Pipeline
