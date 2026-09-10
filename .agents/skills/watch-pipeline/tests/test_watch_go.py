@@ -62,6 +62,35 @@ def test_channel_claude_models_are_not_collected() -> None:
     assert not is_excluded_model("grok-4.6")
 
 
+def test_missing_requests_table_is_structural_drift() -> None:
+    # Upstream reshuffles must fail the run, never silently null rp5h.
+    drifted = _fixture_content().replace("requests per 5 hour", "requests hourly")
+
+    with pytest.raises(ValueError, match="requests table"):
+        build_go_section(drifted)
+
+
+def test_missing_pricing_table_is_structural_drift() -> None:
+    drifted = _fixture_content().replace("Input", "Rate").replace("Output", "Price")
+
+    with pytest.raises(ValueError, match="pricing table"):
+        build_go_section(drifted)
+
+
+def test_pricing_without_priced_rows_is_structural_drift() -> None:
+    drifted = (
+        _fixture_content()
+        .replace("$0.80", "incl")
+        .replace("$1.20", "incl")
+        .replace("$2.40", "incl")
+        .replace("$15.00", "incl")
+        .replace("$0", "incl")
+    )
+
+    with pytest.raises(ValueError, match="no priced rows"):
+        build_go_section(drifted)
+
+
 def test_update_channel_merges_into_shared_store(tmp_path: Path) -> None:
     path = tmp_path / "models_extra.json"
 

@@ -3,26 +3,31 @@
 主路径：开 autoSync + 正则屏蔽。`supportedModels` = 上游同步清单 − 屏蔽集，由
 AxonHub 每小时同步自动维护；本项目只治理屏蔽正则。
 
-适用：commandcode-goat（订阅差集稳定）；opencode-go 差集为零时直接开。
+适用：commandcode-goat（订阅档位差集稳定）、opencode-go（淘汰差集：上游
+`/v1/models` 有、go.mdx 无的 id 视作已淘汰，落 blocklist 后由正则屏蔽）。
 例外：`ant`、`sensenova`（embedding/作图，低频）同步保持关，清单人工维护。
 
 ## 屏蔽规则
 
-1. **后缀/前缀**——`-fast`、`-highspeed` 结尾的速度营销变种；`claude-*` 前缀
-   （Claude 由自建全局模型供给）。
-2. **低分**——arena_score < 1500 且非 free（free = 渠道记录 `free: true` 或
-   `-free` 后缀）。分数直接取自数据源 `data/arena.json`（`manual: true` 人工
-   指派优先），渠道 ID 与榜单记录用本 skill `scripts/name_matching.py` 的
-   匹配链连接（剥变种后缀），不经 models.csv/plan 中转。查无分数时先主动
-   刷新快照（本流程授权的本地采集例外，`manual` 记录保留）：
+1. **低分**（排除链第一条）——arena_score < 1500 且非 free（free = 渠道记录
+   `free: true` 或 `-free` 后缀）。分数直接取自数据源 `data/arena.json`
+   （`manual: true` 人工指派优先），渠道 ID 与榜单记录用本 skill
+   `scripts/name_matching.py` 的匹配链连接（剥变种后缀），不经
+   models.csv/plan 中转。查无分数时先主动刷新快照（本流程授权的本地采集
+   例外，`manual` 记录保留）：
    ```bash
    python3 .agents/skills/watch-pipeline/scripts/watch_arena.py \
      --top-n 0 --output data/arena.json
    ```
-   刷新后仍缺则人工指派（manual）或保留呈报。
-3. **订阅差集/人工下架**——`data/models_extra.json` 顶层
+   刷新后仍缺则人工指派（manual）或保留呈报。低于 1500 分的非 free 模型
+   无需进 blocklist——低分规则在注册表排除与渠道屏蔽两侧同线自动覆盖。
+2. **后缀/前缀**——`-fast`、`-highspeed` 结尾的速度营销变种；`claude-*` 前缀
+   （Claude 由自建全局模型供给）。
+3. **订阅差集/人工下架/淘汰**——`data/models_extra.json` 顶层
    `blocklist.<channel>`，条目为 `{id, reason}`：`tier` = 订阅档位差（稳定），
-   `manual` = 人工下架（如上游不提供的授权 id）。
+   `manual` = 人工下架（如上游不提供的授权 id），`retired` = 已淘汰
+   （opencode-go 判定：上游 `/v1/models` 有、go.mdx 无；差集随 watch-pipeline
+   每日刷新重核，新增淘汰 id 补进 blocklist）。
 
 ## 流程
 

@@ -7,8 +7,9 @@ AxonHub，任何时刻可以本地重跑。
 ## 输入（均为仓库内快照）
 
 - `data/models_extra.json` — 渠道声明事实 `channels.<channel>.<model_id>`：
-  `rp5h`、`usage_quota`、`cost{}`、人工维护的 `free: true`、goat 的 `tok_s`；
-  记录上人工维护的 `exclude` 原因把模型挡在注册表外。
+  `rp5h`、`usage_quota`、`cost{}`、人工维护的 `free` 旗标、goat 的 `tok_s`；
+  顶层 `blocklist.<channel>`（`{id, reason}` 条目）是人工模型决策——把模型
+  挡在注册表外。
 - `data/all_models.json` — models.dev 平铺 `vendor/model` 目录；唯一卡片来源
   （永远不是清单来源：只为渠道认领的模型补事实，绝不新增模型）。
 - `data/arena.json` — Arena 分数（榜单、`manual: true` 人工指派）。
@@ -27,10 +28,11 @@ AxonHub，任何时刻可以本地重跑。
 2. 报告分类：
    - **阻断错误**（`--fail-on-errors` 下退出非零，产物仅供检查）：请求模型
      不在 Arena 榜上且无人工指派（`request_arena_missing`）、输入 schema 漂移。
-   - **警告**（不阻断，必须向用户披露）：`card_missing`、`arena_missing`/
-     `arena_defaulted`/`arena_borrowed_rejected`、`rp5h_missing_review`、
-     `variant_superseded`、`duplicate_model_across_sources`、
-     `free_default_filled`、`missing_remark_fields`。警告全部走 stderr 摘要；
+   - **警告**（不阻断，必须向用户披露）：`lowscore_excluded`、
+     `manual_excluded`、`card_missing`、`arena_missing`/`arena_defaulted`/
+     `arena_borrowed_rejected`、`rp5h_missing_review`、`variant_superseded`、
+     `duplicate_model_across_sources`、`free_default_filled`、
+     `free_flag_missing`、`missing_remark_fields`。警告全部走 stderr 摘要；
      仅卡片/备注类（`card_missing`、`missing_remark_fields`）随 model-plan
      产物携带。
 3. （可选）单模型终态预览：
@@ -43,19 +45,29 @@ AxonHub，任何时刻可以本地重跑。
 
 ## 规划规则（评审与排障时对照；数字阈值是脚本内常量——文档解释，代码裁决）
 
+- **低分（排除链第一条，派生）**——arena_score < 1500 且非 free 的模型不进
+  注册表（`lowscore_excluded`）：与渠道同步正则（[channel-sync.md](channel-sync.md)）
+  和写侧"低分非免费不入册"（[model-sync.md](model-sync.md)）同一条线；查无
+  分数的不适用本规则（走 `arena_missing` 分诊）。想收录先改 `data/arena.json`
+  的人工指派，分数过线后自然回归。
+- **blocklist 排除**——`blocklist.<channel>` 条目（完整 ID 或剥厂商前缀的裸
+  ID，大小写不敏感）以 `manual_excluded` 把模型挡在注册表外；只用于规则覆盖
+  不了的决策（如非聊天端点、上游不提供的授权 ID）。
 - **别名归一**——`models_extra.json` 顶层人工维护的 `aliases` 映射（如
   `tencent-hy3` → `hy3`）合并跨渠道拼写。注册表与 `plan.models[]` 用规范
   ID，`channelAliases` 描述各渠道路由暴露。
-- **排除**——记录上人工维护的 `exclude` 原因把模型挡在注册表外（字段级
-  合并保证跨采集轮次保留）；速度营销后缀（`-fast`/`-highspeed`）的屏蔽
-  规则归 [channel-sync.md](channel-sync.md) 所有，不在本文件复述。
+- **速度营销后缀**——`-fast`/`-highspeed` 结尾的 ID 在规划期判定排除
+  （`speed_variant_excluded`）。
 - **跨渠道去重**——每个 ID 一个胜出渠道：`rp5h` 最高者胜（null 输给有值，
   平局取字母序靠前渠道），每次裁决报告 `duplicate_model_across_sources`。
 - **变种分组**——同一基础模型内 `-free` 压过 `-contributor` 压过原始版；
   被取代变种以 `variant_superseded` 离场。
-- **free 补全**——free 是声明的渠道事实（记录级 `free: true`），与 ID 拼写
-  无关。所属渠道内 free 模型的 `rp5h` 从该渠道最大非 free `rp5h` 重新推导
-  （无非 free 基准回退 1000）；缺失 `usage_quota` 补 60（`free_default_filled`）。
+- **free 补全**——free 的判定：记录级 `free` 旗标权威（含 `free: false` 反
+  覆盖），无旗标时 `-free` 后缀为派生默认（采集刷新的删除重插会丢记录级
+  手工字段，默认值保证这类模型不被误判；缺口以 `free_flag_missing` 呈现，
+  供维护者补旗标）。所属渠道内 free 模型的 `rp5h` 从该渠道最大非 free
+  `rp5h` 重新推导（无非 free 基准回退 1000）；缺失 `usage_quota` 补 60
+  （`free_default_filled`）。
 - **卡片与成本**——卡片字段只来自 `all_models.json`（`cardRef` 为原始
   `vendor/model` 键；无卡即 `cardRef: null` + `card_missing`，绝不臆造）。
   计划 `cost` 从卡片出发，渠道声明字段（`input`/`output`/`cache_read`/
@@ -65,8 +77,9 @@ AxonHub，任何时刻可以本地重跑。
   （`arena_borrowed_rejected` 拒收 `version_downgrade`/`prefix_match`）；
   非 free 无任何 Arena 匹配则不带分入册但不进映射池（`arena_missing`），
   free 默认 1500 留在池里（`arena_defaulted`）；缺 `rp5h` 的非 free 模型
-  Arena 分低于 1500 排除（`rp5h_missing_excluded`），达到 1500 保留带评审
-  警告（`rp5h_missing_review`），仅不参与映射目标挑选。
+  排除（`rp5h_missing_excluded`，有分场景已被低分规则先行接管，本分支实际
+  覆盖查无分数者），分数达到 1500 保留带评审警告（`rp5h_missing_review`），
+  仅不参与映射目标挑选。
 - **Claude 映射公式**——每个请求对全部非 free 候选打分，取最高：
   ```text
   match =

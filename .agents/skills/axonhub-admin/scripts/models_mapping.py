@@ -241,6 +241,10 @@ SPEED_VARIANT_SUFFIXES = ("-fast", "-highspeed")
 SPEED_VARIANT_EXCLUDE_REASON = "speed-variant (fast/highspeed)"
 FREE_DEFAULT_ARENA_SCORE = 1500.0
 RP5H_MISSING_EXCLUDE_THRESHOLD = 1500.0
+# Exclusion chain rule 1: a scored non-free model below this leaves the
+# registry entirely (aligned with the channel-sync blocklist rule and the
+# models.md "低分非免费不入册" write-side rule).
+LOWSCORE_EXCLUDE_THRESHOLD = 1500.0
 # The two collected channels whose shared models drive channel-priority
 # associations (ADR 0016); the static sections (ant, sensenova) are not part
 # of the intersection.
@@ -254,6 +258,44 @@ def speed_variant_exclude(model_id: str) -> Optional[str]:
     for suffix in SPEED_VARIANT_SUFFIXES:
         if lowered.endswith(suffix):
             return SPEED_VARIANT_EXCLUDE_REASON
+    return None
+
+
+def is_free_model(canonical: str, record: Mapping[str, Any]) -> bool:
+    """Freeness: the hand-maintained flag is authoritative; otherwise the
+    ``-free`` suffix is the derived default.
+
+    The default keeps re-inserted records safe: a collector refresh cycle
+    that deletes and re-adds an id wipes hand-maintained fields, and the
+    derived freeness prevents the loss from miscarrying the model (missing
+    rp5h triage, card pricing).  An explicit ``free: false`` still wins.
+    """
+
+    flag = record.get("free")
+    if flag is not None:
+        return flag is True
+    return canonical.strip().lower().endswith("-free")
+
+
+def blocklist_reason(
+    blocklist: Mapping[str, Mapping[str, str]],
+    channel: str,
+    native_id: str,
+) -> Optional[str]:
+    """Return the blocklist reason excluding ``native_id`` on ``channel``.
+
+    Entries are matched by their full id or bare (vendor-prefix-stripped)
+    form, case-insensitively: the collected sections carry bare lowercase
+    ids while blocklist entries may be spelled as the upstream exposes them.
+    """
+
+    rules = blocklist.get(channel.strip().lower()) or {}
+    lowered = native_id.strip().lower()
+    bare = lowered.split("/")[-1]
+    for key in (lowered, bare):
+        reason = rules.get(key)
+        if reason:
+            return reason
     return None
 
 
@@ -319,21 +361,22 @@ def dedupe_registry(
     sections: Mapping[str, Mapping[str, dict[str, Any]]],
     aliases: Mapping[str, str],
     warnings: list[dict[str, Any]],
+    blocklist: Mapping[str, Mapping[str, str]],
 ) -> dict[str, dict[str, Any]]:
     """Build the registry: one winning record per canonical id.
 
-    Excluded records never represent their model: either a hand-maintained
-    ``exclude`` reason on the record or a derived speed-marketing id suffix.
-    Among the rest the highest-rp5h channel wins (duplicate warning).  Each
-    entry carries the channel's native id plus the alias map needed to route
-    channel-exposed ids back to the canonical model.
+    Excluded records never represent their model: a ``blocklist.<channel>``
+    entry (the hand-maintained model decisions), or a derived speed-marketing
+    id suffix.  Among the rest the highest-rp5h channel wins (duplicate
+    warning).  Each entry carries the channel's native id plus the alias map
+    needed to route channel-exposed ids back to the canonical model.
     """
 
     registry: dict[str, dict[str, Any]] = {}
     for canonical, members in sorted(group_by_canonical(sections, aliases).items()):
         active: dict[str, tuple[str, dict[str, Any]]] = {}
         for channel, (native_id, record) in members.items():
-            reason = record.get("exclude")
+            reason = blocklist_reason(blocklist, channel, native_id)
             if reason:
                 warnings.append({"type": "manual_excluded", "model": native_id, "reason": reason})
                 continue
@@ -411,14 +454,14 @@ def fill_free_records(
     for channel, records in sorted(per_channel.items()):
         non_free = [
             _number(record.get("rp5h"), 0.0) or 0.0
-            for record in records.values()
-            if not record.get("free")
+            for model_id, record in records.items()
+            if not is_free_model(model_id, record)
         ]
         max_rp5h = max(non_free) if non_free else 0.0
         if max_rp5h <= 0:
             max_rp5h = FREE_RP5H_DEFAULT
         for model_id, record in sorted(records.items()):
-            if not record.get("free"):
+            if not is_free_model(model_id, record):
                 continue
             filled: list[str] = []
             derived = int(max_rp5h) if float(max_rp5h).is_integer() else max_rp5h
@@ -454,7 +497,9 @@ def _cost_from_model(model: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def _merge_channel_cost(card: Mapping[str, Any], record: Mapping[str, Any]) -> dict[str, Any]:
+def _merge_channel_cost(
+    card: Mapping[str, Any], record: Mapping[str, Any], is_free: bool
+) -> dict[str, Any]:
     """Start from the card cost and overwrite with non-null channel values.
 
     A free record is the channel declaring every price zero: cost fields it
@@ -462,7 +507,7 @@ def _merge_channel_cost(card: Mapping[str, Any], record: Mapping[str, Any]) -> d
     free model's card.
     """
 
-    if record.get("free") is True:
+    if is_free:
         cost = {key: 0 for key in ("input", "output", "cacheRead", "cacheWrite")}
     else:
         cost = _cost_from_model(card)
@@ -654,6 +699,42 @@ def load_extra_aliases(path: Path) -> dict[str, str]:
     return {str(alias): str(canonical) for alias, canonical in aliases.items()}
 
 
+def load_extra_blocklist(path: Path) -> dict[str, dict[str, str]]:
+    """Load the hand-maintained ``blocklist`` (channel -> [{id, reason}]).
+
+    Bare-string entries are accepted with a generic reason; entries index by
+    the lowercased channel section name.
+    """
+
+    payload = load_json(path)
+    if not isinstance(payload, Mapping):
+        return {}
+    raw = payload.get("blocklist")
+    if raw is None:
+        return {}
+    if not isinstance(raw, Mapping):
+        raise PlanningError(f"{path} blocklist must be an object")
+    rules: dict[str, dict[str, str]] = {}
+    for channel, entries in raw.items():
+        if not isinstance(entries, Sequence) or isinstance(entries, str):
+            raise PlanningError(f"{path} blocklist.{channel} must be a list")
+        indexed: dict[str, str] = {}
+        for entry in entries:
+            if isinstance(entry, Mapping):
+                model_id = str(entry.get("id") or "").strip()
+                reason = str(entry.get("reason") or "manual")
+            else:
+                model_id = str(entry).strip()
+                reason = "manual"
+            if not model_id:
+                continue
+            lowered = model_id.lower()
+            indexed[lowered] = reason
+            indexed.setdefault(lowered.split("/")[-1], reason)
+        rules[str(channel).strip().lower()] = indexed
+    return rules
+
+
 def build_plan(
     *,
     extra_path: Path,
@@ -666,6 +747,7 @@ def build_plan(
     warnings: list[dict[str, Any]] = []
     sections = load_extra_sections(extra_path)
     aliases = load_extra_aliases(extra_path)
+    blocklist = load_extra_blocklist(extra_path)
     cards, card_refs = load_cards(cards_path)
     arena_models = load_arena(arena_path)
     requests = load_csv_requests(csv_path, warnings)
@@ -677,6 +759,7 @@ def build_plan(
         arena_models=arena_models,
         requests=requests,
         warnings=warnings,
+        blocklist=blocklist,
     )
 
 
@@ -689,6 +772,7 @@ def plan_from(
     requests: Sequence[Mapping[str, Any]],
     card_refs: Mapping[str, str] | None = None,
     warnings: list[dict[str, Any]] | None = None,
+    blocklist: Mapping[str, Mapping[str, str]] | None = None,
 ) -> tuple[list[dict[str, str]], dict[str, Any], dict[str, Any]]:
     """Run the offline planning pipeline.
 
@@ -698,13 +782,14 @@ def plan_from(
     """
 
     aliases = aliases or {}
+    blocklist = blocklist or {}
     warnings: list[dict[str, Any]] = list(warnings) if warnings else []
     errors: list[dict[str, Any]] = []
     ineligible: list[dict[str, Any]] = []
 
     # Registry: alias-normalised groups, excluded records dropped, one
     # winning channel per canonical id, then variant groups resolved.
-    registry = dedupe_registry(sections, aliases, warnings)
+    registry = dedupe_registry(sections, aliases, warnings, blocklist)
     registry = supersede_variants(registry, warnings)
     fill_free_records(registry, warnings)
 
@@ -712,12 +797,15 @@ def plan_from(
     # models so beta models stay reviewable), then rp5h-missing triage.
     candidates: list[dict[str, Any]] = []
     rp5h_excluded: list[str] = []
+    lowscore_excluded: list[str] = []
     for canonical in sorted(registry):
         entry = registry[canonical]
         record = entry["record"]
-        # Freeness is a declared channel fact (`free: true`), never guessed
-        # from the id spelling.
-        is_free = record.get("free") is True
+        # Freeness: the declared flag wins; the ``-free`` suffix is the
+        # derived default that keeps refresh-cycled records safe.
+        is_free = is_free_model(canonical, record)
+        if record.get("free") is None and canonical.endswith("-free"):
+            warnings.append({"type": "free_flag_missing", "model": canonical})
         match, match_type = find_best_match(canonical, dict(arena_models))
         arena_score = _number((match or {}).get("rating"))
         if match_type == "no_match":
@@ -752,6 +840,15 @@ def plan_from(
             warnings.append(
                 {"type": "arena_borrowed_rejected", "model": canonical, "match_type": match_type}
             )
+        # Exclusion chain rule 1 (derived, first): a scored non-free model
+        # below the threshold never represents its model — aligned with the
+        # channel-sync regex rule and the write-side "低分非免费不入册".
+        if not is_free and arena_score is not None and arena_score < LOWSCORE_EXCLUDE_THRESHOLD:
+            warnings.append(
+                {"type": "lowscore_excluded", "model": canonical, "arena_score": arena_score}
+            )
+            lowscore_excluded.append(canonical)
+            continue
         rp5h = _number(record.get("rp5h"))
         if not is_free and rp5h is None:
             reference = arena_score if arena_score is not None else 0.0
@@ -783,7 +880,7 @@ def plan_from(
                 "match_type": match_type,
             }
         )
-    for canonical in rp5h_excluded:
+    for canonical in lowscore_excluded + rp5h_excluded:
         del registry[canonical]
 
     # Claude request mapping (baseline routing + formula).
@@ -932,7 +1029,7 @@ def plan_from(
                 "type": "chat",
                 "icon": icon,
                 "group": group,
-                "cost": _merge_channel_cost(card or {}, record),
+                "cost": _merge_channel_cost(card or {}, record, is_free_model(canonical, record)),
                 "remark": remark_json(remark),
             },
         }

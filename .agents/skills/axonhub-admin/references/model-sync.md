@@ -38,10 +38,11 @@
   models 页「批量添加」从目录条目自动组装完整卡片）→ ② `data/all_models.json`
   （models.dev 快照，离线规划管线用）→ ③ 人工兜底（渠道特有/最新 ID，两个源
   都常缺，绝不臆造）。
-- **低分非免费不入册**：目录候选 `arena_score` < 1500 且非 free 的，不创建
-  实体（连 disabled 都不建，在册即噪音且需持续复核），例：
-  `gemini-3.5-flash-lite`（1449.01）。想收录先改 `data/arena.json` 的人工
-  指派，分数过线后走正常创建流程。
+- **低分非免费不入册**：`arena_score` < 1500 且非 free 的候选由规划器在
+  排除链首位直接挡下（`lowscore_excluded`，见 [replan.md](replan.md)），
+  不会出现在计划里；本流程只是不再为其创建实体的镜像约束（连 disabled 都
+  不建，在册即噪音且需持续复核）。想收录先改 `data/arena.json` 的人工
+  指派，分数过线后自然回归。
 - **不管理的模型类别**：图像生成与 embedding 模型（`sensenova-u1-fast`、
   `bge-m3`、`qwen3-embedding-0.6b` 等）很少变动，不在管理范围：不建实体、
   不写卡片、不参与重建与清理；渠道侧照常服务。
@@ -59,8 +60,8 @@
 - `group` — 卡片的 `family`。
 - `type` — `chat`；图像生成端点（`POST /v1/images/generations`，无图像输入、
   非 Chat Completions）是 `image_generation`，modalities `input: [text]` /
-  `output: [image]`、`vision: false`，并靠 `models_extra.json` 记录上的
-  `exclude` 旗标排除出聊天注册表。
+  `output: [image]`、`vision: false`，并靠 `models_extra.json` 顶层
+  `blocklist` 条目排除出聊天注册表。
 - `modelCard` — `reasoning: {supported, default}` ← `reasoning`；
   `toolCall` ← `tool_call`；`temperature` ← `temperature`（默认 true）；
   `vision` ← modalities.input 里的 `image`；`modalities`、`limit` 照搬；

@@ -15,6 +15,7 @@ from models_mapping import (  # noqa: E402
     extract_series,
     load_arena,
     load_csv_requests,
+    load_extra_blocklist,
     main,
     plan_from,
     score_match,
@@ -37,7 +38,7 @@ def _arena_models(arena: dict[str, float]) -> dict:
     return {model_id: {"rating": score} for model_id, score in arena.items()}
 
 
-def _plan(sections, cards=None, arena=None, requests=(), aliases=None):
+def _plan(sections, cards=None, arena=None, requests=(), aliases=None, blocklist=None):
     # Aggregate view for legacy assertions: models from the model plan plus
     # the full run-level warnings/report. Test cards are keyed by bare id,
     # so refs map bare -> bare.
@@ -48,6 +49,7 @@ def _plan(sections, cards=None, arena=None, requests=(), aliases=None):
         card_refs={key: key for key in (cards or {})},
         arena_models=_arena_models(arena or {}),
         requests=requests,
+        blocklist=blocklist,
     )
     merged = {
         "models": model_plan["models"],
@@ -136,6 +138,7 @@ def test_dedupe_keeps_highest_rp5h_channel_and_reports() -> None:
         },
         {},
         warnings,
+        {},
     )
 
     entry = registry["deepseek-v4-flash"]
@@ -157,6 +160,7 @@ def test_dedupe_null_loses_to_value_and_ties_keep_first_channel() -> None:
         },
         {},
         warnings,
+        {},
     )
 
     assert registry["minimax-m2.5"]["channel"] == "commandcode-goat"
@@ -199,12 +203,12 @@ def test_variant_suffix_candidate_inherits_base_score() -> None:
     # arena record through the chain's variant-suffix layer; same-model
     # inheritance is accepted silently (ADR 0015).
     sections = {"ant": {"ling-3.0-flash-vl": _rec(name="Ling 3.0 Flash VL", rp5h=500)}}
-    arena = {"ling-3.0-flash": 1458.0}
+    arena = {"ling-3.0-flash": 1520.0}
 
     rows, plan = _plan(sections, arena=arena)
 
     candidates = {row["model_id"]: row for row in rows if row["role"] == "candidate"}
-    assert candidates["ling-3.0-flash-vl"]["arena_score"] == "1458"
+    assert candidates["ling-3.0-flash-vl"]["arena_score"] == "1520"
     assert not any(w["type"] == "candidate_arena_fallback" for w in plan["warnings"])
 
 
@@ -278,8 +282,8 @@ def test_free_record_zeroes_silent_cost_fields() -> None:
 def test_claude_mapping_uses_formula_and_baseline_routing() -> None:
     sections = {
         "opencode-go": {
-            "muse-spark-1.2": _rec(rp5h=800),      # arena 1200, close to haiku
-            "qwen3.8-max": _rec(rp5h=100),          # arena 1600, far above
+            "muse-spark-1.2": _rec(rp5h=800),      # arena 1650, closest to opus
+            "qwen3.8-max": _rec(rp5h=100),          # arena 1600, farther below
             "freebie": _rec(rp5h=500, free=True),   # free, arena 1500 default
         },
     }
@@ -287,7 +291,7 @@ def test_claude_mapping_uses_formula_and_baseline_routing() -> None:
         {"model_id": "claude-haiku-4-5"},
         {"model_id": "claude-opus-5"},
     ]
-    arena = {"muse-spark-1.2": 1200.0, "qwen3.8-max": 1600.0, "claude-haiku-4-5": 1150.0, "claude-opus-5": 1700.0}
+    arena = {"muse-spark-1.2": 1650.0, "qwen3.8-max": 1600.0, "claude-haiku-4-5": 1150.0, "claude-opus-5": 1700.0}
 
     rows, plan = _plan(sections, cards={}, arena=arena, requests=requests)
 
@@ -297,11 +301,11 @@ def test_claude_mapping_uses_formula_and_baseline_routing() -> None:
     mapping_by_request = {m["request_model"]: m for m in plan["report"]["mappings"]}
     assert mapping_by_request["claude-haiku-4-5"]["match_confidence"] == "free_fill"
     # Free pool exhausted: the remaining request uses the formula over
-    # non-free candidates (closest score wins over the far-above one).
-    assert request_rows["claude-opus-5"]["mapping"] == "qwen3.8-max"
+    # non-free candidates (closest score wins over the farther one).
+    assert request_rows["claude-opus-5"]["mapping"] == "muse-spark-1.2"
     # Candidates are listed for review with their matched arena score.
     candidate_by_id = {row["model_id"]: row for row in rows if row["role"] == "candidate"}
-    assert candidate_by_id["muse-spark-1.2"]["arena_score"] == "1200"
+    assert candidate_by_id["muse-spark-1.2"]["arena_score"] == "1650"
     # fill_free_records re-derived the free quota from the owning channel max.
     assert candidate_by_id["freebie"]["rp5h"] == "800"
 
@@ -326,15 +330,18 @@ def test_missing_card_warns_and_falls_back_to_channel_name() -> None:
     assert plan["models"][0]["input"]["name"] == "Goat Only Model"
 
 
-def test_manual_exclude_on_record_skips_model() -> None:
+def test_blocklist_entry_skips_model() -> None:
+    # Hand-maintained model decisions live in blocklist.<channel>, matched by
+    # full or vendor-prefix-stripped id — not on the collected record.
     sections = {
         "commandcode-goat": {
-            "minimax-m2.5": _rec(rp5h=None, exclude="Missing mapping-critical RP5H"),
+            "minimax-m2.5": _rec(rp5h=None),
             "kimi-k2.5": _rec(rp5h=900),
         },
     }
+    blocklist = {"commandcode-goat": {"minimax-m2.5": "Missing mapping-critical RP5H"}}
 
-    _rows, plan = _plan(sections)
+    _rows, plan = _plan(sections, blocklist=blocklist)
 
     assert all(m["modelID"] != "minimax-m2.5" for m in plan["models"])
     assert any(
@@ -343,6 +350,65 @@ def test_manual_exclude_on_record_skips_model() -> None:
         for w in plan["warnings"]
     )
     assert "removals" not in plan
+
+
+def test_blocklist_loader_indexes_bare_form(tmp_path: Path) -> None:
+    # The blocklist may spell ids as the upstream exposes them (vendor
+    # prefix); the loader indexes both the full and the bare form so the
+    # collected bare lowercase ids match.
+    doc = {"blocklist": {"opencode-go": [{"id": "google/gemini-3.5-flash-lite", "reason": "tier"}]}}
+    path = tmp_path / "models_extra.json"
+    path.write_text(json.dumps(doc), encoding="utf-8")
+
+    rules = load_extra_blocklist(path)
+
+    assert rules["opencode-go"]["google/gemini-3.5-flash-lite"] == "tier"
+    assert rules["opencode-go"]["gemini-3.5-flash-lite"] == "tier"
+
+    sections = {"opencode-go": {"gemini-3.5-flash-lite": _rec(rp5h=800)}}
+    _rows, plan = _plan(sections, blocklist=rules)
+
+    assert plan["models"] == []
+    assert any(w["type"] == "manual_excluded" and w["model"] == "gemini-3.5-flash-lite" for w in plan["warnings"])
+
+
+def test_lowscore_non_free_excluded_free_exempt() -> None:
+    # Exclusion chain rule 1: a scored non-free model below 1500 leaves the
+    # registry entirely; free models are exempt regardless of score.
+    sections = {
+        "commandcode-goat": {
+            "minimax-m3": _rec(rp5h=3200),            # arena 1487.3 -> excluded
+            "laguna-s-2.1-free": _rec(rp5h=None, free=True),  # free, exempt
+        },
+    }
+    arena = {"minimax-m3": 1487.3, "laguna-s-2.1-free": 1500.0}
+
+    rows, model_plan, report = plan_from(
+        sections, cards={}, arena_models=_arena_models(arena), requests=[]
+    )
+
+    models = {m["modelID"] for m in model_plan["models"]}
+    assert "minimax-m3" not in models
+    assert "laguna-s-2.1-free" in models
+    assert any(w["type"] == "lowscore_excluded" and w["model"] == "minimax-m3" for w in report["warnings"])
+    candidate_ids = {row["model_id"] for row in rows if row["role"] == "candidate"}
+    assert "minimax-m3" not in candidate_ids
+
+
+def test_free_suffix_default_covers_unflagged_record() -> None:
+    # A refresh cycle that deletes and re-adds an id wipes the hand flag;
+    # the -free suffix keeps the model free (fill, pricing, reachability)
+    # and the gap surfaces as free_flag_missing for the maintainer.
+    sections = {"commandcode-goat": {"longcat-2.0-free": _rec(rp5h=None, quota=None)}}
+
+    rows, model_plan, report = plan_from(sections, cards={}, arena_models={}, requests=[])
+
+    entry = model_plan["models"][0]
+    assert entry["input"]["cost"] == {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0}
+    assert entry["input"]["remark"] == '{"manual":"","rp5h":1000,"usage_quota":60}'
+    assert any(w["type"] == "free_flag_missing" and w["model"] == "longcat-2.0-free" for w in report["warnings"])
+    candidate_by_id = {row["model_id"]: row for row in rows if row["role"] == "candidate"}
+    assert candidate_by_id["longcat-2.0-free"]["arena_score"] == "1500"
 
 
 def test_speed_variant_ids_are_derived_as_excluded() -> None:
@@ -428,7 +494,7 @@ def test_contributor_variant_supersedes_plain_original() -> None:
 def test_rp5h_missing_low_arena_excluded_high_arena_review() -> None:
     sections = {
         "commandcode-goat": {
-            "glm-5": _rec(rp5h=None),          # arena 1435 < 1500 -> excluded
+            "glm-5": _rec(rp5h=None),          # arena 1435 < 1500 -> lowscore excluded
             "kimi-k2.5": _rec(rp5h=None),      # no arena standing -> excluded too
         },
     }
@@ -438,7 +504,8 @@ def test_rp5h_missing_low_arena_excluded_high_arena_review() -> None:
 
     models = {m["modelID"] for m in model_plan["models"]}
     assert models == set()
-    assert any(w["type"] == "rp5h_missing_excluded" and w["model"] == "glm-5" for w in _report["warnings"])
+    # Rule 1 catches the scored-but-low model before the rp5h triage.
+    assert any(w["type"] == "lowscore_excluded" and w["model"] == "glm-5" for w in _report["warnings"])
     # No invented 1500: an unlisted model has no standing, so the missing-rp5h
     # triage excludes it instead of reviewing it (ADR 0015).
     assert any(w["type"] == "arena_missing" and w["model"] == "kimi-k2.5" for w in _report["warnings"])
@@ -607,7 +674,7 @@ def test_main_round_trips_csv_request_rows_and_writes_plan(tmp_path: Path) -> No
         "channels": {"opencode-go": {"muse-spark-1.2": _rec(rp5h=800)}},
     }), encoding="utf-8")
     arena = tmp_path / "arena.json"
-    arena.write_text(json.dumps(_arena_doc({"muse-spark-1.2": 1200.0, "claude-opus-5": 1700.0})), encoding="utf-8")
+    arena.write_text(json.dumps(_arena_doc({"muse-spark-1.2": 1520.0, "claude-opus-5": 1700.0})), encoding="utf-8")
     cards = tmp_path / "all_models.json"
     cards.write_text(json.dumps({}), encoding="utf-8")
     csv_path = tmp_path / "models.csv"
@@ -628,7 +695,7 @@ def test_main_round_trips_csv_request_rows_and_writes_plan(tmp_path: Path) -> No
     text = csv_path.read_text(encoding="utf-8")
     # The request row keeps its id; arena score and mapping are recomputed.
     assert "claude-opus-5,request,1700,," in text
-    assert "muse-spark-1.2,candidate,1200,800," in text
+    assert "muse-spark-1.2,candidate,1520,800," in text
     model_plan = json.loads(plan_out.read_text(encoding="utf-8"))
     assert model_plan["schema_version"] == 1
     entry = model_plan["models"][0]

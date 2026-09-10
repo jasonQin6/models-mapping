@@ -21,7 +21,7 @@ _Avoid_: Any enabled channel, provider channel
 **Entitlement**：账号在某渠道实际有权使用的模型集合。上游广告的模型清单可能超出 entitlement；托管渠道的目录必须是 entitlement 的显式 allowlist，其事实来源因渠道而异。
 _Avoid_: 全量模型清单, 套餐模型列表
 
-**Allowlist**：托管渠道 entitlement 的显式模型清单，即 `models_extra.json` 对应渠道节在去重与人工 exclude 之后的键集合。它是事实源的直接产物、由生产端硬门禁（结构漂移整轮失败）保护；autoSync 渠道在 AxonHub 侧以允许正则表达同一策展（同步清单 − 屏蔽 ≈ 授权清单）。
+**Allowlist**：托管渠道 entitlement 的显式模型清单，即 `models_extra.json` 对应渠道节在去重、blocklist 排除与人工 exclude 之后的键集合。它是事实源的直接产物、由生产端硬门禁（结构漂移整轮失败）保护；autoSync 渠道在 AxonHub 侧以允许正则表达同一策展（同步清单 − 屏蔽 ≈ 授权清单）。
 _Avoid_: Model filter, intersection result
 
 **Model card**：描述模型能力、限制、模态、价格和版本信息的公共模型资料。
@@ -36,7 +36,7 @@ _Avoid_: Tombstone, stale model
 **Model variant**：同一基础模型的衍生 id（如 `-free`、`-contributor`、`-fast` 后缀）。尺寸后缀（如 `-27b`）是模型 id 的一部分，不构成变种关系。
 _Avoid_: Alias（别名指跨渠道对同一 id 的拼写归一）
 
-**Model decision**：对登记内模型作出的人工 exclude 事实，带理由记录于 `models_extra.json` 对应记录的 `exclude` 字段，采集重写必须保留。
+**Model decision**：对登记内模型作出的人工排除事实，带理由记录于 `models_extra.json` 顶层 `blocklist.<channel>`（`{id, reason}` 条目，完整 ID 或剥厂商前缀裸 ID 皆可）。不落在采集器拥有的渠道节记录上——采集刷新的删除重插会丢记录级手工字段。
 _Avoid_: CSV edit, inferred fallback
 
 ## 下游映射

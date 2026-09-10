@@ -6,7 +6,7 @@ every collector: each watcher owns exactly one
 ``channels`` section and updates only that section's contract fields, so
 writers must be serialized (the CI graph orders the goat job after the go
 job).  A record field outside the channel's contract (e.g. a hand-maintained
-``exclude``) belongs to the human maintainers: merges refresh contract
+``free`` override flag) belongs to the human maintainers: merges refresh contract
 fields and leave every other field untouched.  Public card data is not
 stored here — planning fills it from ``data/all_models.json``.
 """
@@ -70,9 +70,11 @@ def update_channel(
 
     Scraped records carry the channel's contract fields only.  A model the
     channel still declares keeps its record's hand-maintained fields (any
-    key the scrape does not produce, such as ``exclude``) while its contract
-    fields refresh; a model that leaves the channel declaration leaves the
-    section with its whole record.
+    key the scrape does not produce, such as the ``free`` override flag)
+    while its contract fields refresh; a model that leaves the channel
+    declaration leaves the section with its whole record — which is why
+    hand-maintained model decisions live in the top-level ``blocklist`` key,
+    not on records.
     """
 
     document = load_document(path)
