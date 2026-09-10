@@ -1,6 +1,6 @@
 ---
 name: axonhub-admin
-description: 本仓对 AxonHub 部署（https://axon.jasonqin.site）的全链路治理：离线重算模型注册表与 Claude 映射建议（models.csv、data/channel-plan.json、data/model-plan.json），以及用户确认后的受控写入——渠道 supportedModels 清单、模型卡与成本备注、关联路由、屏蔽正则、批量重建。凡任务涉及重算规划、评审映射表、生成/应用 plan、同步渠道或模型到 AxonHub，都先用本 skill。工具机制（token、endpoint、find/query/mutate 用法）以 axonhub-cli skill 为准；仓库外的一次性通用查询也用 axonhub-cli。
+description: 本仓对 AxonHub 部署（https://axon.jasonqin.site）的全链路治理：离线重算模型注册表与 Claude 映射建议（models.csv、data/model-plan.json），以及用户确认后的受控写入——渠道同步正则、模型卡与成本备注、关联路由、批量重建。凡任务涉及重算规划、评审映射表、生成/应用 plan、同步渠道或模型到 AxonHub，都先用本 skill。工具机制（token、endpoint、find/query/mutate 用法）以 axonhub-cli skill 为准；仓库外的一次性通用查询也用 axonhub-cli。
 ---
 
 # AxonHub Admin

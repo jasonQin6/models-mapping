@@ -32,10 +32,12 @@ AxonHub 每小时同步自动维护；本项目只治理屏蔽正则。
    查询 `fetchModels(input: { channelType, baseURL, channelID })` 作参考
    （`baseURL` 必填、从渠道查询取；返回 id 可能带 `厂商/` 前缀与 `:free`
    后缀，比对时归一化）。
-2. 生成允许正则：屏蔽条目按 `(^|/)ID($|[:/])` 匹配（容忍 `:free` 后缀，id 中
-   `.` 转义；regexp2 支持负向断言）。示例形状：
+2. 生成允许正则：`(?i)` 前缀必需——上游同步 ID 是带厂商前缀的混合大小写
+   （`zai-org/GLM-5`、`MiniMaxAI/MiniMax-M2.5`），小写模式静默漏挡。屏蔽条目
+   按 `(^|/)ID($|[:/])` 匹配（blocklist 条目取剥前缀的裸 ID；id 中 `.` 转义；
+   regexp2 支持负向断言）。实测形状（goat，2026-09-11）：
    ```text
-   ^(?!.*-(?:fast|highspeed)$)(?!.*(?:^|/)claude-)(?!.*(?:^|/)(?:gpt-5\.5|google/gemini-3\.5-flash-lite)(?:$|[:/])).*$
+   (?i)^(?!.*-(?:fast|highspeed)(?:$|[:/]))(?!.*(^|/)claude-)(?!.*(^|/)(?:gemini-3\.1-flash-lite|…|tencent-hy3)(?:$|[:/]))(?!.*(^|/)(?:glm-5|…|step-3\.7-flash)(?:$|[:/])).*$
    ```
 3. 确认屏蔽集与正则（一次确认）。
 4. 一次 `updateChannel` 同时写 `autoSyncSupportedModels: true` 与

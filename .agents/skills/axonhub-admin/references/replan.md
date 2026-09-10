@@ -30,8 +30,9 @@ AxonHub，任何时刻可以本地重跑。
    - **警告**（不阻断，必须向用户披露）：`card_missing`、`arena_missing`/
      `arena_defaulted`/`arena_borrowed_rejected`、`rp5h_missing_review`、
      `variant_superseded`、`duplicate_model_across_sources`、
-     `free_default_filled`、`missing_remark_fields`。arena/mapping 警告在
-     stderr，其余随其解释的产物走。
+     `free_default_filled`、`missing_remark_fields`。警告全部走 stderr 摘要；
+     仅卡片/备注类（`card_missing`、`missing_remark_fields`）随 model-plan
+     产物携带。
 3. （可选）单模型终态预览：
    ```bash
    python3 .agents/skills/axonhub-admin/scripts/assemble_card.py --id <modelID>
@@ -107,10 +108,7 @@ AxonHub，任何时刻可以本地重跑。
 - `model-plan.json`（schema 1）——增量条目：`modelID`、归属渠道、可选
   `channelAliases`、`channelPriority` 链（按 `rp5h` 降序的实际服务渠道）、
   `cardRef`、以及推导 meta + 渠道声明终值组成的 `input`。卡片本身绝不复制
-  进计划。
-- `channel-plan.json` 仍由脚本写出，但渠道清单治理已移交
-  [channel-sync.md](channel-sync.md) 的同步正则，该产物暂无消费方，后续可
-  从脚本移除。
+  进计划。渠道清单治理独立于规划产物（channel-sync 的同步正则）。
 - plan 是**纯目标态**：无指纹与陈旧性机制，过期整体重算；远端漂移由写任务
   的 read-before-write 在执行时发现并报告。
 

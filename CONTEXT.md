@@ -21,7 +21,7 @@ _Avoid_: Any enabled channel, provider channel
 **Entitlement**：账号在某渠道实际有权使用的模型集合。上游广告的模型清单可能超出 entitlement；托管渠道的目录必须是 entitlement 的显式 allowlist，其事实来源因渠道而异。
 _Avoid_: 全量模型清单, 套餐模型列表
 
-**Allowlist**：托管渠道 entitlement 的显式模型清单，即 `models_extra.json` 对应渠道节在去重与人工 exclude 之后的键集合。它是事实源的直接产物、由生产端硬门禁（结构漂移整轮失败）保护；autoSync 渠道在 AxonHub 侧以允许正则表达同一策展（同步清单 − 屏蔽 ≈ 授权清单），期望态对照见 channel-plan。
+**Allowlist**：托管渠道 entitlement 的显式模型清单，即 `models_extra.json` 对应渠道节在去重与人工 exclude 之后的键集合。它是事实源的直接产物、由生产端硬门禁（结构漂移整轮失败）保护；autoSync 渠道在 AxonHub 侧以允许正则表达同一策展（同步清单 − 屏蔽 ≈ 授权清单）。
 _Avoid_: Model filter, intersection result
 
 **Model card**：描述模型能力、限制、模态、价格和版本信息的公共模型资料。

@@ -18,7 +18,7 @@ python3 .agents/skills/axonhub-admin/scripts/models_mapping.py --csv models.csv 
 python3 -m pytest -q
 ```
 
-规划默认写出 `models.csv` 与 `data/{channel-plan,model-plan}.json`（生成物，整体重算，不手工编辑）；单模型卡终态用 `.agents/skills/axonhub-admin/scripts/assemble_card.py --id <modelID>` 在写入前组装。
+规划默认写出 `models.csv` 与 `data/model-plan.json`（生成物，整体重算，不手工编辑）；单模型卡终态用 `.agents/skills/axonhub-admin/scripts/assemble_card.py --id <modelID>` 在写入前组装。
 
 采集脚本位于 `.agents/skills/watch-pipeline/scripts/`，由 `watch-pipeline` skill 维护并经 watch-pipeline.yml（每 3 天）执行；本地运行 watch_* 仅作调试（例外：channel-sync 流程缺 Arena 分数时授权主动调用 watch_arena.py 刷新快照），产物仍归对应渠道。go 与 goat 两个采集 job 都写 `data/models_extra.json` 的各自节，必须串行（CI 已按 go → goat 排序）。脚本失败会在 `.agents/skills/watch-pipeline/reference/<channel>/last-error.json` 留痕，修复流程见 `.agents/skills/watch-pipeline/SKILL.md`。skill 校验见各自 `SKILL.md`。
 

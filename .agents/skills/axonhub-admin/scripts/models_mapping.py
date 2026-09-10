@@ -20,14 +20,14 @@ and produces everything the AxonHub write path consumes:
    candidate pool by the Arena/RP5H/proximity formula (free fill included);
    GPT request models are pass-through and never enter the mapping.
 5. Outputs: ``models.csv`` — regenerated in place: its request rows are the
-   input, every other cell is computed — plus two per-object plans written
-   under ``data/`` (ADR 0017): ``channel-plan.json`` (each channel's exact
-   ``supportedModels`` desired state) and ``model-plan.json`` (incremental
-   model entries: card reference into ``data/all_models.json``, merged
-   cost end values, remarks, and rp5h-priority association chains).
-   ``assemble_card.py`` renders a plan entry into the full AxonHub input
-   at write time, so the plan never duplicates ``all_models.json``
-   content.
+   input, every other cell is computed — plus the incremental model plan
+   under ``data/`` (ADR 0017): ``model-plan.json`` entries carry a card
+   reference into ``data/all_models.json``, merged cost end values,
+   remarks, and rp5h-priority association chains.  ``assemble_card.py``
+   renders a plan entry into the full AxonHub input at write time, so the
+   plan never duplicates ``all_models.json`` content.  Channel allowlists
+   are governed in AxonHub via autoSync + ``autoSyncModelPattern``
+   (channel-sync flow), not by a plan artifact.
 
 Pure offline planning: no credentials, no network, no AxonHub writes.
 """
@@ -49,20 +49,12 @@ from name_matching import (  # noqa: E402
     unrecognized_variant_suffix,
 )
 
-CHANNEL_PLAN_SCHEMA_VERSION = 1
 MODEL_PLAN_SCHEMA_VERSION = 1
 EXTRA_SCHEMA_VERSION = 1
-# Warnings travel with the artifact they explain; everything else serves the
-# models.csv review workflow and stays on stderr only (ADR 0017).
-CHANNEL_PLAN_WARNINGS = frozenset(
-    {
-        "duplicate_model_across_sources",
-        "speed_variant_excluded",
-        "manual_excluded",
-        "variant_superseded",
-        "free_default_filled",
-    }
-)
+# Warnings travel with the artifact they explain; card/remark warnings ride
+# the model plan, everything else — including the channel-side dedupe/variant
+# warnings whose channel-plan artifact is retired — serves the models.csv
+# review workflow and stays on stderr only (ADR 0017).
 MODEL_PLAN_WARNINGS = frozenset({"card_missing", "missing_remark_fields"})
 REMARK_FIELDS = ("rp5h", "usage_quota")
 FREE_USAGE_QUOTA_DEFAULT = 60
@@ -700,8 +692,9 @@ def plan_from(
 ) -> tuple[list[dict[str, str]], dict[str, Any], dict[str, Any]]:
     """Run the offline planning pipeline.
 
-    Returns ``(csv_rows, channel_plan, model_plan)``: the regenerated
-    mapping workspace plus the two AxonHub-object plans (ADR 0017).
+    Returns ``(csv_rows, model_plan, report)``: the regenerated mapping
+    workspace plus the incremental AxonHub model plan (ADR 0017) and the
+    run-level report.
     """
 
     aliases = aliases or {}
@@ -958,29 +951,14 @@ def plan_from(
         ]
         plan_models.append(model_entry)
 
-    # Two object plans (ADR 0017): the channel allowlist artifact and the
-    # incremental model artifact; run-level report data stays in-memory
-    # for the stderr summary only.
-    channel_warnings = [w for w in warnings if w["type"] in CHANNEL_PLAN_WARNINGS]
+    # One object plan (ADR 0017): the incremental model artifact; run-level
+    # report data stays in-memory for the stderr summary only.
     model_warnings = [w for w in warnings if w["type"] in MODEL_PLAN_WARNINGS]
     intersection_count = sum(
         1
         for entry in registry.values()
         if all(channel in entry["serving"] for channel in INTERSECTION_CHANNELS)
     )
-    channel_plan = {
-        "schema_version": CHANNEL_PLAN_SCHEMA_VERSION,
-        "channels": dict(sorted(channels.items())),
-        "warnings": channel_warnings,
-        "report": {
-            "counts": {
-                "channels": len(channels),
-                "supportedModels": sum(
-                    len(node["supportedModels"]) for node in channels.values()
-                ),
-            },
-        },
-    }
     model_plan = {
         "schema_version": MODEL_PLAN_SCHEMA_VERSION,
         "models": plan_models,
@@ -1007,7 +985,7 @@ def plan_from(
             "intersection": intersection_count,
         },
     }
-    return candidate_rows + request_rows, channel_plan, model_plan, report
+    return candidate_rows + request_rows, model_plan, report
 
 
 def render_report(report: Mapping[str, Any]) -> str:
@@ -1053,12 +1031,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         help="mapping workspace; request rows are read as input, then the table is regenerated",
     )
     parser.add_argument(
-        "--channel-plan",
-        type=Path,
-        default=Path("data/channel-plan.json"),
-        help="channel allowlist plan written after the run (supportedModels desired state)",
-    )
-    parser.add_argument(
         "--model-plan",
         type=Path,
         default=Path("data/model-plan.json"),
@@ -1068,7 +1040,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        rows, channel_plan, model_plan, report = build_plan(
+        rows, model_plan, report = build_plan(
             extra_path=args.extra,
             cards_path=args.cards,
             arena_path=args.arena,
@@ -1079,7 +1051,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 1
 
     write_mapping(args.csv, rows)
-    write_json(args.channel_plan, channel_plan)
     write_json(args.model_plan, model_plan)
     print(render_report(report))
     if args.fail_on_errors and report["errors"]:

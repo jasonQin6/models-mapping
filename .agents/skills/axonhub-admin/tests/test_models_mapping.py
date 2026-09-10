@@ -38,11 +38,10 @@ def _arena_models(arena: dict[str, float]) -> dict:
 
 
 def _plan(sections, cards=None, arena=None, requests=(), aliases=None):
-    # Aggregate view over the two plans for legacy assertions: channels from
-    # the channel plan, models from the model plan, and the full run-level
-    # warnings/report (artifact warning routing has its own test below).
-    # Test cards are keyed by bare id, so refs map bare -> bare.
-    rows, channel_plan, model_plan, report = plan_from(
+    # Aggregate view for legacy assertions: models from the model plan plus
+    # the full run-level warnings/report. Test cards are keyed by bare id,
+    # so refs map bare -> bare.
+    rows, model_plan, report = plan_from(
         sections,
         aliases=aliases,
         cards=cards or {},
@@ -51,7 +50,6 @@ def _plan(sections, cards=None, arena=None, requests=(), aliases=None):
         requests=requests,
     )
     merged = {
-        "channels": channel_plan["channels"],
         "models": model_plan["models"],
         "warnings": report["warnings"],
         "report": report,
@@ -174,11 +172,9 @@ def test_plan_moves_model_between_channels_in_supported_lists() -> None:
 
     _rows, plan = _plan(sections)
 
-    assert plan["channels"]["opencode-go"]["supportedModels"] == []
-    assert plan["channels"]["commandcode-goat"]["supportedModels"] == [
-        "deepseek-v4-flash",
-        "kimi-k2.5",
-    ]
+    # Dedupe moved the model to the highest-rp5h channel.
+    models = {m["modelID"]: m for m in plan["models"]}
+    assert models["deepseek-v4-flash"]["channel"] == "commandcode-goat"
     assert "providers" not in plan
 
 
@@ -340,7 +336,6 @@ def test_manual_exclude_on_record_skips_model() -> None:
 
     _rows, plan = _plan(sections)
 
-    assert plan["channels"]["commandcode-goat"]["supportedModels"] == ["kimi-k2.5"]
     assert all(m["modelID"] != "minimax-m2.5" for m in plan["models"])
     assert any(
         w["type"] == "manual_excluded" and w["model"] == "minimax-m2.5"
@@ -361,7 +356,6 @@ def test_speed_variant_ids_are_derived_as_excluded() -> None:
     _rows, plan = _plan(sections)
 
     assert all(m["modelID"] != "glm-5.2-fast" for m in plan["models"])
-    assert plan["channels"]["commandcode-goat"]["supportedModels"] == ["kimi-k2.5"]
     assert any(
         w["type"] == "speed_variant_excluded" and w["model"] == "glm-5.2-fast"
         for w in plan["warnings"]
@@ -384,7 +378,7 @@ def test_alias_merges_cross_channel_naming() -> None:
         "commandcode-goat": {"tencent-hy3": _rec(rp5h=7080)},
     }
 
-    _rows, channel_plan, model_plan, _report = plan_from(
+    _rows, model_plan, _report = plan_from(
         sections,
         aliases=aliases,
         cards={},
@@ -392,14 +386,12 @@ def test_alias_merges_cross_channel_naming() -> None:
         requests=[],
     )
 
-    # One canonical model, owned by the goat channel (7080 > 4300).
+    # One canonical model, owned by the goat channel (7080 > 4300); the
+    # native per-channel spellings live in channelAliases.
     models = {m["modelID"]: m for m in model_plan["models"]}
     assert set(models) == {"hy3"}
     assert models["hy3"]["channel"] == "commandcode-goat"
     assert models["hy3"]["channelAliases"] == {"commandcode-goat": "tencent-hy3"}
-    # Channel lists keep the native id each channel actually exposes.
-    assert channel_plan["channels"]["commandcode-goat"]["supportedModels"] == ["tencent-hy3"]
-    assert channel_plan["channels"]["opencode-go"]["supportedModels"] == []
 
 
 def test_free_variant_supersedes_plain_original() -> None:
@@ -416,8 +408,6 @@ def test_free_variant_supersedes_plain_original() -> None:
         w["type"] == "variant_superseded" and w["model"] == "longcat-2.0" and w["replaced_by"] == "longcat-2.0-free"
         for w in plan["warnings"]
     )
-    assert plan["channels"]["opencode-go"]["supportedModels"] == []
-    assert plan["channels"]["commandcode-goat"]["supportedModels"] == ["longcat-2.0-free"]
 
 
 def test_contributor_variant_supersedes_plain_original() -> None:
@@ -444,7 +434,7 @@ def test_rp5h_missing_low_arena_excluded_high_arena_review() -> None:
     }
     arena = {"glm-5": 1435.72}
 
-    _rows, _channel_plan, model_plan, _report = plan_from(sections, cards={}, arena_models=_arena_models(arena), requests=[])
+    _rows, model_plan, _report = plan_from(sections, cards={}, arena_models=_arena_models(arena), requests=[])
 
     models = {m["modelID"] for m in model_plan["models"]}
     assert models == set()
@@ -461,7 +451,7 @@ def test_missing_arena_leaves_candidate_unscored_out_of_mapping() -> None:
     arena = {"claude-sonnet-5": 1536.91, "muse-spark-1.3-contributor": 1622.48}
     sections["opencode-go"]["muse-spark-1.3-contributor"] = _rec(rp5h=45300)
 
-    rows, _channel_plan, _model_plan, report = plan_from(
+    rows, _model_plan, report = plan_from(
         sections,
         cards={},
         arena_models=_arena_models(arena),
@@ -508,7 +498,7 @@ def test_channel_priority_orders_by_rp5h_and_counts_intersection() -> None:
         "sensenova": {"solo": _rec(rp5h=100)},
     }
 
-    _rows, _channel_plan, model_plan, report = plan_from(
+    _rows, model_plan, report = plan_from(
         sections,
         aliases={"tencent-hy3": "hy3"},
         cards={},
@@ -528,33 +518,34 @@ def test_channel_priority_orders_by_rp5h_and_counts_intersection() -> None:
     assert model_plan["report"]["counts"]["intersection"] == 1
 
 
-def test_plans_split_warnings_by_artifact() -> None:
-    # ADR 0017: channel-plan carries the allowlist warnings, model-plan the
-    # card/remark ones, and arena/mapping warnings stay out of both.
+def test_warnings_split_between_artifact_and_stderr() -> None:
+    # ADR 0017: the model plan carries the card/remark warnings; everything
+    # else — including channel-side dedupe/variant warnings whose plan
+    # artifact is retired — stays on the run report (stderr) only.
     sections = {
         "opencode-go": {"omen-alpha": _rec(rp5h=11600)},
         "commandcode-goat": {"omen-alpha": _rec(rp5h=900), "free-a": _rec(rp5h=None, free=True)},
     }
     arena = {"omen-alpha": 1460.01}
 
-    _rows, channel_plan, model_plan, report = plan_from(
+    _rows, model_plan, report = plan_from(
         sections,
         cards={},
         arena_models=_arena_models(arena),
         requests=[],
     )
 
-    assert channel_plan["schema_version"] == 1
-    channel_types = {w["type"] for w in channel_plan["warnings"]}
-    assert "duplicate_model_across_sources" in channel_types
-    assert "free_default_filled" in channel_types
     assert model_plan["schema_version"] == 1
     model_types = {w["type"] for w in model_plan["warnings"]}
     assert "card_missing" in model_types
-    assert not (channel_types & model_types)
-    # Arena and mapping workflow warnings never enter an artifact.
-    assert "arena_defaulted" in {w["type"] for w in report["warnings"]}
-    assert all("arena" not in t for t in channel_types | model_types)
+    report_types = {w["type"] for w in report["warnings"]}
+    assert "duplicate_model_across_sources" in report_types
+    assert "free_default_filled" in report_types
+    assert "arena_defaulted" in report_types
+    # Only the card/remark warnings enter the artifact.
+    assert "duplicate_model_across_sources" not in model_types
+    assert "free_default_filled" not in model_types
+    assert "arena_defaulted" not in model_types
 
 
 def test_free_fill_pairs_lowest_request_with_lowest_free_model() -> None:
@@ -583,7 +574,7 @@ def test_free_fill_pairs_lowest_request_with_lowest_free_model() -> None:
         "paid-filler": 1200.0,
     }
 
-    rows, _channel_plan, _model_plan, report = plan_from(
+    rows, _model_plan, report = plan_from(
         sections,
         cards={},
         arena_models=_arena_models(arena),
@@ -630,7 +621,6 @@ def test_main_round_trips_csv_request_rows_and_writes_plan(tmp_path: Path) -> No
     rc = main([
         "--extra", str(extra), "--cards", str(cards), "--arena", str(arena),
         "--csv", str(csv_path),
-        "--channel-plan", str(tmp_path / "channel-plan.json"),
         "--model-plan", str(plan_out),
     ])
 
@@ -639,9 +629,6 @@ def test_main_round_trips_csv_request_rows_and_writes_plan(tmp_path: Path) -> No
     # The request row keeps its id; arena score and mapping are recomputed.
     assert "claude-opus-5,request,1700,," in text
     assert "muse-spark-1.2,candidate,1200,800," in text
-    channel_plan = json.loads((tmp_path / "channel-plan.json").read_text(encoding="utf-8"))
-    assert channel_plan["schema_version"] == 1
-    assert channel_plan["channels"]["opencode-go"]["supportedModels"] == ["muse-spark-1.2"]
     model_plan = json.loads(plan_out.read_text(encoding="utf-8"))
     assert model_plan["schema_version"] == 1
     entry = model_plan["models"][0]
@@ -671,7 +658,6 @@ def test_main_fail_on_errors_exits_nonzero(tmp_path: Path) -> None:
     rc = main([
         "--extra", str(extra), "--cards", str(cards), "--arena", str(arena),
         "--csv", str(csv_path),
-        "--channel-plan", str(tmp_path / "channel-plan.json"),
         "--model-plan", str(tmp_path / "model-plan.json"),
         "--fail-on-errors",
     ])
