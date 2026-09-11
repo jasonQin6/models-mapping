@@ -1,10 +1,9 @@
 # 批量重建（rebuild）
 
-目录被清空或迁移后的整体重建。单条/增量写入走 [model-card-update.md](model-card-update.md)。
+目录被清空或迁移后的整体重建。单条/增量写入属模型卡更新任务。
 调用纪律（mutation 变量、双模式错误检测、CLI 噪音、先对账后执行、整体替换）
-全部见 [SKILL.md](../SKILL.md) 的执行循环；payload 字段映射见
-[model-card-update.md](model-card-update.md) 的 Payload 约定。工具：graphql-cli；大结果
-读取可用带 JWT 的 curl。
+与 payload 字段映射见 [SKILL.md](../SKILL.md) 的执行循环与 Payload 约定。
+工具：graphql-cli；大结果读取可用带 JWT 的 curl。
 
 ## 流程
 
@@ -25,6 +24,6 @@
 5. 创建：`bulkCreateModels(inputs: […])` 一次建齐；每模型 payload 的
    `settings` 为 `{associations: []}`。
 6. 建后启用：`bulkEnableModels(ids)` 翻转（建出的都是 disabled）。
-7. 关联接线是建完后的独立一轮：非 Claude 自映射走 [非Claude模型关联.md](非Claude模型关联.md)，
-   请求模型路由走 [claude-模型关联.md](claude-模型关联.md)。
+7. 关联接线是建完后的独立一轮：非 Claude 自映射与请求模型路由分别属
+   非 Claude 模型关联 / Claude 模型关联任务。
 8. 每轮之后与线上对账（`models(first:100)`），只补真正缺失的部分。

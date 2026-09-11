@@ -1,7 +1,7 @@
 # 模型卡更新（model-card-update）
 
 把 `data/model-plan.json` 增量应用到 AxonHub：建缺失实体、更新卡片/成本/
-备注、启用、清理。整体重建场景走 [rebuild.md](rebuild.md)。
+备注、启用、清理。整体重建是独立的批量重建任务。
 
 ## 流程
 
@@ -46,36 +46,16 @@
   字段以 0 起步而非牌价。`card_missing` 模型在本流程写卡片时依次尝试内置
   目录 → 人工兜底，都缺则 `assemble_card.py` 渲染默认卡（reasoning/toolCall
   false、temperature true、text 模态、零上限）。
-- **低分非免费不入册**：`arena_score` < 1500 且非 free 的候选由规划器在
-  排除链首位直接挡下（`lowscore_excluded`，见 [replan.md](replan.md)），
-  不会出现在计划里；本流程只是不再为其创建实体的镜像约束（连 disabled 都
-  不建，在册即噪音且需持续复核）。想收录先改 `data/arena.json` 的人工
-  指派，分数过线后自然回归。
+- **低分非免费不入册**：`arena_score` < 1500 且非 free 的候选已在 blocklist
+  物化时被排除（reason 前缀 `lowscore:`），不会出现在计划里；本流程是同一
+  约束的写侧镜像——不为其创建实体（连 disabled 都不建，在册即噪音且需持续
+  复核）。想收录先改 `data/arena.json` 的人工指派，分数过线后自然回归。
 - **不管理的模型类别**：图像生成与 embedding 模型（`sensenova-u1-fast`、
   `bge-m3`、`qwen3-embedding-0.6b` 等）很少变动，不在管理范围：不建实体、
   不写卡片、不参与重建与清理；渠道侧照常服务。
-- **备注**：写入保留远端 remark 的 `manual` 内容、只替换计划计算值
-  （`rp5h`、`usage_quota`）。
+- **备注**：计划从归属渠道记录重算结构化字段（`rp5h`、`usage_quota`），
+  缺失报 `missing_remark_fields`；写入保留远端 remark 的 `manual` 内容、
+  只替换计划计算值。
 
-## Payload 约定（CreateModelInput 字段映射，卡片数据优先取内置目录）
-
-- `developer` — models.dev 厂商前缀归一化为 AxonHub 英文厂商词表：
-  `zai-org`/`zhipuai` → `zai`，`meituan` → `longcat`，`moonshotai` →
-  `moonshot`，`deepseek-ai` → `deepseek`。
-- `icon` — 按厂商给 lobe-icons 名（DeepSeek、ChatGLM、Qwen、Moonshot、XAI、
-  Hunyuan、LongCat、XiaomiMiMo、Meta、NVIDIA、Step、Gemini、OpenAI）；
-  不确定就空串。
-- `group` — 卡片的 `family`。
-- `type` — `chat`；图像生成端点（`POST /v1/images/generations`，无图像输入、
-  非 Chat Completions）是 `image_generation`，modalities `input: [text]` /
-  `output: [image]`、`vision: false`，并靠 `models_extra.json` 顶层
-  `blocklist` 条目排除出聊天注册表。
-- `modelCard` — `reasoning: {supported, default}` ← `reasoning`；
-  `toolCall` ← `tool_call`；`temperature` ← `temperature`（默认 true）；
-  `vision` ← modalities.input 里的 `image`；`modalities`、`limit` 照搬；
-  `cost` ← `{input, output, cacheRead: cache_read, cacheWrite: cache_write}`；
-  `knowledge`、`releaseDate` ← `release_date`、`lastUpdated`（存在时）。
-- `settings` — `{associations: []}`；可选策略字段（`disableDeveloperSettingsInheritance`/
-  `loadBalancerStrategy`/`traceStickyMode`）未变就省略（部署怪癖，见 SKILL.md）。
-- 成本终值已在计划里算好（渠道声明逐字段覆盖、free 归零，规则见上文
-  cardRef 与成本终值条目），payload 直接用计划 `input.cost`。
+Payload 字段映射（CreateModelInput）是模型卡更新与批量重建共用的约定，
+维护在 SKILL.md 的共享区。

@@ -5,11 +5,15 @@
 实体用裸 ID，association 按精确字符串匹配（详见 [SKILL.md](../SKILL.md) 的
 部署怪癖）。本文件是约定手册；写入走 SKILL.md 的执行循环。
 
-## 规划裁决（channelPriority 的来源）
+## 注册表裁决（channelPriority 的来源）
 
-`channelPriority` 链由规划器的两组裁决决定（`duplicate_model_across_sources`/
-`variant_superseded` 警告即它们的审计记录）：
+`channelPriority` 链由规划器的三组裁决决定（`duplicate_model_across_sources`/
+`variant_superseded` 警告即后两组的审计记录）：
 
+- **别名归一**——`models_extra.json` 顶层人工维护的 `aliases` 映射（如
+  `tencent-hy3` → `hy3`）合并跨渠道拼写：去重与分组都以规范 ID 进行；注册表
+  与 `plan.models[]` 用规范 ID，各渠道实际暴露的原生拼写记入
+  `channelAliases`，供 association 按渠道精确路由。
 - **跨渠道去重**——一个 id 被多个渠道声明时归属 `rp5h` 最高者（null 输给有值，
   平局取字母序靠前渠道）。胜出渠道即 p0 主用，其余实际服务渠道按 `rp5h` 降序
   排为回退——这就是下文回退链的来源。

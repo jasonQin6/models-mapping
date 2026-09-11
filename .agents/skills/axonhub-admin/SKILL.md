@@ -22,12 +22,12 @@ description: 本仓对 AxonHub 部署（https://axon.jasonqin.site）的全链�
 
 ## 任务导航
 
-按任务类型读对应流程文档；所有写任务共用本文后续的 Token、执行循环、对账读
-与部署怪癖。
+按任务类型读对应流程文档；所有写任务共用本文后续的 Token、执行循环、对账
+读、Payload 约定与部署怪癖。
 
 | 任务 | 何时 | 流程 |
 | --- | --- | --- |
-| 重算规划与评审 | 快照更新后重算 `models.csv` 与 model-plan；评审映射建议 | [replan.md](references/replan.md) |
+| 重算规划与评审 | 快照更新后重算 `models.csv` 与 model-plan；评审映射建议，确认后移交模型卡更新 / Claude 模型关联 | [replan.md](references/replan.md) |
 | 同步渠道清单 | 物化 blocklist 派生类并生成屏蔽正则（`autoSyncModelPattern`）与回读校验；手工静态渠道的 `supportedModels` 维护 | [channel-sync.md](references/channel-sync.md) |
 | 模型卡更新 | 把 model-plan 增量应用：建实体、改卡/成本/备注、启用、清理 | [model-card-update.md](references/model-card-update.md) |
 | Claude 模型关联 | `models.csv` 确认后写请求模型的关联路由 | [claude-模型关联.md](references/claude-模型关联.md) |
@@ -101,6 +101,31 @@ loop:
   为整体回写做准备。
 - 模板类 relay 连接必须显式 `first:`，否则 `either first or last must be provided`。
 - 多个根字段合并在一个请求里会失败（如 models + queryChannels 同发返回 null），拆开发。
+
+## Payload 约定（CreateModelInput 字段映射，卡片数据优先取内置目录）
+
+模型卡更新与批量重建共用的每模型 payload 约定：
+
+- `developer` — models.dev 厂商前缀归一化为 AxonHub 英文厂商词表：
+  `zai-org`/`zhipuai` → `zai`，`meituan` → `longcat`，`moonshotai` →
+  `moonshot`，`deepseek-ai` → `deepseek`。
+- `icon` — 按厂商给 lobe-icons 名（DeepSeek、ChatGLM、Qwen、Moonshot、XAI、
+  Hunyuan、LongCat、XiaomiMiMo、Meta、NVIDIA、Step、Gemini、OpenAI）；
+  不确定就空串。
+- `group` — 卡片的 `family`。
+- `type` — `chat`；图像生成端点（`POST /v1/images/generations`，无图像输入、
+  非 Chat Completions）是 `image_generation`，modalities `input: [text]` /
+  `output: [image]`、`vision: false`，并靠 `models_extra.json` 顶层
+  `blocklist` 条目排除出聊天注册表。
+- `modelCard` — `reasoning: {supported, default}` ← `reasoning`；
+  `toolCall` ← `tool_call`；`temperature` ← `temperature`（默认 true）；
+  `vision` ← modalities.input 里的 `image`；`modalities`、`limit` 照搬；
+  `cost` ← `{input, output, cacheRead: cache_read, cacheWrite: cache_write}`；
+  `knowledge`、`releaseDate` ← `release_date`、`lastUpdated`（存在时）。
+- `settings` — `{associations: []}`；可选策略字段（`disableDeveloperSettingsInheritance`/
+  `loadBalancerStrategy`/`traceStickyMode`）未变就省略（见部署怪癖）。
+- 成本终值已在计划里算好（渠道声明逐字段覆盖、free 归零），payload 直接用
+  计划 `input.cost`；重建场景无计划时按同一映射从卡片/目录条目现场组装。
 
 ## 数据源
 
