@@ -8,7 +8,8 @@ writers must be serialized (the CI graph orders the goat job after the go
 job).  A record field outside the channel's contract (e.g. a hand-maintained
 ``free`` override flag) belongs to the human maintainers: merges refresh contract
 fields and leave every other field untouched.  Public card data is not
-stored here — planning fills it from ``data/all_models.json``.
+stored here — axonhub-admin's offline scripts fill it from
+``data/all_models.json``.
 """
 
 from __future__ import annotations

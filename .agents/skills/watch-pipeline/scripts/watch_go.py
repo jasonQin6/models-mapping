@@ -5,12 +5,12 @@
 ``go.mdx`` document is the channel's model-list fact source: the channel
 section's keys are exactly the go.mdx model ids, and an id that leaves the
 document leaves the section (ADR 0011).  The section carries channel-declared
-facts only (quotas, prices); public card data is filled at
-planning time from ``data/all_models.json``, never here.
+facts only (quotas, prices); public card data is filled offline by axonhub-admin from
+``data/all_models.json``, never here.
 
 Channel-provided ``claude-*`` models are not collected (ADR 0012).  The
 parser transcribes declarations only — the document's zero prices are kept
-as-is, and free quotas are re-derived at planning time from the model's
+as-is, and free quotas are re-derived at compute time from the model's
 owning channel so the rule lives in one place.
 """
 
@@ -64,7 +64,7 @@ def normalize_model_key(name: str) -> str:
 
     Collection-side keying for the go.mdx tables (lowercase, spaces to
     hyphens, parentheticals dropped, hyphens collapsed).  Kept local on
-    purpose: the planning layer's ``name_matching`` serves arena/registry
+    purpose: axonhub-admin's ``name_matching`` serves arena/registry
     matching, and the collection layer does not import across layers.  The
     transformation must stay byte-compatible with historical snapshot keys.
     """
@@ -176,7 +176,7 @@ def parse_mdx(content: str) -> Dict[str, dict]:
     with the cheapest output price.  The parser transcribes declarations
     only: undeclared cells stay ``None`` and no value is derived from
     other rows — free-model backfill and any other cleaning belong to the
-    planning layer (models_mapping.py).
+    axonhub-admin's offline scripts (registry.py).
 
     Raises ValueError on structural drift (a signature table missing or
     yielding no values) so the run fails loudly instead of publishing a

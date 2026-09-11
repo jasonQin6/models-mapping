@@ -1,6 +1,6 @@
 ---
 name: axonhub-cli
-description: Ad-hoc AxonHub operations over its GraphQL API via graphql-cli — queries, mutations, schema discovery, and endpoint management for channels, API keys, users, projects, and system settings. Use for one-off CLI work and generic tool mechanics; this repository's governed writes (model-plan, mapping table, channel sync regex) belong to the axonhub-admin skill.
+description: Ad-hoc AxonHub operations over its GraphQL API via graphql-cli — queries, mutations, schema discovery, and endpoint management for channels, API keys, users, projects, and system settings. Use for one-off CLI work and generic tool mechanics; this repository's governed writes (model cards, associations, channel sync regex) belong to the axonhub-admin skill.
 ---
 
 # AxonHub CLI
@@ -142,4 +142,4 @@ npx -y @axonhub/graphql-cli endpoint update axonhub --url "${AXONHUB_URL}/admin/
 - The GraphQL endpoint requires JWT authentication — always complete Workflows 1 and 2 before querying.
 - For complex queries, use `npx -y @axonhub/graphql-cli find <type> -e axonhub --input --detail` to discover required input fields.
 - Pass JSON object values as variables (`-v`), never as inline JSON string literals.
-- Governed writes — this repository's model-plan, mapping-table, and channel sync regex writes — run only through `axonhub-admin`'s interactive program; this skill is for one-off operations.
+- Governed writes — this repository's model-card, association, and channel sync regex writes — run only through `axonhub-admin`'s interactive program; this skill is for one-off operations.

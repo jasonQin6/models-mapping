@@ -5,7 +5,7 @@ description: Maintain the collection layer — the watch_* scrapers behind .gith
 
 # Watch Pipeline
 
-This skill is the maintenance manual for the collection layer. It owns `.agents/skills/watch-pipeline/scripts/` (the `watch_*.py` scrapers plus `models_extra.py`, the shared models-extra store, and `error_state.py`), their tests, and the per-channel `reference/` directories. It does NOT own the planning layer (that is axonhub-admin's offline planning phase) and never writes AxonHub. Collection stores raw facts only: name normalization, matching, and derived-value backfill (free quotas, prices) live in the planning layer.
+This skill is the maintenance manual for the collection layer. It owns `.agents/skills/watch-pipeline/scripts/` (the `watch_*.py` scrapers plus `models_extra.py`, the shared models-extra store, and `error_state.py`), their tests, and the per-channel `reference/` directories. It does NOT own the compute layer (that is axonhub-admin's offline step scripts) and never writes AxonHub. Collection stores raw facts only: name normalization, matching, and derived-value backfill (free quotas, prices) live in axonhub-admin's offline scripts.
 
 ## Channels
 
@@ -41,11 +41,11 @@ Each script persists failures to `reference/<channel>/last-error.json` inside th
 ## Snapshot invariants
 
 - `data/models_extra.json` is the shared store `{schema_version, updated_at, channels}`; each collector updates **only its own** `channels.<channel>` section via `models_extra.update_channel` (read-modify-write, field-level merge, atomic), so writers must serialize — CI orders goat after go. Contract fields refresh in place; hand-maintained fields on surviving records (the `free` override flag) are preserved, and ids that left the channel declaration are removed with their record.
-- Sections carry channel-declared facts only (`rp5h`, `usage_quota`, `cost{}`, goat `tok_s`); card data is never collected here — planning fills it from `data/all_models.json` (ADR 0012). Speed-marketing variants (`-fast`/`-highspeed`) are collected and derivationally excluded via the blocklist's materialized `speed:` class (materialized by the channel-sync flow, not by collection). Exclusions live in the top-level `blocklist` key — collector-unreachable (`speed:`/`lowscore:` are materialized classes; the rest is hand-maintained) — never on records, because a delete/re-add cycle wipes record-level hand fields.
+- Sections carry channel-declared facts only (`rp5h`, `usage_quota`, `cost{}`, goat `tok_s`); card data is never collected here — axonhub-admin's offline scripts fill it from `data/all_models.json` (ADR 0012). Speed-marketing variants (`-fast`/`-highspeed`) are collected and derivationally excluded via the blocklist's materialized `speed:` class (materialized by the channel-sync flow, not by collection). Exclusions live in the top-level `blocklist` key — collector-unreachable (`speed:`/`lowscore:` are materialized classes; the rest is hand-maintained) — never on records, because a delete/re-add cycle wipes record-level hand fields.
 - Channel-provided `claude-*` models are not collected: Claude is served by self-built AxonHub models mapped by arena score (ADR 0012).
 - The go section's keys are exactly the go.mdx model ids (ADR 0011); an id that leaves the document leaves the section.
 - The goat section's keys are the channel's entitlement facts; GOAT hard gates: main-table rows skipped for missing columns, `to_model_id` collisions, or zero models fail the run with no write (partial lists must never publish).
-- `watch_arena.py` owns only `data/arena.json`; joining Arena ids to OpenCode ids happens in `axonhub-admin`'s planning phase (`models_mapping.py`), never here.
+- `watch_arena.py` owns only `data/arena.json`; joining Arena ids to OpenCode ids happens in `axonhub-admin`'s offline scripts (`registry.py`), never here.
 - Success messages: `watch-arena: wrote N models ...` / `watch-go: N Go models -> ...` / `watch-goat: N models -> ...`.
 
 ## CI security

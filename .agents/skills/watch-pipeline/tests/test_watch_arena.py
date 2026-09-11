@@ -43,7 +43,7 @@ class TestParseArenaHtml:
             assert set(entry.keys()) == required_keys
 
     def test_model_id_preserved_verbatim(self):
-        """model_id is the board's raw display name; normalization is planning-side."""
+        '''model_id is the board's raw display name; normalization belongs to axonhub-admin's offline scripts.'''
         result = parse_arena_html(self.html, top_n=10)
         for entry in result:
             model_id = entry['model_id']

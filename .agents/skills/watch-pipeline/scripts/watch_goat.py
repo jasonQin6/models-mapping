@@ -5,7 +5,7 @@
 section's keys are the authoritative entitlement allowlist of the commandcode
 channel (ADR 0010): a partial parse must fail the run instead of publishing a
 shrunken list.  The section carries channel-declared facts only (quotas,
-GOAT deal prices, tok/s); public card data is filled at planning time from
+GOAT deal prices, tok/s); public card data is filled offline by axonhub-admin from
 ``data/all_models.json``, never here.
 
 Hard gates (any hit -> no write, last-error.json persisted):

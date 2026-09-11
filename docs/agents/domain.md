@@ -20,9 +20,9 @@ This project uses a **single-context** domain doc layout.
 
 - **CONTEXT.md**: Read before any design work. Use its canonical terms for
   providers, model cards, request models, candidate models, mappings and the
-  mapping workspace.
+  requests list.
 - **Skills' SKILL.md**: the process source of truth — collection in
-  `watch-pipeline/SKILL.md`, planning/write governance and task flows in
+  `watch-pipeline/SKILL.md`, compute/write governance and task flows in
   `axonhub-admin/SKILL.md` plus its `references/` task documents.
 - **Boundary changes**: update the owning skill's `SKILL.md` and `CONTEXT.md`
   first, then `AGENTS.md` (see AGENTS.md 何时读什么).

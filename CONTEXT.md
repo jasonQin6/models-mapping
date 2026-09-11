@@ -1,6 +1,6 @@
 # Model Routing
 
-本项目维护 OpenCode 模型目录，并把固定的 Claude/GPT 下游请求模型映射到可用的 OpenCode 模型。模型目录同步与下游映射是两个相邻但独立的领域：前者维护可用模型事实，后者维护兼容请求的选择。
+模型目录同步与下游映射是两个相邻但独立的领域：前者维护可用模型事实，后者维护兼容请求的选择。
 
 本文件是术语唯一真源。其他文件引用术语时以此处定义为准，不复述定义。
 
@@ -8,9 +8,6 @@
 
 **Provider**：发布一组模型标识符及其协议能力的上游服务命名空间。
 _Avoid_: Channel, vendor
-
-**OpenCode model**：由 OpenCode provider 提供、可以作为 AxonHub 上游调用目标的模型。
-_Avoid_: Candidate（当模型只是在描述目录成员时）
 
 **Protocol channel**：承载同一协议模型调用的 AxonHub 通道。一个模型可以因协议不同而属于不同通道。
 _Avoid_: Model association, route
@@ -30,40 +27,32 @@ _Avoid_: Model config, remark
 **Model remark**：附在模型上的结构化补充资料，包含 `rp5h`、`usage_quota` 和人工备注。
 _Avoid_: Free-form note, metadata
 
-**Catalog exclusion**：因跨渠道去重落选、不在渠道声明清单或经人工决定而不属于 managed catalog 的模型。排除不等同于删除全局 model object。
-_Avoid_: Tombstone, stale model
+
 
 **Model variant**：同一基础模型的衍生 id（如 `-free`、`-contributor`、`-fast` 后缀）。尺寸后缀（如 `-27b`）是模型 id 的一部分，不构成变种关系。
 _Avoid_: Alias（别名指跨渠道对同一 id 的拼写归一）
 
-**Model decision**：对登记内模型作出的人工排除事实，带理由记录于 `models_extra.json` 顶层 `blocklist.<channel>`（`{id, reason}` 条目，完整 ID 或剥厂商前缀裸 ID 皆可）。blocklist 是唯一排除源：`speed:`/`lowscore:` 两类由 channel-sync 的物化步骤重建，人工类（`manual`/`tier`/`retired` 等）原样保留、冲突时人工优先。人工决策不落在采集器拥有的渠道节记录上——采集刷新的删除重插会丢记录级手工字段。
-_Avoid_: CSV edit, inferred fallback
 
 ## 下游映射
 
-**Request model**：下游客户端请求的固定 Claude 或 GPT 模型标识符。它必须预先存在于 AxonHub，映射流程不负责创建或删除它。
+**Request model**：下游客户端请求的固定 Claude 模型标识符。它必须预先存在于 AxonHub，映射流程不负责创建或删除它。
 _Avoid_: User model, external model, source model
 
-**Candidate model**：可以承接 request model 请求的 OpenCode model。
+**Candidate model**：可以承接 request model 请求的上游 model。
 _Avoid_: Target assignment（将关系与模型混为一谈）
 
 **Mapping**：一个 request model 与一个 candidate model 之间的一对一兼容关系。
 _Avoid_: Fallback chain, channel routing
 
-**Mapping workspace**：`models.csv` 映射审查表。`role=request` 行是人工维护的请求模型清单（该清单的事实源）；其余单元格——candidate 行、Arena 分、RP5H、`mapping` 列——由 Arena 数据与登记数据确定性生成，是映射建议的可审查快照，不是 AxonHub 的运行时状态。
-_Avoid_: handoff CSV
+**Requests 清单**：`claude_map.py` 的 `REQUESTS` 字典（claude-\* id → 人工备注），人工维护的请求模型事实源，加删条目即增减请求模型。映射建议由 Claude 映射步骤的脚本确定性计算、stdout 呈报，不落中间产物文件，也不是 AxonHub 的运行时状态。
+_Avoid_: Mapping workspace, handoff CSV
 
 **Free fill**：free 模型作为 request model 专属供给的分配机制；free 池耗尽后剩余 request 由公式在非 free 候选上承接。
 _Avoid_: Baseline routing, free priority
 
-**Series**：共享 `claude-` 或 `gpt-` 前缀的一组 request models。
-_Avoid_: Provider group, family
-
 **Arena score**：Arena 榜单或人工赋分给出的模型质量信号，用于比较 request model 与 candidate model。
 _Avoid_: Price score, quota score
 
-**Match confidence**：Arena 记录与模型标识符关联时的证据强度，例如 direct、contributor suffix、version downgrade、prefix match 或 free inherited（free 模型继承基础变体分数）。
-_Avoid_: Mapping certainty（除非明确指最终映射）
 
 ## 变更门禁
 

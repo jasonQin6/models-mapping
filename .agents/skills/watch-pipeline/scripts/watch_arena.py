@@ -2,9 +2,9 @@
 """Fetch the Arena WebDev leaderboard.
 
 This watcher owns only ``data/arena.json``.  Normalizing board names and
-joining them to OpenCode model IDs belongs to ``axonhub-admin``'s planning
-phase; the snapshot is keyed by the board's raw display names, so an Arena
-refresh cannot partially rewrite the mapping workspace.
+joining them to collected model IDs belongs to ``axonhub-admin``'s offline
+scripts; the snapshot is keyed by the board's raw display names, so an Arena
+refresh cannot partially rewrite any mapping.
 """
 
 from __future__ import annotations
@@ -110,7 +110,7 @@ def parse_arena_html(html: str, top_n: int = 0) -> List[dict]:
     """Parse leaderboard entries into raw records.
 
     Each record carries the board's display name verbatim; normalization to
-    comparable ids (including effort extraction) happens at planning time in
+    comparable ids (including effort extraction) happens in
     ``.agents/skills/axonhub-admin/scripts/name_matching.py``.
     """
 
