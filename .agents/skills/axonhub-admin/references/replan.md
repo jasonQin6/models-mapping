@@ -44,10 +44,15 @@
    python3 .agents/skills/axonhub-admin/scripts/assemble_card.py --id <modelID>
    ```
 4. 呈报评审：`models.csv` 变更摘要 + plan 差异概览。用户确认后才进入对应
-   写任务（[model-sync.md](model-sync.md) / [mapping-apply.md](mapping-apply.md)）；
+   写任务（[model-card-update.md](model-card-update.md) / [claude-模型关联.md](claude-模型关联.md)）；
    确认映射不等于授权写渠道或模型，确认材料相互独立。
 
 ## 规划规则（评审与排障时对照；数字阈值是脚本内常量——文档解释，代码裁决）
+
+裁决规则的解释按对象归档：跨渠道去重与变种分组见
+[非Claude模型关联.md](非Claude模型关联.md)，free 池默认值与映射公式见
+[claude-模型关联.md](claude-模型关联.md)，卡片与成本终值见
+[model-card-update.md](model-card-update.md)——本文件不复述。
 
 - **排除 = blocklist 物化（单一机制）**——所有排除都落在
   `blocklist.<channel>`（`{id, reason}`，完整 ID 或剥厂商前缀裸 ID、大小写
@@ -58,25 +63,15 @@
   （`manual`/`tier`/`retired`/…）原样保留，与派生条目冲突时人工优先；
   陈旧的派生条目（id 已不在节里或分数回升）自动消失。blocklist 同时是
   渠道同步正则的唯一来源（[channel-sync.md](channel-sync.md)），与写侧
-  "低分非免费不入册"（[model-sync.md](model-sync.md)）三层同线。
+  "低分非免费不入册"（[model-card-update.md](model-card-update.md)）三层同线。
 - **别名归一**——`models_extra.json` 顶层人工维护的 `aliases` 映射（如
   `tencent-hy3` → `hy3`）合并跨渠道拼写。注册表与 `plan.models[]` 用规范
   ID，`channelAliases` 描述各渠道路由暴露。
-- **跨渠道去重**——每个 ID 一个胜出渠道：`rp5h` 最高者胜（null 输给有值，
-  平局取字母序靠前渠道），每次裁决报告 `duplicate_model_across_sources`。
-- **变种分组**——同一基础模型内 `-free` 压过 `-contributor` 压过原始版；
-  被取代变种以 `variant_superseded` 离场。
-- **free 补全**——free 的判定：记录级 `free` 旗标权威（含 `free: false` 反
-  覆盖），无旗标时 `-free` 后缀为派生默认（采集刷新的删除重插会丢记录级
-  手工字段，默认值保证这类模型不被误判；缺口以 `free_flag_missing` 呈现，
-  供维护者补旗标）。所属渠道内 free 模型的 `rp5h` 从该渠道最大非 free
-  `rp5h` 重新推导（无非 free 基准回退 1000）；缺失 `usage_quota` 补 60
-  （`free_default_filled`）。
-- **卡片与成本**——卡片字段只来自 `all_models.json`（`cardRef` 为原始
-  `vendor/model` 键；无卡即 `cardRef: null` + `card_missing`，绝不臆造）。
-  计划 `cost` 从卡片出发，渠道声明字段（`input`/`output`/`cache_read`/
-  `cache_write`）逐字段覆盖，渠道 null 保留卡片值；`free: true` 视为渠道
-  声明全部零价——未声明的成本字段以 0 起步而非牌价。
+- **free 判定**——记录级 `free` 旗标权威（含 `free: false` 反覆盖），无旗标
+  时 `-free` 后缀为派生默认（采集刷新的删除重插会丢记录级手工字段，默认值
+  保证这类模型不被误判；缺口以 `free_flag_missing` 呈现，供维护者补旗标）。
+  free 模型的默认补全（rp5h 推导、quota 60、默认 1500 分）见
+  [claude-模型关联.md](claude-模型关联.md)。
 - **Arena + rp5h 分诊**——只有直接命中与同模型变种后缀命中计分
   （`arena_borrowed_rejected` 拒收 `version_downgrade`/`prefix_match`）；
   非 free 无任何 Arena 匹配则不带分入册但不进映射池（`arena_missing`），
@@ -116,7 +111,7 @@
   `-0902`）永不告警。
 - **备注计算**——计划从归属渠道记录重算结构化字段（`rp5h`、`usage_quota`），
   缺失报 `missing_remark_fields`，并携带 `manual` 字段（写入侧保留远端
-  `manual` 内容、只替换计算值，见 [model-sync.md](model-sync.md)）。
+  `manual` 内容、只替换计算值，见 [model-card-update.md](model-card-update.md)）。
 
 ## 产物语义
 
@@ -131,8 +126,8 @@
 
 ## 移交
 
-- **模型卡** → [model-sync.md](model-sync.md)，用户确认后写入。渠道清单治理
+- **模型卡** → [model-card-update.md](model-card-update.md)，用户确认后写入。渠道清单治理
   独立于本流程（[channel-sync.md](channel-sync.md) 的同步正则，不消费规划产物）。
-- **Claude 映射** → 用户读 `models.csv` 后选择：[mapping-apply.md](mapping-apply.md)
+- **Claude 映射** → 用户读 `models.csv` 后选择：[claude-模型关联.md](claude-模型关联.md)
   写入，或 AxonHub UI 手改。日常改靶直接在 UI，不进本流程。
 - **Claude 全局模型** → AxonHub 内一次手工创建，永不脚本化。

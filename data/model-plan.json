@@ -780,37 +780,6 @@
       "modelID": "qwen3.7-max"
     },
     {
-      "cardRef": "alibaba/qwen3.7-plus",
-      "channel": "opencode-go",
-      "channelPriority": [
-        {
-          "channel": "opencode-go",
-          "priority": 0,
-          "rp5h": 4300.0
-        },
-        {
-          "channel": "commandcode-goat",
-          "priority": 1,
-          "rp5h": 1420.0
-        }
-      ],
-      "input": {
-        "cost": {
-          "cacheRead": 0.04,
-          "cacheWrite": 0.5,
-          "input": 0.4,
-          "output": 1.6
-        },
-        "developer": "alibaba",
-        "group": "qwen",
-        "icon": "Qwen",
-        "name": "Qwen3.7 Plus",
-        "remark": "{\"manual\":\"\",\"rp5h\":4300,\"usage_quota\":60.0}",
-        "type": "chat"
-      },
-      "modelID": "qwen3.7-plus"
-    },
-    {
       "cardRef": "alibaba/qwen3.8-27b",
       "channel": "commandcode-goat",
       "channelPriority": [
@@ -930,6 +899,32 @@
       "modelID": "qwen3.8-max-0902"
     },
     {
+      "cardRef": null,
+      "channel": "sensenova",
+      "channelPriority": [
+        {
+          "channel": "sensenova",
+          "priority": 0,
+          "rp5h": null
+        }
+      ],
+      "input": {
+        "cost": {
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "input": 0,
+          "output": 0
+        },
+        "developer": "sensenova",
+        "group": "sensenova",
+        "icon": "Default",
+        "name": "SenseNova 6.8 Flash Lite",
+        "remark": "{\"manual\":\"\",\"rp5h\":1000,\"usage_quota\":60}",
+        "type": "chat"
+      },
+      "modelID": "sensenova-6.8-flash-lite"
+    },
+    {
       "cardRef": "stepfun/step-3.5-flash",
       "channel": "commandcode-goat",
       "channelPriority": [
@@ -958,7 +953,7 @@
   ],
   "report": {
     "counts": {
-      "intersection": 19,
+      "intersection": 18,
       "models": 32
     }
   },
@@ -992,6 +987,11 @@
     {
       "model": "muse-spark-1.3-contributor",
       "provider": "opencode-go",
+      "type": "card_missing"
+    },
+    {
+      "model": "sensenova-6.8-flash-lite",
+      "provider": "sensenova",
       "type": "card_missing"
     }
   ]

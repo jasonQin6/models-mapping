@@ -1,4 +1,4 @@
-# 同步模型（model-sync）
+# 模型卡更新（model-card-update）
 
 把 `data/model-plan.json` 增量应用到 AxonHub：建缺失实体、更新卡片/成本/
 备注、启用、清理。整体重建场景走 [rebuild.md](rebuild.md)。
@@ -38,6 +38,14 @@
   models 页「批量添加」从目录条目自动组装完整卡片）→ ② `data/all_models.json`
   （models.dev 快照，离线规划管线用）→ ③ 人工兜底（渠道特有/最新 ID，两个源
   都常缺，绝不臆造）。
+- **cardRef 与成本终值（card_missing 的裁决）**——计划侧卡片字段只来自
+  `all_models.json`：`cardRef` 为原始 `vendor/model` 键，无卡即
+  `cardRef: null` 并报 `card_missing`（绝不臆造）。计划 `cost` 从卡片出发，
+  渠道声明字段（`input`/`output`/`cache_read`/`cache_write`）逐字段覆盖，
+  渠道 null 保留卡片值；`free: true` 视为渠道声明全部零价——未声明的成本
+  字段以 0 起步而非牌价。`card_missing` 模型在本流程写卡片时依次尝试内置
+  目录 → 人工兜底，都缺则 `assemble_card.py` 渲染默认卡（reasoning/toolCall
+  false、temperature true、text 模态、零上限）。
 - **低分非免费不入册**：`arena_score` < 1500 且非 free 的候选由规划器在
   排除链首位直接挡下（`lowscore_excluded`，见 [replan.md](replan.md)），
   不会出现在计划里；本流程只是不再为其创建实体的镜像约束（连 disabled 都
@@ -69,5 +77,5 @@
   `knowledge`、`releaseDate` ← `release_date`、`lastUpdated`（存在时）。
 - `settings` — `{associations: []}`；可选策略字段（`disableDeveloperSettingsInheritance`/
   `loadBalancerStrategy`/`traceStickyMode`）未变就省略（部署怪癖，见 SKILL.md）。
-- 成本终值已在计划里算好（渠道声明逐字段覆盖、free 归零，见
-  [replan.md](replan.md)），payload 直接用计划 `input.cost`。
+- 成本终值已在计划里算好（渠道声明逐字段覆盖、free 归零，规则见上文
+  cardRef 与成本终值条目），payload 直接用计划 `input.cost`。

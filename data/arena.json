@@ -1,9 +1,4 @@
 {
-  "schema_version": 1,
-  "source": {
-    "url": "https://lmarena.ai/leaderboard/code/webdev",
-    "fetched_at": "2026-09-10T17:45:24.067371+00:00"
-  },
   "models": {
     "Inkling Small": {
       "arena_score": 1405.85,
@@ -489,13 +484,25 @@
       "arena_score": 1460.21,
       "organization": "Alibaba"
     },
+    "qwen3.7-flash": {
+      "arena_score": 1460,
+      "manual": true
+    },
     "qwen3.7-max-20260517": {
       "arena_score": 1517.0,
       "organization": "Alibaba"
     },
+    "qwen3.7-plus": {
+      "arena_score": 1480,
+      "manual": true
+    },
     "qwen3.8-27b": {
       "arena_score": 1591.46,
       "organization": "Alibaba"
+    },
+    "qwen3.8-flash": {
+      "arena_score": 1520,
+      "manual": true
     },
     "qwen3.8-flash-next": {
       "arena_score": 1630.53,
@@ -525,5 +532,10 @@
       "arena_score": 1236.6,
       "organization": ""
     }
+  },
+  "schema_version": 1,
+  "source": {
+    "fetched_at": "2026-09-10T17:45:24.067371+00:00",
+    "url": "https://lmarena.ai/leaderboard/code/webdev"
   }
 }

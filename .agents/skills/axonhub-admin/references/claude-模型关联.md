@@ -1,8 +1,18 @@
-# 应用 Claude 映射（mapping-apply）
+# Claude 模型关联
 
 把 `models.csv` 评审确认的映射写入 AxonHub：每个请求模型一条指向确认候选的
 关联路由。前置：映射已经 [replan.md](replan.md) 呈报且用户对映射表明确确认；
 确认映射不等于授权写渠道清单或模型卡（确认材料相互独立）。
+
+## free 池默认值（free_default_filled / arena_defaulted）
+
+free 补全的配对依赖两组规划期默认值，自动补齐：
+
+- free 模型的 `rp5h` 从所属渠道最大的非 free `rp5h` 重新推导（渠道无非 free
+  基准时回退 1000）；缺失的 `usage_quota` 补 60（`free_default_filled`）。
+- 剥离变种后缀后仍无 Arena 匹配的 free 模型默认 1500 分并留在池里
+  （`arena_defaulted`），保证 free 补全永远有供给——free 池按分升序与升序
+  请求配对，最弱请求拿分最低的 free 模型。
 
 ## 流程
 

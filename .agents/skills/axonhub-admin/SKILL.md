@@ -29,9 +29,9 @@ description: 本仓对 AxonHub 部署（https://axon.jasonqin.site）的全链�
 | --- | --- | --- |
 | 重算规划与评审 | 快照更新后重算 `models.csv` 与双 plan；评审映射建议 | [replan.md](references/replan.md) |
 | 同步渠道清单 | autoSync 渠道的屏蔽正则治理（`autoSyncModelPattern`）与回读校验；手工静态渠道的 `supportedModels` 维护 | [channel-sync.md](references/channel-sync.md) |
-| 同步模型 | 把 model-plan 增量应用：建实体、改卡/成本/备注、启用、清理 | [model-sync.md](references/model-sync.md) |
-| 应用 Claude 映射 | `models.csv` 确认后写请求模型的关联路由 | [mapping-apply.md](references/mapping-apply.md) |
-| 配置非 Claude 路由 | `channelPriority` 链、free 变种合并、回退与时段门控 | [routing.md](references/routing.md) |
+| 模型卡更新 | 把 model-plan 增量应用：建实体、改卡/成本/备注、启用、清理 | [model-card-update.md](references/model-card-update.md) |
+| Claude 模型关联 | `models.csv` 确认后写请求模型的关联路由 | [claude-模型关联.md](references/claude-模型关联.md) |
+| 非 Claude 模型关联 | `channelPriority` 链、free 变种合并、回退与时段门控 | [非Claude模型关联.md](references/非Claude模型关联.md) |
 | 批量重建 | 目录清空/迁移后的整体重建 | [rebuild.md](references/rebuild.md) |
 
 ## Token

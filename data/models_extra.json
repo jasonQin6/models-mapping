@@ -101,6 +101,14 @@
         "reason": "lowscore: arena 1460.21 < 1500"
       },
       {
+        "id": "qwen3.7-flash",
+        "reason": "lowscore: arena 1460 < 1500"
+      },
+      {
+        "id": "qwen3.7-plus",
+        "reason": "lowscore: arena 1480 < 1500"
+      },
+      {
         "id": "sakana/fugu-ultra",
         "reason": "tier"
       },
@@ -177,6 +185,10 @@
       {
         "id": "qwen3.6-plus",
         "reason": "lowscore: arena 1460.21 < 1500"
+      },
+      {
+        "id": "qwen3.7-plus",
+        "reason": "lowscore: arena 1480 < 1500"
       }
     ],
     "sensenova": [
@@ -1081,24 +1093,28 @@
     },
     "sensenova": {
       "deepseek-v4-flash": {
+        "free": true,
         "name": "DeepSeek V4 Flash (latest)",
         "rp5h": null,
         "tok_s": null,
         "usage_quota": null
       },
       "deepseek-v4-pro": {
+        "free": true,
         "name": "DeepSeek V4 Pro (latest)",
         "rp5h": null,
         "tok_s": null,
         "usage_quota": null
       },
       "glm-5.2": {
+        "free": true,
         "name": "GLM-5.2",
         "rp5h": null,
         "tok_s": null,
         "usage_quota": null
       },
       "kimi-k3": {
+        "free": true,
         "name": "Kimi K3",
         "rp5h": null,
         "tok_s": null,
@@ -1109,6 +1125,7 @@
           "input": 0,
           "output": 0
         },
+        "free": true,
         "name": "SenseNova 6.8 Flash Lite",
         "rp5h": null,
         "tok_s": null,
@@ -1119,6 +1136,7 @@
           "input": 0,
           "output": 0
         },
+        "free": true,
         "name": "SenseNova U1 Fast",
         "rp5h": null,
         "tok_s": null,

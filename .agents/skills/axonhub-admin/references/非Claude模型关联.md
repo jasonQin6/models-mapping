@@ -1,9 +1,22 @@
-# 配置非 Claude 路由（routing）
+# 非 Claude 模型关联
 
 非 Claude 全局模型自映射：其 association 把裸 ID 模型绑定到服务它的渠道条目。
 前提是模型 ID 陷阱——上游用厂商前缀 ID（`deepseek/deepseek-v4-flash`），Model
 实体用裸 ID，association 按精确字符串匹配（详见 [SKILL.md](../SKILL.md) 的
 部署怪癖）。本文件是约定手册；写入走 SKILL.md 的执行循环。
+
+## 规划裁决（channelPriority 的来源）
+
+`channelPriority` 链由规划器的两组裁决决定（`duplicate_model_across_sources`/
+`variant_superseded` 警告即它们的审计记录）：
+
+- **跨渠道去重**——一个 id 被多个渠道声明时归属 `rp5h` 最高者（null 输给有值，
+  平局取字母序靠前渠道）。胜出渠道即 p0 主用，其余实际服务渠道按 `rp5h` 降序
+  排为回退——这就是下文回退链的来源。
+- **变种分组**——同一基础模型内 `-free` 压过 `-contributor` 压过原始版；被取代
+  的变种以 `variant_superseded` 离场（如 `longcat-2.0` → `longcat-2.0-free`、
+  `muse-spark-1.2` → `-contributor`）。基版离场后由胜出变种承接实体，配合下文
+  的 free 变种合并落到同一条 association 链上。
 
 ## 流程（从 `data/model-plan.json` 的 `channelPriority` 出发）
 
