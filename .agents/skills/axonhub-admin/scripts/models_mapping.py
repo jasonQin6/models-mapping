@@ -238,12 +238,16 @@ _VARIANT_PRIORITY = {"-free": 0, "-contributor": 1}
 # derives the exclusion from the id so the store keeps no derived state.
 # Series names like ``-flash`` do not match.
 SPEED_VARIANT_SUFFIXES = ("-fast", "-highspeed")
-SPEED_VARIANT_EXCLUDE_REASON = "speed-variant (fast/highspeed)"
+# Planner-owned blocklist reason prefixes: entries with these reasons are
+# regenerated from scratch on every replan; every other reason is human-owned
+# and passes through untouched.
+PLANNER_OWNED_REASON_PREFIXES = ("speed:", "lowscore:")
+SPEED_VARIANT_EXCLUDE_REASON = "speed: fast/highspeed suffix"
 FREE_DEFAULT_ARENA_SCORE = 1500.0
 RP5H_MISSING_EXCLUDE_THRESHOLD = 1500.0
-# Exclusion chain rule 1: a scored non-free model below this leaves the
-# registry entirely (aligned with the channel-sync blocklist rule and the
-# models.md "低分非免费不入册" write-side rule).
+# Derived exclusion materialized into the blocklist: a scored non-free model
+# below this leaves the registry (aligned with the models.md "低分非免费不入册"
+# write-side rule and the channel-sync regex, which enumerates the blocklist).
 LOWSCORE_EXCLUDE_THRESHOLD = 1500.0
 # The two collected channels whose shared models drive channel-priority
 # associations (ADR 0016); the static sections (ant, sensenova) are not part
@@ -297,6 +301,84 @@ def blocklist_reason(
         if reason:
             return reason
     return None
+
+
+def materialize_blocklist(
+    raw_blocklist: Mapping[str, Sequence[Any]],
+    sections: Mapping[str, Mapping[str, dict[str, Any]]],
+    aliases: Mapping[str, str],
+    arena_models: Mapping[str, Mapping[str, Any]],
+) -> dict[str, list[dict[str, str]]]:
+    """Regenerate the planner-owned blocklist entries; human entries pass through.
+
+    The blocklist is the single source of truth for every exclusion: the
+    planner owns the ``speed:`` and ``lowscore:`` reason classes and
+    rebuilds them from the current snapshots on every replan (stale derived
+    entries disappear, refreshed ones update in place); every other reason
+    (``manual``/``tier``/``retired``/…) belongs to the human maintainers and
+    is preserved verbatim.  A human entry for the same id wins over a
+    derived one.  The channel-sync regex is a pure enumeration of the
+    result.
+    """
+
+    human: dict[tuple[str, str], dict[str, str]] = {}
+    for channel, entries in raw_blocklist.items():
+        for entry in entries:
+            record = entry if isinstance(entry, Mapping) else {"id": str(entry), "reason": "manual"}
+            reason = str(record.get("reason") or "manual")
+            if reason.startswith(PLANNER_OWNED_REASON_PREFIXES):
+                continue
+            lowered = str(record.get("id") or "").strip().lower()
+            if not lowered:
+                continue
+            human[(str(channel).lower(), lowered)] = {
+                "id": str(record.get("id")),
+                "reason": reason,
+            }
+            human.setdefault(
+                (str(channel).lower(), lowered.split("/")[-1]),
+                {"id": str(record.get("id")), "reason": reason},
+            )
+
+    derived: dict[tuple[str, str], dict[str, str]] = {}
+    for channel, records in sections.items():
+        for native_id, record in sorted(records.items()):
+            lowered = native_id.strip().lower()
+            if (
+                (channel.lower(), lowered) in human
+                or (channel.lower(), lowered.split("/")[-1]) in human
+            ):
+                continue
+            if speed_variant_exclude(native_id):
+                derived[(channel, lowered)] = {"id": native_id, "reason": SPEED_VARIANT_EXCLUDE_REASON}
+                continue
+            canonical = canonical_id(native_id, aliases)
+            match, match_type = find_best_match(canonical, dict(arena_models))
+            score = _number((match or {}).get("rating"))
+            if match_type in ("version_downgrade", "prefix_match"):
+                score = None
+            if (
+                not is_free_model(canonical, record)
+                and score is not None
+                and score < LOWSCORE_EXCLUDE_THRESHOLD
+            ):
+                derived[(channel, lowered)] = {
+                    "id": native_id,
+                    "reason": f"lowscore: arena {score:g} < {LOWSCORE_EXCLUDE_THRESHOLD:g}",
+                }
+
+    merged: dict[str, list[dict[str, str]]] = {}
+    for (channel, _key), entry in sorted(human.items()):
+        bucket = merged.setdefault(channel, [])
+        if entry not in bucket:
+            bucket.append(entry)
+    for (channel, _key), entry in sorted(derived.items()):
+        bucket = merged.setdefault(channel, [])
+        if entry not in bucket:
+            bucket.append(entry)
+    for bucket in merged.values():
+        bucket.sort(key=lambda item: item["id"])
+    return merged
 
 
 def _rp5h_of(record: Mapping[str, Any]) -> Optional[float]:
@@ -366,10 +448,12 @@ def dedupe_registry(
     """Build the registry: one winning record per canonical id.
 
     Excluded records never represent their model: a ``blocklist.<channel>``
-    entry (the hand-maintained model decisions), or a derived speed-marketing
-    id suffix.  Among the rest the highest-rp5h channel wins (duplicate
-    warning).  Each entry carries the channel's native id plus the alias map
-    needed to route channel-exposed ids back to the canonical model.
+    entry is the single exclusion mechanism, carrying every class — human
+    decisions (``manual``/``tier``/``retired``) plus the planner-materialized
+    derived ones (``speed:``/``lowscore:``).  Among the rest the
+    highest-rp5h channel wins (duplicate warning).  Each entry carries the
+    channel's native id plus the alias map needed to route channel-exposed
+    ids back to the canonical model.
     """
 
     registry: dict[str, dict[str, Any]] = {}
@@ -379,12 +463,6 @@ def dedupe_registry(
             reason = blocklist_reason(blocklist, channel, native_id)
             if reason:
                 warnings.append({"type": "manual_excluded", "model": native_id, "reason": reason})
-                continue
-            speed_reason = speed_variant_exclude(native_id)
-            if speed_reason:
-                warnings.append(
-                    {"type": "speed_variant_excluded", "model": native_id, "reason": speed_reason}
-                )
                 continue
             active[channel] = (native_id, record)
         if not active:
@@ -699,25 +777,18 @@ def load_extra_aliases(path: Path) -> dict[str, str]:
     return {str(alias): str(canonical) for alias, canonical in aliases.items()}
 
 
-def load_extra_blocklist(path: Path) -> dict[str, dict[str, str]]:
-    """Load the hand-maintained ``blocklist`` (channel -> [{id, reason}]).
+def _index_blocklist(raw: Mapping[str, Sequence[Any]]) -> dict[str, dict[str, str]]:
+    """Index the raw blocklist shape (channel -> [{id, reason}]) for lookup.
 
     Bare-string entries are accepted with a generic reason; entries index by
-    the lowercased channel section name.
+    the lowercased channel section name, each id by both its full and its
+    bare (vendor-prefix-stripped) form.
     """
 
-    payload = load_json(path)
-    if not isinstance(payload, Mapping):
-        return {}
-    raw = payload.get("blocklist")
-    if raw is None:
-        return {}
-    if not isinstance(raw, Mapping):
-        raise PlanningError(f"{path} blocklist must be an object")
     rules: dict[str, dict[str, str]] = {}
     for channel, entries in raw.items():
         if not isinstance(entries, Sequence) or isinstance(entries, str):
-            raise PlanningError(f"{path} blocklist.{channel} must be a list")
+            raise PlanningError(f"blocklist.{channel} must be a list")
         indexed: dict[str, str] = {}
         for entry in entries:
             if isinstance(entry, Mapping):
@@ -735,6 +806,20 @@ def load_extra_blocklist(path: Path) -> dict[str, dict[str, str]]:
     return rules
 
 
+def load_extra_blocklist(path: Path) -> dict[str, list[dict[str, str]]]:
+    """Load the raw hand-plus-derived ``blocklist`` (channel -> [{id, reason}])."""
+
+    payload = load_json(path)
+    if not isinstance(payload, Mapping):
+        return {}
+    raw = payload.get("blocklist")
+    if raw is None:
+        return {}
+    if not isinstance(raw, Mapping):
+        raise PlanningError(f"{path} blocklist must be an object")
+    return {str(channel): list(entries) for channel, entries in raw.items()}
+
+
 def build_plan(
     *,
     extra_path: Path,
@@ -742,15 +827,23 @@ def build_plan(
     arena_path: Path,
     csv_path: Path,
 ) -> tuple[list[dict[str, str]], dict[str, Any], dict[str, Any]]:
-    """Load the snapshots and run the planning pipeline."""
+    """Load the snapshots, materialize the derived blocklist, and plan.
+
+    Materialization rewrites the planner-owned ``speed:``/``lowscore:``
+    entries in ``data/models_extra.json`` (atomic, human-owned reasons
+    untouched) so the stored blocklist always mirrors the last replan and
+    the channel-sync regex can be a pure enumeration of it.
+    """
 
     warnings: list[dict[str, Any]] = []
     sections = load_extra_sections(extra_path)
     aliases = load_extra_aliases(extra_path)
-    blocklist = load_extra_blocklist(extra_path)
+    raw_blocklist = load_extra_blocklist(extra_path)
     cards, card_refs = load_cards(cards_path)
     arena_models = load_arena(arena_path)
     requests = load_csv_requests(csv_path, warnings)
+    merged_blocklist = materialize_blocklist(raw_blocklist, sections, aliases, arena_models)
+    _write_blocklist(extra_path, merged_blocklist)
     return plan_from(
         sections,
         aliases=aliases,
@@ -759,8 +852,27 @@ def build_plan(
         arena_models=arena_models,
         requests=requests,
         warnings=warnings,
-        blocklist=blocklist,
+        blocklist_raw=merged_blocklist,
     )
+
+
+def _write_blocklist(path: Path, blocklist: Mapping[str, list[dict[str, str]]]) -> None:
+    """Persist the blocklist key atomically, leaving every other key alone."""
+
+    document = load_json(path)
+    if not isinstance(document, Mapping):
+        raise PlanningError(f"{path} is not a JSON object")
+    updated = dict(document)
+    updated["blocklist"] = {
+        channel: [dict(entry) for entry in entries]
+        for channel, entries in sorted(blocklist.items())
+    }
+    temporary = path.with_name(f".{path.name}.tmp")
+    temporary.write_text(
+        json.dumps(updated, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    temporary.replace(path)
 
 
 def plan_from(
@@ -772,17 +884,24 @@ def plan_from(
     requests: Sequence[Mapping[str, Any]],
     card_refs: Mapping[str, str] | None = None,
     warnings: list[dict[str, Any]] | None = None,
-    blocklist: Mapping[str, Mapping[str, str]] | None = None,
+    blocklist_raw: Mapping[str, Sequence[Any]] | None = None,
 ) -> tuple[list[dict[str, str]], dict[str, Any], dict[str, Any]]:
     """Run the offline planning pipeline.
 
     Returns ``(csv_rows, model_plan, report)``: the regenerated mapping
     workspace plus the incremental AxonHub model plan (ADR 0017) and the
-    run-level report.
+    run-level report.  ``blocklist_raw`` is the file-shaped blocklist
+    (channel -> [{id, reason}]) — the single exclusion source, derived
+    classes already materialized.
     """
 
     aliases = aliases or {}
-    blocklist = blocklist or {}
+    # Materialize the derived classes (speed/lowscore) as part of planning:
+    # the merged blocklist is the single exclusion source for this run.
+    merged_blocklist = materialize_blocklist(
+        blocklist_raw or {}, sections, aliases, arena_models
+    )
+    blocklist = _index_blocklist(merged_blocklist)
     warnings: list[dict[str, Any]] = list(warnings) if warnings else []
     errors: list[dict[str, Any]] = []
     ineligible: list[dict[str, Any]] = []
@@ -795,9 +914,10 @@ def plan_from(
 
     # Candidate pool: arena match (no match defaults to 1500 for non-free
     # models so beta models stay reviewable), then rp5h-missing triage.
+    # Derived exclusions (speed/lowscore) never reach this loop: the
+    # materialized blocklist dropped them at dedupe.
     candidates: list[dict[str, Any]] = []
     rp5h_excluded: list[str] = []
-    lowscore_excluded: list[str] = []
     for canonical in sorted(registry):
         entry = registry[canonical]
         record = entry["record"]
@@ -840,15 +960,6 @@ def plan_from(
             warnings.append(
                 {"type": "arena_borrowed_rejected", "model": canonical, "match_type": match_type}
             )
-        # Exclusion chain rule 1 (derived, first): a scored non-free model
-        # below the threshold never represents its model — aligned with the
-        # channel-sync regex rule and the write-side "低分非免费不入册".
-        if not is_free and arena_score is not None and arena_score < LOWSCORE_EXCLUDE_THRESHOLD:
-            warnings.append(
-                {"type": "lowscore_excluded", "model": canonical, "arena_score": arena_score}
-            )
-            lowscore_excluded.append(canonical)
-            continue
         rp5h = _number(record.get("rp5h"))
         if not is_free and rp5h is None:
             reference = arena_score if arena_score is not None else 0.0
@@ -880,7 +991,7 @@ def plan_from(
                 "match_type": match_type,
             }
         )
-    for canonical in lowscore_excluded + rp5h_excluded:
+    for canonical in rp5h_excluded:
         del registry[canonical]
 
     # Claude request mapping (baseline routing + formula).

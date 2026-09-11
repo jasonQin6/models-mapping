@@ -112,7 +112,7 @@ loop:
 | 文件 | 内容 | 权威范围 |
 | --- | --- | --- |
 | AxonHub 内置目录 | 21 开发者 453 模型（实测 2026-09-10），含能力位/成本/上限/日期 | 主流模型卡片首选来源 |
-| `data/models_extra.json` | 渠道节（每渠道的模型、cost、free 标记、exclude）、顶层 `aliases`、`blocklist` | 渠道清单与渠道侧成本 |
+| `data/models_extra.json` | 渠道节（每渠道的模型、cost、free 标记）、顶层 `aliases`、顶层 `blocklist`（唯一排除源：`speed:`/`lowscore:` 由 replan 物化，`manual`/`tier`/`retired` 人工维护） | 渠道清单与渠道侧成本；blocklist 同时供渠道同步正则枚举 |
 | `data/all_models.json` | models.dev 快照卡片 | 卡片补充来源（覆盖不全，缺卡走人工兜底，不臆造） |
 | `data/arena.json` | leaderboard 分数（`arena_score`/`organization`/`effort`） | 备注 `manual` 字段的 `arena_score: <分>` 标签 |
 

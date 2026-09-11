@@ -1,15 +1,18 @@
 # 重算规划（replan）
 
-把 watch-pipeline 快照离线重算成评审产物：`models.csv`（映射建议）与
-`data/model-plan.json`（模型增量计划）。纯离线：不联网、不持凭据、不写
-AxonHub，任何时刻可以本地重跑。
+把 watch-pipeline 快照离线重算成评审产物：`models.csv`（映射建议）、
+`data/model-plan.json`（模型增量计划），并把派生排除物化进
+`data/models_extra.json` 的 `blocklist`（`speed:`/`lowscore:` 两类整体重建，
+人工类保留）。纯离线：不联网、不持凭据、不写 AxonHub，任何时刻可以本地
+重跑。
 
 ## 输入（均为仓库内快照）
 
 - `data/models_extra.json` — 渠道声明事实 `channels.<channel>.<model_id>`：
-  `rp5h`、`usage_quota`、`cost{}`、人工维护的 `free` 旗标、goat 的 `tok_s`；
-  顶层 `blocklist.<channel>`（`{id, reason}` 条目）是人工模型决策——把模型
-  挡在注册表外。
+  `rp5h`、`usage_quota`、`cost{}`、人工维护的 `free` 旗标、goat 的 `tok_s`。
+  顶层 `blocklist.<channel>`（`{id, reason}`）是**唯一排除源**：`speed:`/
+  `lowscore:` 两类由本流程每次运行物化重建，`manual`/`tier`/`retired` 等
+  人工类原样保留。
 - `data/all_models.json` — models.dev 平铺 `vendor/model` 目录；唯一卡片来源
   （永远不是清单来源：只为渠道认领的模型补事实，绝不新增模型）。
 - `data/arena.json` — Arena 分数（榜单、`manual: true` 人工指派）。
@@ -28,9 +31,10 @@ AxonHub，任何时刻可以本地重跑。
 2. 报告分类：
    - **阻断错误**（`--fail-on-errors` 下退出非零，产物仅供检查）：请求模型
      不在 Arena 榜上且无人工指派（`request_arena_missing`）、输入 schema 漂移。
-   - **警告**（不阻断，必须向用户披露）：`lowscore_excluded`、
-     `manual_excluded`、`card_missing`、`arena_missing`/`arena_defaulted`/
-     `arena_borrowed_rejected`、`rp5h_missing_review`、`variant_superseded`、
+   - **警告**（不阻断，必须向用户披露）：`manual_excluded`（reason 前缀
+     区分：`lowscore:` 派生低分、`speed:` 派生速度营销、其余人工类）、
+     `card_missing`、`arena_missing`/`arena_defaulted`/`arena_borrowed_rejected`、
+     `rp5h_missing_review`、`variant_superseded`、
      `duplicate_model_across_sources`、`free_default_filled`、
      `free_flag_missing`、`missing_remark_fields`。警告全部走 stderr 摘要；
      仅卡片/备注类（`card_missing`、`missing_remark_fields`）随 model-plan
@@ -45,19 +49,19 @@ AxonHub，任何时刻可以本地重跑。
 
 ## 规划规则（评审与排障时对照；数字阈值是脚本内常量——文档解释，代码裁决）
 
-- **低分（排除链第一条，派生）**——arena_score < 1500 且非 free 的模型不进
-  注册表（`lowscore_excluded`）：与渠道同步正则（[channel-sync.md](channel-sync.md)）
-  和写侧"低分非免费不入册"（[model-sync.md](model-sync.md)）同一条线；查无
-  分数的不适用本规则（走 `arena_missing` 分诊）。想收录先改 `data/arena.json`
-  的人工指派，分数过线后自然回归。
-- **blocklist 排除**——`blocklist.<channel>` 条目（完整 ID 或剥厂商前缀的裸
-  ID，大小写不敏感）以 `manual_excluded` 把模型挡在注册表外；只用于规则覆盖
-  不了的决策（如非聊天端点、上游不提供的授权 ID）。
+- **排除 = blocklist 物化（单一机制）**——所有排除都落在
+  `blocklist.<channel>`（`{id, reason}`，完整 ID 或剥厂商前缀裸 ID、大小写
+  不敏感），dedupe 逐记录查它。规划器拥有两个派生类并在每次运行**整体
+  重建**：`speed:`（`-fast`/`-highspeed` 速度营销变种）、`lowscore:`
+  （arena_score < 1500 且非 free；查无分数不适用，走 `arena_missing` 分诊；
+  想收录先改 `data/arena.json` 的人工指派，分数过线后自然回归）。人工类
+  （`manual`/`tier`/`retired`/…）原样保留，与派生条目冲突时人工优先；
+  陈旧的派生条目（id 已不在节里或分数回升）自动消失。blocklist 同时是
+  渠道同步正则的唯一来源（[channel-sync.md](channel-sync.md)），与写侧
+  "低分非免费不入册"（[model-sync.md](model-sync.md)）三层同线。
 - **别名归一**——`models_extra.json` 顶层人工维护的 `aliases` 映射（如
   `tencent-hy3` → `hy3`）合并跨渠道拼写。注册表与 `plan.models[]` 用规范
   ID，`channelAliases` 描述各渠道路由暴露。
-- **速度营销后缀**——`-fast`/`-highspeed` 结尾的 ID 在规划期判定排除
-  （`speed_variant_excluded`）。
 - **跨渠道去重**——每个 ID 一个胜出渠道：`rp5h` 最高者胜（null 输给有值，
   平局取字母序靠前渠道），每次裁决报告 `duplicate_model_across_sources`。
 - **变种分组**——同一基础模型内 `-free` 压过 `-contributor` 压过原始版；
@@ -77,9 +81,9 @@ AxonHub，任何时刻可以本地重跑。
   （`arena_borrowed_rejected` 拒收 `version_downgrade`/`prefix_match`）；
   非 free 无任何 Arena 匹配则不带分入册但不进映射池（`arena_missing`），
   free 默认 1500 留在池里（`arena_defaulted`）；缺 `rp5h` 的非 free 模型
-  排除（`rp5h_missing_excluded`，有分场景已被低分规则先行接管，本分支实际
-  覆盖查无分数者），分数达到 1500 保留带评审警告（`rp5h_missing_review`），
-  仅不参与映射目标挑选。
+  排除（`rp5h_missing_excluded`，有分场景已被 lowscore 物化先行接管，本
+  分支实际覆盖查无分数者），分数达到 1500 保留带评审警告
+  （`rp5h_missing_review`），仅不参与映射目标挑选。
 - **Claude 映射公式**——每个请求对全部非 free 候选打分，取最高：
   ```text
   match =

@@ -17,6 +17,7 @@ from models_mapping import (  # noqa: E402
     load_csv_requests,
     load_extra_blocklist,
     main,
+    materialize_blocklist,
     plan_from,
     score_match,
     supersede_variants,
@@ -41,7 +42,7 @@ def _arena_models(arena: dict[str, float]) -> dict:
 def _plan(sections, cards=None, arena=None, requests=(), aliases=None, blocklist=None):
     # Aggregate view for legacy assertions: models from the model plan plus
     # the full run-level warnings/report. Test cards are keyed by bare id,
-    # so refs map bare -> bare.
+    # so refs map bare -> bare. `blocklist` is the raw file shape.
     rows, model_plan, report = plan_from(
         sections,
         aliases=aliases,
@@ -49,7 +50,7 @@ def _plan(sections, cards=None, arena=None, requests=(), aliases=None, blocklist
         card_refs={key: key for key in (cards or {})},
         arena_models=_arena_models(arena or {}),
         requests=requests,
-        blocklist=blocklist,
+        blocklist_raw=blocklist,
     )
     merged = {
         "models": model_plan["models"],
@@ -339,7 +340,7 @@ def test_blocklist_entry_skips_model() -> None:
             "kimi-k2.5": _rec(rp5h=900),
         },
     }
-    blocklist = {"commandcode-goat": {"minimax-m2.5": "Missing mapping-critical RP5H"}}
+    blocklist = {"commandcode-goat": [{"id": "minimax-m2.5", "reason": "Missing mapping-critical RP5H"}]}
 
     _rows, plan = _plan(sections, blocklist=blocklist)
 
@@ -362,8 +363,7 @@ def test_blocklist_loader_indexes_bare_form(tmp_path: Path) -> None:
 
     rules = load_extra_blocklist(path)
 
-    assert rules["opencode-go"]["google/gemini-3.5-flash-lite"] == "tier"
-    assert rules["opencode-go"]["gemini-3.5-flash-lite"] == "tier"
+    assert rules["opencode-go"] == [{"id": "google/gemini-3.5-flash-lite", "reason": "tier"}]
 
     sections = {"opencode-go": {"gemini-3.5-flash-lite": _rec(rp5h=800)}}
     _rows, plan = _plan(sections, blocklist=rules)
@@ -373,8 +373,9 @@ def test_blocklist_loader_indexes_bare_form(tmp_path: Path) -> None:
 
 
 def test_lowscore_non_free_excluded_free_exempt() -> None:
-    # Exclusion chain rule 1: a scored non-free model below 1500 leaves the
-    # registry entirely; free models are exempt regardless of score.
+    # Derived exclusion: a scored non-free model below 1500 is materialized
+    # into the blocklist and leaves the registry; free models are exempt
+    # regardless of score.
     sections = {
         "commandcode-goat": {
             "minimax-m3": _rec(rp5h=3200),            # arena 1487.3 -> excluded
@@ -390,7 +391,11 @@ def test_lowscore_non_free_excluded_free_exempt() -> None:
     models = {m["modelID"] for m in model_plan["models"]}
     assert "minimax-m3" not in models
     assert "laguna-s-2.1-free" in models
-    assert any(w["type"] == "lowscore_excluded" and w["model"] == "minimax-m3" for w in report["warnings"])
+    assert any(
+        w["type"] == "manual_excluded" and w["model"] == "minimax-m3"
+        and w["reason"].startswith("lowscore:")
+        for w in report["warnings"]
+    )
     candidate_ids = {row["model_id"] for row in rows if row["role"] == "candidate"}
     assert "minimax-m3" not in candidate_ids
 
@@ -411,7 +416,10 @@ def test_free_suffix_default_covers_unflagged_record() -> None:
     assert candidate_by_id["longcat-2.0-free"]["arena_score"] == "1500"
 
 
-def test_speed_variant_ids_are_derived_as_excluded() -> None:
+def test_speed_variant_ids_are_materialized_as_excluded() -> None:
+    # Speed-marketing ids are materialized into the blocklist (reason class
+    # "speed:") on every plan, so the exclusion is visible and the channel
+    # regex can enumerate it.
     sections = {
         "commandcode-goat": {
             "glm-5.2-fast": _rec(rp5h=138),
@@ -423,9 +431,50 @@ def test_speed_variant_ids_are_derived_as_excluded() -> None:
 
     assert all(m["modelID"] != "glm-5.2-fast" for m in plan["models"])
     assert any(
-        w["type"] == "speed_variant_excluded" and w["model"] == "glm-5.2-fast"
+        w["type"] == "manual_excluded" and w["model"] == "glm-5.2-fast"
+        and w["reason"].startswith("speed:")
         for w in plan["warnings"]
     )
+
+
+def test_materialize_blocklist_preserves_human_and_regenerates_derived() -> None:
+    # Human reasons (manual/tier/retired/…) pass through verbatim and win
+    # over derived entries for the same id; planner-owned reasons are
+    # rebuilt from the current snapshots (stale ones disappear).
+    raw = {
+        "commandcode-goat": [
+            {"id": "kimi-k2.5", "reason": "tier"},
+            {"id": "legacy-fast", "reason": "speed: fast/highspeed suffix"},  # stale: id gone
+        ],
+    }
+    sections = {
+        "commandcode-goat": {
+            "kimi-k2.5": _rec(rp5h=900),                       # human entry kept
+            "glm-5.2-fast": _rec(rp5h=138),                    # speed derived
+            "minimax-m3": _rec(rp5h=3200),                     # arena 1487 -> lowscore derived
+        },
+    }
+    arena = {"minimax-m3": 1487.3}
+
+    merged = materialize_blocklist(raw, sections, {}, _arena_models(arena))
+
+    entries = {e["id"]: e["reason"] for e in merged["commandcode-goat"]}
+    assert entries["kimi-k2.5"] == "tier"
+    assert "legacy-fast" not in entries  # stale derived entry regenerated away
+    assert entries["glm-5.2-fast"].startswith("speed:")
+    assert entries["minimax-m3"].startswith("lowscore:")
+
+
+def test_materialize_blocklist_human_wins_over_derived() -> None:
+    # A human exclude for an id that would also derive lowscore keeps the
+    # human reason.
+    raw = {"commandcode-goat": [{"id": "minimax-m3", "reason": "manual"}]}
+    sections = {"commandcode-goat": {"minimax-m3": _rec(rp5h=3200)}}
+    arena = {"minimax-m3": 1487.3}
+
+    merged = materialize_blocklist(raw, sections, {}, _arena_models(arena))
+
+    assert merged["commandcode-goat"] == [{"id": "minimax-m3", "reason": "manual"}]
 
 
 def test_request_without_arena_score_is_blocking() -> None:
@@ -504,8 +553,13 @@ def test_rp5h_missing_low_arena_excluded_high_arena_review() -> None:
 
     models = {m["modelID"] for m in model_plan["models"]}
     assert models == set()
-    # Rule 1 catches the scored-but-low model before the rp5h triage.
-    assert any(w["type"] == "lowscore_excluded" and w["model"] == "glm-5" for w in _report["warnings"])
+    # The scored-but-low model is materialized into the blocklist and
+    # excluded ahead of the rp5h triage.
+    assert any(
+        w["type"] == "manual_excluded" and w["model"] == "glm-5"
+        and w["reason"].startswith("lowscore:")
+        for w in _report["warnings"]
+    )
     # No invented 1500: an unlisted model has no standing, so the missing-rp5h
     # triage excludes it instead of reviewing it (ADR 0015).
     assert any(w["type"] == "arena_missing" and w["model"] == "kimi-k2.5" for w in _report["warnings"])
@@ -593,7 +647,7 @@ def test_warnings_split_between_artifact_and_stderr() -> None:
         "opencode-go": {"omen-alpha": _rec(rp5h=11600)},
         "commandcode-goat": {"omen-alpha": _rec(rp5h=900), "free-a": _rec(rp5h=None, free=True)},
     }
-    arena = {"omen-alpha": 1460.01}
+    arena = {"omen-alpha": 1520.0}
 
     _rows, model_plan, report = plan_from(
         sections,

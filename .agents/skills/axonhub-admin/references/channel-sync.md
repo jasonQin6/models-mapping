@@ -7,48 +7,39 @@ AxonHub 每小时同步自动维护；本项目只治理屏蔽正则。
 `/v1/models` 有、go.mdx 无的 id 视作已淘汰，落 blocklist 后由正则屏蔽）。
 例外：`ant`、`sensenova`（embedding/作图，低频）同步保持关，清单人工维护。
 
-## 屏蔽规则
+## 屏蔽来源：blocklist 是唯一真相源
 
-1. **低分**（排除链第一条）——arena_score < 1500 且非 free（free = 渠道记录
-   `free: true` 或 `-free` 后缀）。分数直接取自数据源 `data/arena.json`
-   （`manual: true` 人工指派优先），渠道 ID 与榜单记录用本 skill
-   `scripts/name_matching.py` 的匹配链连接（剥变种后缀），不经
-   models.csv/plan 中转。查无分数时先主动刷新快照（本流程授权的本地采集
-   例外，`manual` 记录保留）：
-   ```bash
-   python3 .agents/skills/watch-pipeline/scripts/watch_arena.py \
-     --top-n 0 --output data/arena.json
-   ```
-   刷新后仍缺则人工指派（manual）或保留呈报。低于 1500 分的非 free 模型
-   无需进 blocklist——低分规则在注册表排除与渠道屏蔽两侧同线自动覆盖。
-2. **后缀/前缀**——`-fast`、`-highspeed` 结尾的速度营销变种；`claude-*` 前缀
-   （Claude 由自建全局模型供给）。
-3. **订阅差集/人工下架/淘汰**——`data/models_extra.json` 顶层
-   `blocklist.<channel>`，条目为 `{id, reason}`：`tier` = 订阅档位差（稳定），
-   `manual` = 人工下架（如上游不提供的授权 id），`retired` = 已淘汰
-   （opencode-go 判定：上游 `/v1/models` 有、go.mdx 无；差集随 watch-pipeline
-   每日刷新重核，新增淘汰 id 补进 blocklist）。
+渠道同步正则就是 `data/models_extra.json` 顶层 `blocklist.<channel>` 的纯
+枚举——除此之外没有规则式屏蔽。条目为 `{id, reason}`，reason 前缀区分归属：
+
+| reason 前缀 | 归属 | 含义 |
+| --- | --- | --- |
+| `lowscore:` | replan 物化 | arena < 1500 且非 free，每次 replan 重建 |
+| `speed:` | replan 物化 | `-fast`/`-highspeed` 速度营销变种，每次 replan 重建 |
+| `manual` | 人工 | 人工下架（如上游不提供的授权 id） |
+| `tier` | 人工 | 订阅档位差（稳定差集） |
+| `retired` | 人工 | 已淘汰（opencode-go 判定：上游 `/v1/models` 有、go.mdx 无；差集随每日刷新重核，新增淘汰 id 补进 blocklist） |
+
+派生两类由 replan（[replan.md](replan.md)）自动物化，人工三类手工维护；
+人工条目与派生条目冲突时人工优先。**渠道同步任务不读 arena、不做规则
+推导**——发现该挡的没挡，先跑一次 replan 刷新 blocklist，再回来刷正则。
 
 ## 流程
 
-1. 算屏蔽集：对已知清单面（渠道 `supportedModels` 现状 ∪ 现有正则已挡条目）
-   逐 id 过规则 1–3。**常规刷新不抓上游**——autoSync 会把上游变化自动带进来，
-   命中后缀/前缀规则的自动被正则挡住。仅在需要核对上游原始清单时，用只读
-   查询 `fetchModels(input: { channelType, baseURL, channelID })` 作参考
-   （`baseURL` 必填、从渠道查询取；返回 id 可能带 `厂商/` 前缀与 `:free`
-   后缀，比对时归一化）。
+1. 读 `blocklist.<channel>` 全部条目，补上固定的 `claude-*` 前缀屏蔽
+   （Claude 由自建全局模型供给，永不采集）。
 2. 生成允许正则：`(?i)` 前缀必需——上游同步 ID 是带厂商前缀的混合大小写
-   （`zai-org/GLM-5`、`MiniMaxAI/MiniMax-M2.5`），小写模式静默漏挡。屏蔽条目
-   按 `(^|/)ID($|[:/])` 匹配（blocklist 条目取剥前缀的裸 ID；id 中 `.` 转义；
-   regexp2 支持负向断言）。实测形状（goat，2026-09-11）：
+   （`zai-org/GLM-5`、`MiniMaxAI/MiniMax-M2.5`），小写模式静默漏挡。条目
+   按取剥厂商前缀的裸 ID、`(^|/)ID($|[:/])` 匹配（id 中 `.` 转义；regexp2
+   支持负向断言）。实测形状（goat，2026-09-11）：
    ```text
-   (?i)^(?!.*-(?:fast|highspeed)(?:$|[:/]))(?!.*(^|/)claude-)(?!.*(^|/)(?:gemini-3\.1-flash-lite|…|tencent-hy3)(?:$|[:/]))(?!.*(^|/)(?:glm-5|…|step-3\.7-flash)(?:$|[:/])).*$
+   (?i)^(?!.*(^|/)claude-)(?!.*(^|/)(?:deepseek-v4-flash-fast|…|tencent-hy3)(?:$|[:/])).*$
    ```
 3. 确认屏蔽集与正则（一次确认）。
 4. 一次 `updateChannel` 同时写 `autoSyncSupportedModels: true` 与
    `autoSyncModelPattern`（`-v` 按形状嵌套变量）。
-5. 回读该渠道：`supportedModels` = 同步清单 − 屏蔽集即完成；时滞来自上游
-   重同步周期，属正常。
+5. 回读该渠道：`supportedModels` = 同步清单 − blocklist 即完成；时滞来自
+   上游重同步周期，属正常。
 
 本任务可短路 SKILL.md 的执行循环——单渠道两字段更新，无需全量对账仪式；
-差集变化（新订阅档位、新速度变种）时重跑本流程刷新正则即可。
+blocklist 变化（replan 刷新派生类、新增人工条目）后重跑本流程刷新正则即可。

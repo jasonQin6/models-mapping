@@ -1,6 +1,21 @@
 {
+  "aliases": {
+    "deepseek-flash": "deepseek-v4.1-flash"
+  },
   "blocklist": {
     "commandcode-goat": [
+      {
+        "id": "deepseek-v4-flash-fast",
+        "reason": "speed: fast/highspeed suffix"
+      },
+      {
+        "id": "glm-5",
+        "reason": "lowscore: arena 1435.69 < 1500"
+      },
+      {
+        "id": "glm-5.2-fast",
+        "reason": "speed: fast/highspeed suffix"
+      },
       {
         "id": "google/gemini-3.1-flash-lite",
         "reason": "tier"
@@ -38,20 +53,68 @@
         "reason": "tier"
       },
       {
+        "id": "inkling",
+        "reason": "lowscore: arena 1408.66 < 1500"
+      },
+      {
+        "id": "inkling-small",
+        "reason": "lowscore: arena 1405.85 < 1500"
+      },
+      {
+        "id": "kimi-k2.7-code",
+        "reason": "lowscore: arena 1472.39 < 1500"
+      },
+      {
+        "id": "kimi-k2.7-code-highspeed",
+        "reason": "speed: fast/highspeed suffix"
+      },
+      {
         "id": "meta/muse-spark-1.1",
         "reason": "tier"
+      },
+      {
+        "id": "mimo-v2.5",
+        "reason": "lowscore: arena 1436.87 < 1500"
+      },
+      {
+        "id": "mimo-v2.5-pro",
+        "reason": "lowscore: arena 1474.63 < 1500"
+      },
+      {
+        "id": "minimax-m2.5",
+        "reason": "lowscore: arena 1384.03 < 1500"
+      },
+      {
+        "id": "minimax-m2.7",
+        "reason": "lowscore: arena 1397.63 < 1500"
+      },
+      {
+        "id": "minimax-m3",
+        "reason": "lowscore: arena 1486.26 < 1500"
+      },
+      {
+        "id": "qwen3.6-max-preview",
+        "reason": "lowscore: arena 1478.75 < 1500"
+      },
+      {
+        "id": "qwen3.6-plus",
+        "reason": "lowscore: arena 1460.21 < 1500"
       },
       {
         "id": "sakana/fugu-ultra",
         "reason": "tier"
       },
       {
-        "id": "tencent/hy3-paid",
-        "reason": "tier"
+        "id": "step-3.7-flash",
+        "reason": "lowscore: arena 1479 < 1500"
       },
       {
         "id": "tencent-hy3",
         "reason": "manual"
+      },
+      {
+        "id": "tencent/hy3-paid",
+        "reason": "tier"
       }
     ],
     "opencode-go": [
@@ -72,6 +135,10 @@
         "reason": "retired"
       },
       {
+        "id": "kimi-k2.7-code",
+        "reason": "lowscore: arena 1472.39 < 1500"
+      },
+      {
         "id": "mimo-v2-omni",
         "reason": "retired"
       },
@@ -80,12 +147,36 @@
         "reason": "retired"
       },
       {
+        "id": "mimo-v2.5",
+        "reason": "lowscore: arena 1436.87 < 1500"
+      },
+      {
+        "id": "mimo-v2.5-pro",
+        "reason": "lowscore: arena 1474.63 < 1500"
+      },
+      {
+        "id": "minimax-m2.5",
+        "reason": "lowscore: arena 1384.03 < 1500"
+      },
+      {
+        "id": "minimax-m2.7",
+        "reason": "lowscore: arena 1397.63 < 1500"
+      },
+      {
+        "id": "minimax-m3",
+        "reason": "lowscore: arena 1486.26 < 1500"
+      },
+      {
         "id": "omen-alpha",
         "reason": "retired"
       },
       {
         "id": "qwen3.5-plus",
         "reason": "retired"
+      },
+      {
+        "id": "qwen3.6-plus",
+        "reason": "lowscore: arena 1460.21 < 1500"
       }
     ],
     "sensenova": [

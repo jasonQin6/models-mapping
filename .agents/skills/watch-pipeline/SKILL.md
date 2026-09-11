@@ -1,6 +1,6 @@
 ---
 name: watch-pipeline
-description: Maintain the collection layer — the watch_* scrapers behind .github/workflows/watch-pipeline.yml and their four channels (models-dev, opencode-go, GOAT, Arena). Adapt selectors when an upstream page changes, guided by the script's own parser and the persisted last-error.json. Pipeline execution belongs to CI; agents do not run full scrapes against live upstreams (exception — axonhub-admin's channel-sync flow may invoke watch_arena.py to refresh data/arena.json when an Arena score is missing).
+description: Maintain the collection layer — the watch_* scrapers behind .github/workflows/watch-pipeline.yml and their four channels (models-dev, opencode-go, GOAT, Arena). Adapt selectors when an upstream page changes, guided by the script's own parser and the persisted last-error.json. Pipeline execution belongs to CI; agents do not run full scrapes against live upstreams.
 ---
 
 # Watch Pipeline
@@ -41,7 +41,7 @@ Each script persists failures to `reference/<channel>/last-error.json` inside th
 ## Snapshot invariants
 
 - `data/models_extra.json` is the shared store `{schema_version, updated_at, channels}`; each collector updates **only its own** `channels.<channel>` section via `models_extra.update_channel` (read-modify-write, field-level merge, atomic), so writers must serialize — CI orders goat after go. Contract fields refresh in place; hand-maintained fields on surviving records (the `free` override flag) are preserved, and ids that left the channel declaration are removed with their record.
-- Sections carry channel-declared facts only (`rp5h`, `usage_quota`, `cost{}`, goat `tok_s`); card data is never collected here — planning fills it from `data/all_models.json` (ADR 0012). Speed-marketing variants (`-fast`/`-highspeed`) are collected and derived as excluded at planning time. Model decisions (exclusions) live in the collector-unreachable top-level `blocklist` key, never on records — a delete/re-add cycle wipes record-level hand fields.
+- Sections carry channel-declared facts only (`rp5h`, `usage_quota`, `cost{}`, goat `tok_s`); card data is never collected here — planning fills it from `data/all_models.json` (ADR 0012). Speed-marketing variants (`-fast`/`-highspeed`) are collected and derivationally excluded at planning time via the blocklist's materialized `speed:` class. Exclusions live in the top-level `blocklist` key — collector-unreachable (`speed:`/`lowscore:` are the planner's materialized classes; the rest is hand-maintained) — never on records, because a delete/re-add cycle wipes record-level hand fields.
 - Channel-provided `claude-*` models are not collected: Claude is served by self-built AxonHub models mapped by arena score (ADR 0012).
 - The go section's keys are exactly the go.mdx model ids (ADR 0011); an id that leaves the document leaves the section.
 - The goat section's keys are the channel's entitlement facts; GOAT hard gates: main-table rows skipped for missing columns, `to_model_id` collisions, or zero models fail the run with no write (partial lists must never publish).

@@ -1,32 +1,6 @@
 {
   "models": [
     {
-      "cardRef": null,
-      "channel": "opencode-go",
-      "channelPriority": [
-        {
-          "channel": "opencode-go",
-          "priority": 0,
-          "rp5h": 6500.0
-        }
-      ],
-      "input": {
-        "cost": {
-          "cacheRead": 0.003,
-          "cacheWrite": 0,
-          "input": 0.15,
-          "output": 0.6
-        },
-        "developer": "opencode-go",
-        "group": "opencode-go",
-        "icon": "Default",
-        "name": "DeepSeek V4.1 Flash",
-        "remark": "{\"manual\":\"\",\"rp5h\":6500,\"usage_quota\":15.0}",
-        "type": "chat"
-      },
-      "modelID": "deepseek-flash"
-    },
-    {
       "cardRef": "deepseek/deepseek-v4-flash",
       "channel": "commandcode-goat",
       "channelPriority": [
@@ -132,11 +106,19 @@
     {
       "cardRef": "deepseek/deepseek-v4.1-flash",
       "channel": "commandcode-goat",
+      "channelAliases": {
+        "opencode-go": "deepseek-flash"
+      },
       "channelPriority": [
         {
           "channel": "commandcode-goat",
           "priority": 0,
           "rp5h": 30800.0
+        },
+        {
+          "channel": "opencode-go",
+          "priority": 1,
+          "rp5h": 6500.0
         }
       ],
       "input": {
@@ -976,17 +958,12 @@
   ],
   "report": {
     "counts": {
-      "intersection": 18,
-      "models": 33
+      "intersection": 19,
+      "models": 32
     }
   },
   "schema_version": 1,
   "warnings": [
-    {
-      "model": "deepseek-flash",
-      "provider": "opencode-go",
-      "type": "card_missing"
-    },
     {
       "model": "laguna-s-2.1-free",
       "provider": "commandcode-goat",
