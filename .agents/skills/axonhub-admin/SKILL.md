@@ -27,12 +27,94 @@ description: 本仓对 AxonHub 部署（https://axon.jasonqin.site）的全链�
 
 | 任务 | 何时 | 流程 |
 | --- | --- | --- |
-| 重算规划与评审 | 快照更新后重算 `models.csv` 与 model-plan；评审映射建议，确认后移交模型卡更新 / Claude 模型关联 | [replan.md](references/replan.md) |
+| 重算规划（replan） | 快照更新后重算 `models.csv` 与 model-plan；评审映射建议，确认后移交模型卡更新 / Claude 模型关联 | 本文「重算规划」节 |
 | 同步渠道清单 | 物化 blocklist 派生类并生成屏蔽正则（`autoSyncModelPattern`）与回读校验；手工静态渠道的 `supportedModels` 维护 | [channel-sync.md](references/channel-sync.md) |
 | 模型卡更新 | 把 model-plan 增量应用：建实体、改卡/成本/备注、启用、清理 | [model-card-update.md](references/model-card-update.md) |
 | Claude 模型关联 | `models.csv` 确认后写请求模型的关联路由 | [claude-模型关联.md](references/claude-模型关联.md) |
 | 非 Claude 模型关联 | `channelPriority` 链、free 变种合并、回退与时段门控 | [非Claude模型关联.md](references/非Claude模型关联.md) |
-| 批量重建 | 目录清空/迁移后的整体重建 | [rebuild.md](references/rebuild.md) |
+| 批量重建（rebuild） | 目录清空/迁移后的整体重建 | 本文「批量重建」节 |
+
+## 重算规划（replan）
+
+把 watch-pipeline 快照离线重算成评审产物：`models.csv`（映射建议）与
+`data/model-plan.json`（模型增量计划）。纯离线：不联网、不持凭据、不写
+AxonHub，任何时刻可以本地重跑。blocklist 作为既有输入只读消费（派生类的
+物化归同步渠道清单任务的物化步骤）；怀疑派生排除陈旧（分数刚变化、新速度
+变种）时，先跑一次该物化再 replan。
+
+### 输入（均为仓库内快照）
+
+- `data/models_extra.json` — 渠道声明事实 `channels.<channel>.<model_id>`：
+  `rp5h`、`usage_quota`、`cost{}`、人工维护的 `free` 旗标、goat 的 `tok_s`。
+  顶层 `blocklist.<channel>`（`{id, reason}`）是唯一排除源，本任务只读；
+  reason 前缀 `lowscore:`/`speed:` 为派生类、其余为人工类。
+- `data/all_models.json` — models.dev 平铺 `vendor/model` 目录；唯一卡片来源
+  （永远不是清单来源：只为渠道认领的模型补事实，绝不新增模型）。
+- `data/arena.json` — Arena 分数（榜单、`manual: true` 人工指派）。
+- `models.csv` — 映射工作区；`role=request` 行是人工维护的请求模型清单，
+  也是唯一被读回的单元格（加行/删行即增减请求模型；GPT 行按名透传，报为
+  ignored，从不进入映射）。
+
+### 流程
+
+1. 跑规划器（在仓库根）：
+   ```bash
+   python3 .agents/skills/axonhub-admin/scripts/models_mapping.py \
+     --csv models.csv \
+     --fail-on-errors
+   ```
+2. 报告分类：
+   - **阻断错误**（`--fail-on-errors` 下退出非零，产物仅供检查）：请求模型
+     不在 Arena 榜上且无人工指派（`request_arena_missing`）、输入 schema 漂移。
+   - **警告**（不阻断，必须向用户披露）：`manual_excluded`（reason 前缀
+     区分：`lowscore:` 派生低分、`speed:` 派生速度营销、其余人工类）、
+     `card_missing`、`arena_missing`/`arena_defaulted`/`arena_borrowed_rejected`、
+     `rp5h_missing_review`、`variant_superseded`、
+     `duplicate_model_across_sources`、`free_default_filled`、
+     `free_flag_missing`、`missing_remark_fields`。警告全部走 stderr 摘要；
+     仅卡片/备注类（`card_missing`、`missing_remark_fields`）随 model-plan
+     产物携带。
+3. （可选）单模型终态预览：
+   ```bash
+   python3 .agents/skills/axonhub-admin/scripts/assemble_card.py --id <modelID>
+   ```
+4. 呈报评审：`models.csv` 变更摘要 + plan 差异概览。用户确认后才进入对应
+   写任务（模型卡更新 / Claude 模型关联）；确认映射不等于授权写渠道或模型，
+   确认材料相互独立。
+
+### 注册表构造规则（评审与排障时对照；数字阈值是脚本内常量——文档解释，代码裁决）
+
+对象侧规则的归属：映射公式与 Arena 匹配链属 Claude 模型关联任务，跨渠道
+去重/变种分组/别名归一属非 Claude 模型关联任务，卡片成本与备注属模型卡
+更新任务，排除物化属同步渠道清单任务——本节不复述。
+
+- **free 判定**——记录级 `free` 旗标权威（含 `free: false` 反覆盖），无旗标
+  时 `-free` 后缀为派生默认（采集刷新的删除重插会丢记录级手工字段，默认值
+  保证这类模型不被误判；缺口以 `free_flag_missing` 呈现，供维护者补旗标）。
+- **Arena + rp5h 分诊**——非 free 无任何 Arena 匹配则不带分入册但不进映射
+  池（`arena_missing`）；缺 `rp5h` 的非 free 模型排除
+  （`rp5h_missing_excluded`，有分场景已被 lowscore 物化先行接管，本分支
+  实际覆盖查无分数者），分数达到 1500 保留带评审警告
+  （`rp5h_missing_review`），仅不参与映射目标挑选（记入 INELIGIBLE）。
+
+### 产物语义
+
+- `models.csv`——request 行保留为输入清单，其余单元格每轮重算；是映射建议
+  的可审查快照，不是 AxonHub 运行时状态。
+- `model-plan.json`（schema 1）——增量条目：`modelID`、归属渠道、可选
+  `channelAliases`、`channelPriority` 链（按 `rp5h` 降序的实际服务渠道）、
+  `cardRef`、以及推导 meta + 渠道声明终值组成的 `input`。卡片本身绝不复制
+  进计划。渠道清单治理独立于规划产物（同步正则）。
+- plan 是**纯目标态**：无指纹与陈旧性机制，过期整体重算；远端漂移由写任务
+  的 read-before-write 在执行时发现并报告。
+
+### 移交
+
+- **模型卡** → 模型卡更新任务，用户确认后写入。渠道清单治理独立于本流程
+  （同步正则，不消费规划产物）。
+- **Claude 映射** → 用户读 `models.csv` 后选择：Claude 模型关联任务写入，
+  或 AxonHub UI 手改。日常改靶直接在 UI，不进本流程。
+- **Claude 全局模型** → AxonHub 内一次手工创建，永不脚本化。
 
 ## Token
 
@@ -126,6 +208,34 @@ loop:
   `loadBalancerStrategy`/`traceStickyMode`）未变就省略（见部署怪癖）。
 - 成本终值已在计划里算好（渠道声明逐字段覆盖、free 归零），payload 直接用
   计划 `input.cost`；重建场景无计划时按同一映射从卡片/目录条目现场组装。
+
+## 批量重建（rebuild）
+
+目录被清空或迁移后的整体重建。单条/增量写入属模型卡更新任务。
+调用纪律见上方执行循环，payload 字段映射见上方 Payload 约定。工具：
+graphql-cli；大结果读取可用带 JWT 的 curl。
+
+1. 对账读：`models(first:100)` 从线上状态重算"剩余工作"——被中断/取消的
+   运行是常态，可能已部分落库（实例：一次被取消的运行其实已落库 23 个创建
+   和 4 个删除，重放会造出重复模型），绝不盲目重放。
+2. 软删探测：软删除的行对 `models` 不可见但仍占着 ID，`createModel` 会报
+   `model name 'x' already exists`。用 node 查询绕过软删拦截器探测：
+   `node(id: "gid://axonhub/Model/<n>") { … on Model { modelID } }`，
+   按 ID 升序探测可重建完整清单。
+3. 清理：`deleteModel(id)` 硬删（resolver 跳过软删拦截器，可重建同名）；
+   `bulkDeleteModels(ids)` 返回 `true` 但观察为不清理。每次清理以"随后的
+   createModel 成功"验证，从不信返回值。
+4. 优先路径：models 页「批量添加」从 `providersCatalog` 条目自动组装完整
+   卡片；等价的 GraphQL 流程是查 `providersCatalog(filtered: true)`，按
+   上方 Payload 约定从条目构造 `CreateModelInput`（实测 `gpt-5.5` 一次
+   成型，卡片完整）。目录没有的 ID 再查 `data/all_models.json`，都没有才
+   人工兜底。
+5. 创建：`bulkCreateModels(inputs: […])` 一次建齐；每模型 payload 的
+   `settings` 为 `{associations: []}`。
+6. 建后启用：`bulkEnableModels(ids)` 翻转（建出的都是 disabled）。
+7. 关联接线是建完后的独立一轮：非 Claude 自映射与请求模型路由分别属
+   非 Claude 模型关联 / Claude 模型关联任务。
+8. 每轮之后与线上对账（`models(first:100)`），只补真正缺失的部分。
 
 ## 数据源
 
