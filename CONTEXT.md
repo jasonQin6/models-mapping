@@ -36,7 +36,7 @@ _Avoid_: Tombstone, stale model
 **Model variant**：同一基础模型的衍生 id（如 `-free`、`-contributor`、`-fast` 后缀）。尺寸后缀（如 `-27b`）是模型 id 的一部分，不构成变种关系。
 _Avoid_: Alias（别名指跨渠道对同一 id 的拼写归一）
 
-**Model decision**：对登记内模型作出的人工排除事实，带理由记录于 `models_extra.json` 顶层 `blocklist.<channel>`（`{id, reason}` 条目，完整 ID 或剥厂商前缀裸 ID 皆可）。blocklist 是唯一排除源：`speed:`/`lowscore:` 两类由 replan 每次物化重建，人工类（`manual`/`tier`/`retired` 等）原样保留、冲突时人工优先。人工决策不落在采集器拥有的渠道节记录上——采集刷新的删除重插会丢记录级手工字段。
+**Model decision**：对登记内模型作出的人工排除事实，带理由记录于 `models_extra.json` 顶层 `blocklist.<channel>`（`{id, reason}` 条目，完整 ID 或剥厂商前缀裸 ID 皆可）。blocklist 是唯一排除源：`speed:`/`lowscore:` 两类由 channel-sync 的物化步骤重建，人工类（`manual`/`tier`/`retired` 等）原样保留、冲突时人工优先。人工决策不落在采集器拥有的渠道节记录上——采集刷新的删除重插会丢记录级手工字段。
 _Avoid_: CSV edit, inferred fallback
 
 ## 下游映射

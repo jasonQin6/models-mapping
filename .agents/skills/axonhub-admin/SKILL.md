@@ -27,8 +27,8 @@ description: 本仓对 AxonHub 部署（https://axon.jasonqin.site）的全链�
 
 | 任务 | 何时 | 流程 |
 | --- | --- | --- |
-| 重算规划与评审 | 快照更新后重算 `models.csv` 与双 plan；评审映射建议 | [replan.md](references/replan.md) |
-| 同步渠道清单 | autoSync 渠道的屏蔽正则治理（`autoSyncModelPattern`）与回读校验；手工静态渠道的 `supportedModels` 维护 | [channel-sync.md](references/channel-sync.md) |
+| 重算规划与评审 | 快照更新后重算 `models.csv` 与 model-plan；评审映射建议 | [replan.md](references/replan.md) |
+| 同步渠道清单 | 物化 blocklist 派生类并生成屏蔽正则（`autoSyncModelPattern`）与回读校验；手工静态渠道的 `supportedModels` 维护 | [channel-sync.md](references/channel-sync.md) |
 | 模型卡更新 | 把 model-plan 增量应用：建实体、改卡/成本/备注、启用、清理 | [model-card-update.md](references/model-card-update.md) |
 | Claude 模型关联 | `models.csv` 确认后写请求模型的关联路由 | [claude-模型关联.md](references/claude-模型关联.md) |
 | 非 Claude 模型关联 | `channelPriority` 链、free 变种合并、回退与时段门控 | [非Claude模型关联.md](references/非Claude模型关联.md) |
@@ -112,7 +112,7 @@ loop:
 | 文件 | 内容 | 权威范围 |
 | --- | --- | --- |
 | AxonHub 内置目录 | 21 开发者 453 模型（实测 2026-09-10），含能力位/成本/上限/日期 | 主流模型卡片首选来源 |
-| `data/models_extra.json` | 渠道节（每渠道的模型、cost、free 标记）、顶层 `aliases`、顶层 `blocklist`（唯一排除源：`speed:`/`lowscore:` 由 replan 物化，`manual`/`tier`/`retired` 人工维护） | 渠道清单与渠道侧成本；blocklist 同时供渠道同步正则枚举 |
+| `data/models_extra.json` | 渠道节（每渠道的模型、cost、free 标记）、顶层 `aliases`、顶层 `blocklist`（唯一排除源：`speed:`/`lowscore:` 由 channel-sync 物化，`manual`/`tier`/`retired` 人工维护） | 渠道清单与渠道侧成本；blocklist 同时供渠道同步正则枚举 |
 | `data/all_models.json` | models.dev 快照卡片 | 卡片补充来源（覆盖不全，缺卡走人工兜底，不臆造） |
 | `data/arena.json` | leaderboard 分数（`arena_score`/`organization`/`effort`） | 备注 `manual` 字段的 `arena_score: <分>` 标签 |
 

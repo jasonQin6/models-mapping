@@ -1,18 +1,18 @@
 # 重算规划（replan）
 
-把 watch-pipeline 快照离线重算成评审产物：`models.csv`（映射建议）、
-`data/model-plan.json`（模型增量计划），并把派生排除物化进
-`data/models_extra.json` 的 `blocklist`（`speed:`/`lowscore:` 两类整体重建，
-人工类保留）。纯离线：不联网、不持凭据、不写 AxonHub，任何时刻可以本地
-重跑。
+把 watch-pipeline 快照离线重算成评审产物：`models.csv`（映射建议）与
+`data/model-plan.json`（模型增量计划）。纯离线：不联网、不持凭据、不写
+AxonHub，任何时刻可以本地重跑。blocklist 作为既有输入只读消费（派生类的
+物化归 [channel-sync.md](channel-sync.md) 的物化步骤）；怀疑派生排除陈旧
+（分数刚变化、新速度变种）时，先跑一次 channel-sync 的物化再 replan。
 
 ## 输入（均为仓库内快照）
 
 - `data/models_extra.json` — 渠道声明事实 `channels.<channel>.<model_id>`：
   `rp5h`、`usage_quota`、`cost{}`、人工维护的 `free` 旗标、goat 的 `tok_s`。
-  顶层 `blocklist.<channel>`（`{id, reason}`）是**唯一排除源**：`speed:`/
-  `lowscore:` 两类由本流程每次运行物化重建，`manual`/`tier`/`retired` 等
-  人工类原样保留。
+  顶层 `blocklist.<channel>`（`{id, reason}`）是**唯一排除源**，replan 只读：
+  `speed:`/`lowscore:` 两类由 channel-sync 物化（相对最新快照可能陈旧），
+  `manual`/`tier`/`retired` 等人工类手工维护。
 - `data/all_models.json` — models.dev 平铺 `vendor/model` 目录；唯一卡片来源
   （永远不是清单来源：只为渠道认领的模型补事实，绝不新增模型）。
 - `data/arena.json` — Arena 分数（榜单、`manual: true` 人工指派）。
@@ -54,16 +54,15 @@
 [claude-模型关联.md](claude-模型关联.md)，卡片与成本终值见
 [model-card-update.md](model-card-update.md)——本文件不复述。
 
-- **排除 = blocklist 物化（单一机制）**——所有排除都落在
+- **排除 = blocklist（单一机制，只读）**——所有排除都落在
   `blocklist.<channel>`（`{id, reason}`，完整 ID 或剥厂商前缀裸 ID、大小写
-  不敏感），dedupe 逐记录查它。规划器拥有两个派生类并在每次运行**整体
-  重建**：`speed:`（`-fast`/`-highspeed` 速度营销变种）、`lowscore:`
-  （arena_score < 1500 且非 free；查无分数不适用，走 `arena_missing` 分诊；
-  想收录先改 `data/arena.json` 的人工指派，分数过线后自然回归）。人工类
-  （`manual`/`tier`/`retired`/…）原样保留，与派生条目冲突时人工优先；
-  陈旧的派生条目（id 已不在节里或分数回升）自动消失。blocklist 同时是
-  渠道同步正则的唯一来源（[channel-sync.md](channel-sync.md)），与写侧
-  "低分非免费不入册"（[model-card-update.md](model-card-update.md)）三层同线。
+  不敏感），dedupe 逐记录查它。规划器不产生排除：`speed:`（速度营销变种）
+  与 `lowscore:`（arena_score < 1500 且非 free；查无分数不适用，走
+  `arena_missing` 分诊；想收录先改 `data/arena.json` 的人工指派，分数过线
+  后自然回归）两类由 channel-sync 物化，人工类（`manual`/`tier`/`retired`/…）
+  手工维护。blocklist 同时是渠道同步正则的唯一来源
+  （[channel-sync.md](channel-sync.md)），与写侧"低分非免费不入册"
+  （[model-card-update.md](model-card-update.md)）三层同线。
 - **别名归一**——`models_extra.json` 顶层人工维护的 `aliases` 映射（如
   `tencent-hy3` → `hy3`）合并跨渠道拼写。注册表与 `plan.models[]` 用规范
   ID，`channelAliases` 描述各渠道路由暴露。

@@ -42,15 +42,19 @@ def _arena_models(arena: dict[str, float]) -> dict:
 def _plan(sections, cards=None, arena=None, requests=(), aliases=None, blocklist=None):
     # Aggregate view for legacy assertions: models from the model plan plus
     # the full run-level warnings/report. Test cards are keyed by bare id,
-    # so refs map bare -> bare. `blocklist` is the raw file shape.
+    # so refs map bare -> bare. `blocklist` is the raw file shape; the
+    # helper materializes derived classes first, mirroring the real flow
+    # (channel-sync materializes, planning consumes).
+    arena_models = _arena_models(arena or {})
+    blocklist_raw = materialize_blocklist(blocklist or {}, sections, aliases or {}, arena_models)
     rows, model_plan, report = plan_from(
         sections,
         aliases=aliases,
         cards=cards or {},
         card_refs={key: key for key in (cards or {})},
-        arena_models=_arena_models(arena or {}),
+        arena_models=arena_models,
         requests=requests,
-        blocklist_raw=blocklist,
+        blocklist_raw=blocklist_raw,
     )
     merged = {
         "models": model_plan["models"],
@@ -383,9 +387,12 @@ def test_lowscore_non_free_excluded_free_exempt() -> None:
         },
     }
     arena = {"minimax-m3": 1487.3, "laguna-s-2.1-free": 1500.0}
+    arena_models = _arena_models(arena)
+    blocklist_raw = materialize_blocklist({}, sections, {}, arena_models)
 
     rows, model_plan, report = plan_from(
-        sections, cards={}, arena_models=_arena_models(arena), requests=[]
+        sections, cards={}, arena_models=arena_models, requests=[],
+        blocklist_raw=blocklist_raw,
     )
 
     models = {m["modelID"] for m in model_plan["models"]}
@@ -548,8 +555,13 @@ def test_rp5h_missing_low_arena_excluded_high_arena_review() -> None:
         },
     }
     arena = {"glm-5": 1435.72}
+    arena_models = _arena_models(arena)
+    blocklist_raw = materialize_blocklist({}, sections, {}, arena_models)
 
-    _rows, model_plan, _report = plan_from(sections, cards={}, arena_models=_arena_models(arena), requests=[])
+    _rows, model_plan, _report = plan_from(
+        sections, cards={}, arena_models=arena_models, requests=[],
+        blocklist_raw=blocklist_raw,
+    )
 
     models = {m["modelID"] for m in model_plan["models"]}
     assert models == set()
@@ -757,6 +769,37 @@ def test_main_round_trips_csv_request_rows_and_writes_plan(tmp_path: Path) -> No
     assert "modelCard" not in entry["input"]
     assert entry["input"]["cost"] == {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0}
     assert "removals" not in model_plan and "providers" not in model_plan
+
+
+def test_main_materialize_blocklist_writes_derived_only(tmp_path: Path) -> None:
+    # The channel-sync entry point: rebuilds the derived classes in the
+    # stored blocklist and exits without touching the planning artifacts.
+    extra = tmp_path / "models_extra.json"
+    extra.write_text(json.dumps({
+        "schema_version": 1,
+        "aliases": {"x": "y"},
+        "blocklist": {"commandcode-goat": [{"id": "kimi-k2.5", "reason": "tier"}]},
+        "channels": {"commandcode-goat": {
+            "glm-5.2-fast": _rec(rp5h=138),
+            "kimi-k2.5": _rec(rp5h=900),
+            "minimax-m3": _rec(rp5h=3200),
+        }},
+    }), encoding="utf-8")
+    arena = tmp_path / "arena.json"
+    arena.write_text(json.dumps(_arena_doc({"minimax-m3": 1487.3})), encoding="utf-8")
+    csv_before = Path("models.csv").read_text(encoding="utf-8")
+
+    rc = main(["--materialize-blocklist", "--extra", str(extra), "--arena", str(arena)])
+
+    assert rc == 0
+    doc = json.loads(extra.read_text(encoding="utf-8"))
+    entries = {e["id"]: e["reason"] for e in doc["blocklist"]["commandcode-goat"]}
+    assert entries["kimi-k2.5"] == "tier"                       # human preserved
+    assert entries["glm-5.2-fast"].startswith("speed:")         # derived rebuilt
+    assert entries["minimax-m3"].startswith("lowscore:")
+    assert doc["aliases"] == {"x": "y"}                         # other keys untouched
+    # Planning artifacts untouched by the materialization entry point.
+    assert Path("models.csv").read_text(encoding="utf-8") == csv_before
 
 
 def test_main_fail_on_errors_exits_nonzero(tmp_path: Path) -> None:

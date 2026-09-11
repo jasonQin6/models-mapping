@@ -27,7 +27,9 @@ and produces everything the AxonHub write path consumes:
    renders a plan entry into the full AxonHub input at write time, so the
    plan never duplicates ``all_models.json`` content.  Channel allowlists
    are governed in AxonHub via autoSync + ``autoSyncModelPattern``
-   (channel-sync flow), not by a plan artifact.
+   (channel-sync flow), not by a plan artifact; the channel-sync flow also
+   owns the blocklist materialization (``--materialize-blocklist``), which
+   planning consumes as-is.
 
 Pure offline planning: no credentials, no network, no AxonHub writes.
 """
@@ -827,12 +829,11 @@ def build_plan(
     arena_path: Path,
     csv_path: Path,
 ) -> tuple[list[dict[str, str]], dict[str, Any], dict[str, Any]]:
-    """Load the snapshots, materialize the derived blocklist, and plan.
+    """Load the snapshots and plan against the stored blocklist.
 
-    Materialization rewrites the planner-owned ``speed:``/``lowscore:``
-    entries in ``data/models_extra.json`` (atomic, human-owned reasons
-    untouched) so the stored blocklist always mirrors the last replan and
-    the channel-sync regex can be a pure enumeration of it.
+    The blocklist is consumed as-is: its derived ``speed:``/``lowscore:``
+    classes are materialized by the channel-sync flow
+    (``--materialize-blocklist``), never by planning.
     """
 
     warnings: list[dict[str, Any]] = []
@@ -842,8 +843,6 @@ def build_plan(
     cards, card_refs = load_cards(cards_path)
     arena_models = load_arena(arena_path)
     requests = load_csv_requests(csv_path, warnings)
-    merged_blocklist = materialize_blocklist(raw_blocklist, sections, aliases, arena_models)
-    _write_blocklist(extra_path, merged_blocklist)
     return plan_from(
         sections,
         aliases=aliases,
@@ -852,8 +851,31 @@ def build_plan(
         arena_models=arena_models,
         requests=requests,
         warnings=warnings,
-        blocklist_raw=merged_blocklist,
+        blocklist_raw=raw_blocklist,
     )
+
+
+def run_materialize_blocklist(
+    *,
+    extra_path: Path,
+    arena_path: Path,
+) -> dict[str, list[dict[str, str]]]:
+    """Materialize the derived blocklist classes and persist them.
+
+    The channel-sync entry point: rebuilds the planner-owned
+    ``speed:``/``lowscore:`` entries from the current snapshots (human-owned
+    reasons pass through, conflicts keep the human entry) and writes the
+    blocklist key back to ``models_extra.json`` atomically, so the
+    channel-sync regex is a pure enumeration of the stored result.
+    """
+
+    sections = load_extra_sections(extra_path)
+    aliases = load_extra_aliases(extra_path)
+    raw_blocklist = load_extra_blocklist(extra_path)
+    arena_models = load_arena(arena_path)
+    merged = materialize_blocklist(raw_blocklist, sections, aliases, arena_models)
+    _write_blocklist(extra_path, merged)
+    return merged
 
 
 def _write_blocklist(path: Path, blocklist: Mapping[str, list[dict[str, str]]]) -> None:
@@ -896,12 +918,7 @@ def plan_from(
     """
 
     aliases = aliases or {}
-    # Materialize the derived classes (speed/lowscore) as part of planning:
-    # the merged blocklist is the single exclusion source for this run.
-    merged_blocklist = materialize_blocklist(
-        blocklist_raw or {}, sections, aliases, arena_models
-    )
-    blocklist = _index_blocklist(merged_blocklist)
+    blocklist = _index_blocklist(blocklist_raw or {})
     warnings: list[dict[str, Any]] = list(warnings) if warnings else []
     errors: list[dict[str, Any]] = []
     ineligible: list[dict[str, Any]] = []
@@ -1245,7 +1262,25 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         help="incremental model plan written after the run (cards by reference, costs, remarks)",
     )
     parser.add_argument("--fail-on-errors", action="store_true")
+    parser.add_argument(
+        "--materialize-blocklist",
+        action="store_true",
+        help="channel-sync entry point: rebuild the derived speed:/lowscore: "
+        "blocklist entries from the current snapshots, write them back, and "
+        "exit without planning",
+    )
     args = parser.parse_args(argv)
+
+    if args.materialize_blocklist:
+        try:
+            merged = run_materialize_blocklist(extra_path=args.extra, arena_path=args.arena)
+        except PlanningError as exc:
+            print(f"models-mapping: {exc}", file=sys.stderr)
+            return 1
+        total = sum(len(entries) for entries in merged.values())
+        channels = ", ".join(f"{ch}={len(entries)}" for ch, entries in sorted(merged.items()))
+        print(f"models-mapping: blocklist materialized ({total} entries: {channels})")
+        return 0
 
     try:
         rows, model_plan, report = build_plan(
