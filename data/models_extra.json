@@ -782,17 +782,6 @@
       }
     },
     "opencode-go": {
-      "deepseek-flash": {
-        "cost": {
-          "cache_read": 0.003,
-          "cache_write": null,
-          "input": 0.15,
-          "output": 0.6
-        },
-        "name": "DeepSeek V4.1 Flash",
-        "rp5h": 6500,
-        "usage_quota": 15.0
-      },
       "deepseek-v4-flash": {
         "cost": {
           "cache_read": 0.003,
@@ -825,6 +814,28 @@
         "name": "DeepSeek V4 Pro",
         "rp5h": 1050,
         "usage_quota": 15.0
+      },
+      "deepseek-v4.1-flash": {
+        "cost": {
+          "cache_read": 0.003,
+          "cache_write": null,
+          "input": 0.15,
+          "output": 0.6
+        },
+        "name": "DeepSeek V4.1 Flash",
+        "rp5h": null,
+        "usage_quota": null
+      },
+      "deepseek-v4.1-flash<br-/><small>4x-·-ends-sep-20</small>": {
+        "cost": {
+          "cache_read": null,
+          "cache_write": null,
+          "input": null,
+          "output": null
+        },
+        "name": "DeepSeek V4.1 Flash<br /><small>4x · Ends Sep 20</small>",
+        "rp5h": null,
+        "usage_quota": null
       },
       "glm-5.1": {
         "cost": {
@@ -1145,5 +1156,5 @@
     }
   },
   "schema_version": 1,
-  "updated_at": "2026-09-10T17:32:47Z"
+  "updated_at": "2026-09-15T14:17:56Z"
 }
