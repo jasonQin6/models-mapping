@@ -141,7 +141,19 @@ jobs:
             echo "No goat changes"
           else
             git commit -m "data: update commandcode-goat section of models_extra"
-            git pull --rebase origin "$GITHUB_REF_NAME"
+            # The go job may have pushed its own section of the same file in
+            # between: replay this section onto the fresh snapshot instead of
+            # failing on the same-file rebase conflict (the update script is
+            # an idempotent field-level merge).
+            if ! git pull --rebase origin "$GITHUB_REF_NAME"; then
+              git rebase --abort
+              git fetch origin "$GITHUB_REF_NAME"
+              git reset --hard "origin/$GITHUB_REF_NAME"
+              python3 .agents/skills/watch-pipeline/scripts/watch_goat.py \
+                --extra data/models_extra.json
+              git add data/models_extra.json
+              git commit -m "data: update commandcode-goat section of models_extra"
+            fi
             git push
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
@@ -151,6 +163,9 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "40985853+github-actions[bot]@users.noreply.github.com"
+          # A failed commit step can leave a mid-rebase state behind; clear it
+          # so the error-state commit is not blocked by unmerged files.
+          git rebase --abort 2>/dev/null || true
           if [ -d .agents/skills/watch-pipeline/reference/goat ]; then
             git add .agents/skills/watch-pipeline/reference/goat
           fi
