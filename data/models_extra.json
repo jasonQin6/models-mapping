@@ -1100,6 +1100,17 @@
         "name": "Qwen3.8 Max",
         "rp5h": 160,
         "usage_quota": 15.0
+      },
+      "union-alpha": {
+        "cost": {
+          "cache_read": null,
+          "cache_write": null,
+          "input": null,
+          "output": null
+        },
+        "name": "Union Alpha Free",
+        "rp5h": null,
+        "usage_quota": null
       }
     },
     "sensenova": {
@@ -1156,5 +1167,5 @@
     }
   },
   "schema_version": 1,
-  "updated_at": "2026-09-16T03:58:34Z"
+  "updated_at": "2026-09-17T04:04:39Z"
 }
