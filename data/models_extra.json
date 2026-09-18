@@ -10,7 +10,7 @@
       },
       {
         "id": "glm-5",
-        "reason": "lowscore: arena 1435.69 < 1500"
+        "reason": "lowscore: arena 1435.91 < 1500"
       },
       {
         "id": "glm-5.2-fast",
@@ -54,15 +54,15 @@
       },
       {
         "id": "inkling",
-        "reason": "lowscore: arena 1408.66 < 1500"
+        "reason": "lowscore: arena 1409.99 < 1500"
       },
       {
         "id": "inkling-small",
-        "reason": "lowscore: arena 1405.85 < 1500"
+        "reason": "lowscore: arena 1406.58 < 1500"
       },
       {
         "id": "kimi-k2.7-code",
-        "reason": "lowscore: arena 1472.39 < 1500"
+        "reason": "lowscore: arena 1472.72 < 1500"
       },
       {
         "id": "kimi-k2.7-code-highspeed",
@@ -74,31 +74,31 @@
       },
       {
         "id": "mimo-v2.5",
-        "reason": "lowscore: arena 1436.87 < 1500"
+        "reason": "lowscore: arena 1437.16 < 1500"
       },
       {
         "id": "mimo-v2.5-pro",
-        "reason": "lowscore: arena 1474.63 < 1500"
+        "reason": "lowscore: arena 1474.92 < 1500"
       },
       {
         "id": "minimax-m2.5",
-        "reason": "lowscore: arena 1384.03 < 1500"
+        "reason": "lowscore: arena 1384.13 < 1500"
       },
       {
         "id": "minimax-m2.7",
-        "reason": "lowscore: arena 1397.63 < 1500"
+        "reason": "lowscore: arena 1397.52 < 1500"
       },
       {
         "id": "minimax-m3",
-        "reason": "lowscore: arena 1486.26 < 1500"
+        "reason": "lowscore: arena 1486.7 < 1500"
       },
       {
         "id": "qwen3.6-max-preview",
-        "reason": "lowscore: arena 1478.75 < 1500"
+        "reason": "lowscore: arena 1479.06 < 1500"
       },
       {
         "id": "qwen3.6-plus",
-        "reason": "lowscore: arena 1460.21 < 1500"
+        "reason": "lowscore: arena 1460.53 < 1500"
       },
       {
         "id": "qwen3.7-flash",
@@ -144,7 +144,7 @@
       },
       {
         "id": "kimi-k2.7-code",
-        "reason": "lowscore: arena 1472.39 < 1500"
+        "reason": "lowscore: arena 1472.72 < 1500"
       },
       {
         "id": "mimo-v2-omni",
@@ -156,23 +156,23 @@
       },
       {
         "id": "mimo-v2.5",
-        "reason": "lowscore: arena 1436.87 < 1500"
+        "reason": "lowscore: arena 1437.16 < 1500"
       },
       {
         "id": "mimo-v2.5-pro",
-        "reason": "lowscore: arena 1474.63 < 1500"
+        "reason": "lowscore: arena 1474.92 < 1500"
       },
       {
         "id": "minimax-m2.5",
-        "reason": "lowscore: arena 1384.03 < 1500"
+        "reason": "lowscore: arena 1384.13 < 1500"
       },
       {
         "id": "minimax-m2.7",
-        "reason": "lowscore: arena 1397.63 < 1500"
+        "reason": "lowscore: arena 1397.52 < 1500"
       },
       {
         "id": "minimax-m3",
-        "reason": "lowscore: arena 1486.26 < 1500"
+        "reason": "lowscore: arena 1486.7 < 1500"
       },
       {
         "id": "omen-alpha",
@@ -184,7 +184,7 @@
       },
       {
         "id": "qwen3.6-plus",
-        "reason": "lowscore: arena 1460.21 < 1500"
+        "reason": "lowscore: arena 1460.53 < 1500"
       },
       {
         "id": "qwen3.7-plus",
@@ -205,7 +205,6 @@
           "input": 0,
           "output": 0
         },
-        "free": true,
         "name": "Ling 3.0 Flash",
         "rp5h": null,
         "tok_s": null,
@@ -363,17 +362,6 @@
         "tok_s": 114,
         "usage_quota": 40.0
       },
-      "glm-5.3-flashx": {
-        "cost": {
-          "cache_read": 0.075,
-          "input": 0.37,
-          "output": 1.25
-        },
-        "name": "GLM-5.3 FlashX",
-        "rp5h": 945,
-        "tok_s": null,
-        "usage_quota": 20.0
-      },
       "gpt-5.6-luna": {
         "cost": {
           "cache_read": 0.02,
@@ -514,7 +502,6 @@
           "input": 0.0,
           "output": 0.0
         },
-        "free": true,
         "name": "Laguna S 2.1",
         "rp5h": null,
         "tok_s": null,
@@ -526,22 +513,21 @@
           "input": 0.0,
           "output": 0.0
         },
-        "free": true,
         "name": "Ling 3.0 Flash Sante",
         "rp5h": null,
         "tok_s": null,
         "usage_quota": null
       },
-      "longcat-2.0": {
+      "longcat-2.0-free": {
         "cost": {
-          "cache_read": 0.006,
-          "input": 0.3,
-          "output": 1.2
+          "cache_read": 0.0,
+          "input": 0.0,
+          "output": 0.0
         },
         "name": "LongCat 2.0",
-        "rp5h": 12800,
+        "rp5h": null,
         "tok_s": null,
-        "usage_quota": 50.0
+        "usage_quota": null
       },
       "mimo-v2.5": {
         "cost": {
@@ -754,17 +740,6 @@
         },
         "name": "Qwen 3.8 Max 0902",
         "rp5h": 261,
-        "tok_s": null,
-        "usage_quota": 20.0
-      },
-      "qwen3.8-omni-flash": {
-        "cost": {
-          "cache_read": 0.016,
-          "input": 0.15,
-          "output": 0.47
-        },
-        "name": "Qwen 3.8 Omni Flash",
-        "rp5h": 3940,
         "tok_s": null,
         "usage_quota": 20.0
       },
@@ -1121,34 +1096,57 @@
         "name": "Qwen3.8 Max",
         "rp5h": 160,
         "usage_quota": 15.0
+      },
+      "union-alpha": {
+        "cost": {
+          "cache_read": 0.0,
+          "cache_write": null,
+          "input": 0.0,
+          "output": 0.0
+        },
+        "name": "Union Alpha Free",
+        "rp5h": null,
+        "usage_quota": null
       }
     },
     "sensenova": {
       "deepseek-v4-flash": {
-        "free": true,
+        "cost": {
+          "input": 0,
+          "output": 0
+        },
         "name": "DeepSeek V4 Flash (latest)",
-        "rp5h": null,
+        "rp5h": 100,
         "tok_s": null,
         "usage_quota": null
       },
       "deepseek-v4-pro": {
-        "free": true,
+        "cost": {
+          "input": 0,
+          "output": 0
+        },
         "name": "DeepSeek V4 Pro (latest)",
-        "rp5h": null,
+        "rp5h": 100,
         "tok_s": null,
         "usage_quota": null
       },
       "glm-5.2": {
-        "free": true,
+        "cost": {
+          "input": 0,
+          "output": 0
+        },
         "name": "GLM-5.2",
-        "rp5h": null,
+        "rp5h": 100,
         "tok_s": null,
         "usage_quota": null
       },
       "kimi-k3": {
-        "free": true,
+        "cost": {
+          "input": 0,
+          "output": 0
+        },
         "name": "Kimi K3",
-        "rp5h": null,
+        "rp5h": 100,
         "tok_s": null,
         "usage_quota": null
       },
@@ -1157,7 +1155,6 @@
           "input": 0,
           "output": 0
         },
-        "free": true,
         "name": "SenseNova 6.8 Flash Lite",
         "rp5h": null,
         "tok_s": null,
@@ -1168,7 +1165,6 @@
           "input": 0,
           "output": 0
         },
-        "free": true,
         "name": "SenseNova U1 Fast",
         "rp5h": null,
         "tok_s": null,
@@ -1177,5 +1173,5 @@
     }
   },
   "schema_version": 1,
-  "updated_at": "2026-09-19T03:48:33Z"
+  "updated_at": "2026-09-18T03:53:27Z"
 }

@@ -90,9 +90,11 @@ loop:
 | `data/all_models.json` | models.dev 快照卡片 | ②的卡片来源（覆盖不全，缺卡走内置目录/人工兜底，不臆造） |
 | `data/arena.json` | leaderboard 分数（`arena_score`/`organization`/`effort`，`manual: true` 人工指派） | ①物化与④映射的质量信号 |
 
-请求模型的 free 判定横切各步：记录级 `free` 旗标权威（含 `free: false` 反覆盖），
-无旗标时 `-free` 后缀为派生默认（采集刷新的删除重插会丢记录级手工字段，默认值
-保证这类模型不被误判；缺口以 `free_flag_missing` 呈现，供维护者补旗标）。
+请求模型的 free 判定横切各步，只读渠道声明价：input/output 均声明为零价即免费；
+正价或未声明即非免费，未声明的非免费模型交 rp5h 缺失门禁。零价由采集层统一供给：
+watcher 转写渠道价格表的 `Free` 字样（go/goat），ant/sensenova 静态节人工以零价
+声明——判定链上不存在旗标或 id 后缀启发式。判定免费而渠道未声明缓存价时，卡片
+成本以零起步（`_merge_channel_cost`）。
 
 ## 部署怪癖与已知事实
 
