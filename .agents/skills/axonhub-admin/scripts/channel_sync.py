@@ -8,8 +8,8 @@ filter's logic:
 
 1. Materialize the derived blocklist classes — rebuild the planner-owned
    ``speed:``/``lowscore:`` entries from the current snapshots (human-owned
-   reasons pass through, conflicts keep the human entry) and write the
-   ``blocklist`` key back to ``data/models_extra.json`` atomically.
+   reasons pass through, conflicts keep the human entry) and write
+   ``data/blocklist.json`` atomically.
 2. Generate the per-channel allow regex as a pure enumeration of the stored
    blocklist: a fixed ``claude-*`` block (Claude is served by AxonHub's own
    global models and is never collected) plus one terminated match per
@@ -28,18 +28,20 @@ import argparse
 import json
 import re
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, Mapping, Optional, Sequence
 
 from registry import canonical_id, is_free_model  # noqa: E402
 from name_matching import find_best_match  # noqa: E402
 from snapshot import (  # noqa: E402
+    BLOCKLIST_PATH,
+    EXTRA_SCHEMA_VERSION,
     PlanningError,
     load_arena,
+    load_blocklist,
     load_extra_aliases,
-    load_extra_blocklist,
     load_extra_sections,
-    load_json,
     number,
 )
 
@@ -149,39 +151,40 @@ def run_materialize_blocklist(
     *,
     extra_path: Path,
     arena_path: Path,
+    blocklist_path: Path = BLOCKLIST_PATH,
 ) -> dict[str, list[dict[str, str]]]:
     """Materialize the derived blocklist classes and persist them.
 
     Rebuilds the planner-owned ``speed:``/``lowscore:`` entries from the
     current snapshots (human-owned reasons pass through, conflicts keep the
-    human entry) and writes the blocklist key back to ``models_extra.json``
-    atomically, so the sync regex is a pure enumeration of the stored
-    result.
+    human entry) and writes ``data/blocklist.json`` atomically, so the sync
+    regex is a pure enumeration of the stored result.  ``extra_path`` is
+    read-only here — the collection store belongs to watch-pipeline.
     """
 
     sections = load_extra_sections(extra_path)
     aliases = load_extra_aliases(extra_path)
-    raw_blocklist = load_extra_blocklist(extra_path)
+    raw_blocklist = load_blocklist(blocklist_path)
     arena_models = load_arena(arena_path)
     merged = materialize_blocklist(raw_blocklist, sections, aliases, arena_models)
-    _write_blocklist(extra_path, merged)
+    _write_blocklist(blocklist_path, merged)
     return merged
 
 
 def _write_blocklist(path: Path, blocklist: Mapping[str, list[dict[str, str]]]) -> None:
-    """Persist the blocklist key atomically, leaving every other key alone."""
+    """Persist the exclusion store atomically (whole-file replace)."""
 
-    document = load_json(path)
-    if not isinstance(document, Mapping):
-        raise PlanningError(f"{path} is not a JSON object")
-    updated = dict(document)
-    updated["blocklist"] = {
-        channel: [dict(entry) for entry in entries]
-        for channel, entries in sorted(blocklist.items())
+    document = {
+        "schema_version": EXTRA_SCHEMA_VERSION,
+        "updated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "blocklist": {
+            channel: [dict(entry) for entry in entries]
+            for channel, entries in sorted(blocklist.items())
+        },
     }
     temporary = path.with_name(f".{path.name}.tmp")
     temporary.write_text(
-        json.dumps(updated, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        json.dumps(document, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
     temporary.replace(path)
@@ -219,6 +222,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     )
     parser.add_argument("--extra", type=Path, default=Path("data/models_extra.json"))
     parser.add_argument("--arena", type=Path, default=Path("data/arena.json"))
+    parser.add_argument("--blocklist", type=Path, default=BLOCKLIST_PATH)
     parser.add_argument(
         "--channel",
         action="append",
@@ -228,7 +232,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        merged = run_materialize_blocklist(extra_path=args.extra, arena_path=args.arena)
+        merged = run_materialize_blocklist(
+            extra_path=args.extra, arena_path=args.arena, blocklist_path=args.blocklist
+        )
     except PlanningError as exc:
         print(f"channel-sync: {exc}", file=sys.stderr)
         return 1

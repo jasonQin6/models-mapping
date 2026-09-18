@@ -4,11 +4,11 @@
 Each step (channel-sync, model-card-update, channel associations, Claude
 mapping) computes offline from the in-repo snapshots collected by
 watch-pipeline: ``data/models_extra.json`` (channel-declared facts plus the
-hand-maintained ``aliases`` and ``blocklist`` top-level keys),
-``data/all_models.json`` (public cards), and ``data/arena.json`` (quality
-signals).  This module owns turning those files into the lookup shapes the
-steps consume; it never writes, never reaches the network, and holds no
-credentials.
+hand-maintained ``aliases`` top-level key), ``data/all_models.json`` (public
+cards), ``data/arena.json`` (quality signals), and the step-side exclusion
+store ``data/blocklist.json``.  This module owns turning those files into
+the lookup shapes the steps consume; it never writes, never reaches the
+network, and holds no credentials.
 """
 
 from __future__ import annotations
@@ -21,6 +21,7 @@ from typing import Any, Mapping, Optional
 from name_matching import normalize_arena_name  # noqa: E402
 
 EXTRA_SCHEMA_VERSION = 1
+BLOCKLIST_PATH = Path("data/blocklist.json")
 
 
 class PlanningError(RuntimeError):
@@ -94,12 +95,15 @@ def load_extra_aliases(path: Path) -> dict[str, str]:
     return {str(alias): str(canonical) for alias, canonical in aliases.items()}
 
 
-def load_extra_blocklist(path: Path) -> dict[str, list[dict[str, str]]]:
-    """Load the raw hand-plus-derived ``blocklist`` (channel -> [{id, reason}])."""
+def load_blocklist(path: Path) -> dict[str, list[dict[str, str]]]:
+    """Load the exclusion store ``data/blocklist.json`` (channel -> [{id, reason}])."""
 
     payload = load_json(path)
     if not isinstance(payload, Mapping):
-        return {}
+        raise PlanningError(f"{path} is not a JSON object")
+    version = payload.get("schema_version")
+    if version is not None and version != EXTRA_SCHEMA_VERSION:
+        raise PlanningError(f"{path} has unsupported schema_version {version!r}")
     raw = payload.get("blocklist")
     if raw is None:
         return {}

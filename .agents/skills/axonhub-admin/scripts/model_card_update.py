@@ -33,7 +33,8 @@ from snapshot import (  # noqa: E402
     load_arena,
     load_cards,
     load_extra_aliases,
-    load_extra_blocklist,
+    BLOCKLIST_PATH,
+    load_blocklist,
     load_extra_sections,
 )
 
@@ -216,6 +217,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         description="Compute the AxonHub model-card target state from the snapshots"
     )
     parser.add_argument("--extra", type=Path, default=Path("data/models_extra.json"))
+    parser.add_argument("--blocklist", type=Path, default=BLOCKLIST_PATH)
     parser.add_argument("--cards", type=Path, default=Path("data/all_models.json"))
     parser.add_argument("--arena", type=Path, default=Path("data/arena.json"))
     parser.add_argument("--id", default=None, help="render the full write-time payload for one modelID")
@@ -224,7 +226,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     try:
         sections = load_extra_sections(args.extra)
         aliases = load_extra_aliases(args.extra)
-        blocklist_raw = load_extra_blocklist(args.extra)
+        blocklist_raw = load_blocklist(args.blocklist)
         arena_models = load_arena(args.arena)
         cards, refs = load_cards(args.cards)
         result = build_registry(

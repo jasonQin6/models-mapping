@@ -94,29 +94,36 @@ def test_materialize_blocklist_human_wins_over_derived() -> None:
 def test_main_materializes_and_prints_patterns(tmp_path: Path, capsys) -> None:
     # The single channel-sync entry point: rebuilds the derived classes in
     # the stored blocklist and prints the per-channel allow regex as JSON.
+    # The collection store is read-only here; the blocklist file is the
+    # only thing this step writes.
     extra = tmp_path / "models_extra.json"
     extra.write_text(json.dumps({
         "schema_version": 1,
         "aliases": {"x": "y"},
-        "blocklist": {"commandcode-goat": [{"id": "kimi-k2.5", "reason": "tier"}]},
         "channels": {"commandcode-goat": {
             "glm-5.2-fast": rec(rp5h=138),
             "kimi-k2.5": rec(rp5h=900),
             "minimax-m3": rec(rp5h=3200),
         }},
     }), encoding="utf-8")
+    blocklist = tmp_path / "blocklist.json"
+    blocklist.write_text(json.dumps({
+        "schema_version": 1,
+        "blocklist": {"commandcode-goat": [{"id": "kimi-k2.5", "reason": "tier"}]},
+    }), encoding="utf-8")
     arena = tmp_path / "arena.json"
     arena.write_text(json.dumps(arena_doc({"minimax-m3": 1487.3})), encoding="utf-8")
+    extra_before = extra.read_text(encoding="utf-8")
 
-    rc = main(["--extra", str(extra), "--arena", str(arena)])
+    rc = main(["--extra", str(extra), "--arena", str(arena), "--blocklist", str(blocklist)])
 
     assert rc == 0
-    doc = json.loads(extra.read_text(encoding="utf-8"))
+    doc = json.loads(blocklist.read_text(encoding="utf-8"))
     entries = {e["id"]: e["reason"] for e in doc["blocklist"]["commandcode-goat"]}
     assert entries["kimi-k2.5"] == "tier"                       # human preserved
     assert entries["glm-5.2-fast"].startswith("speed:")         # derived rebuilt
     assert entries["minimax-m3"].startswith("lowscore:")
-    assert doc["aliases"] == {"x": "y"}                         # other keys untouched
+    assert extra.read_text(encoding="utf-8") == extra_before    # collection store untouched
     patterns = json.loads(capsys.readouterr().out)
     assert set(patterns) == {"commandcode-goat"}
     assert patterns["commandcode-goat"] == sync_pattern(
@@ -130,16 +137,20 @@ def test_main_channel_filter_and_unknown(tmp_path: Path, capsys) -> None:
     extra = tmp_path / "models_extra.json"
     extra.write_text(json.dumps({
         "schema_version": 1,
+        "channels": {"commandcode-goat": {"glm-5.2-fast": rec(rp5h=138)}},
+    }), encoding="utf-8")
+    blocklist = tmp_path / "blocklist.json"
+    blocklist.write_text(json.dumps({
+        "schema_version": 1,
         "blocklist": {
             "commandcode-goat": [{"id": "glm-5.2-fast", "reason": "speed: fast/highspeed suffix"}],
             "opencode-go": [{"id": "kimi-k2.5", "reason": "tier"}],
         },
-        "channels": {"commandcode-goat": {"glm-5.2-fast": rec(rp5h=138)}},
     }), encoding="utf-8")
     arena = tmp_path / "arena.json"
     arena.write_text(json.dumps(arena_doc({})), encoding="utf-8")
 
-    rc = main(["--extra", str(extra), "--arena", str(arena),
+    rc = main(["--extra", str(extra), "--arena", str(arena), "--blocklist", str(blocklist),
                "--channel", "opencode-go", "--channel", "missing"])
 
     assert rc == 0

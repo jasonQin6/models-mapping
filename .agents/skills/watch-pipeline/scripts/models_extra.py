@@ -73,7 +73,7 @@ def update_channel(
     key the scrape does not produce) while its contract fields refresh; a
     model that leaves the channel declaration leaves the section with its
     whole record — which is why hand-maintained model decisions live in
-    the top-level ``blocklist`` key, not on records.
+    axonhub-admin's ``data/blocklist.json``, not on records.
     """
 
     document = load_document(path)

@@ -4,7 +4,7 @@
 import json
 from pathlib import Path
 
-from snapshot import index_blocklist, load_arena, load_extra_blocklist  # noqa: E402
+from snapshot import index_blocklist, load_arena, load_blocklist  # noqa: E402
 
 
 def test_load_arena_normalizes_raw_board_names(tmp_path: Path) -> None:
@@ -31,11 +31,14 @@ def test_load_arena_normalizes_raw_board_names(tmp_path: Path) -> None:
 
 
 def test_blocklist_loader_returns_raw_shape(tmp_path: Path) -> None:
-    doc = {"blocklist": {"opencode-go": [{"id": "google/gemini-3.5-flash-lite", "reason": "tier"}]}}
-    path = tmp_path / "models_extra.json"
+    doc = {
+        "schema_version": 1,
+        "blocklist": {"opencode-go": [{"id": "google/gemini-3.5-flash-lite", "reason": "tier"}]},
+    }
+    path = tmp_path / "blocklist.json"
     path.write_text(json.dumps(doc), encoding="utf-8")
 
-    rules = load_extra_blocklist(path)
+    rules = load_blocklist(path)
 
     assert rules["opencode-go"] == [{"id": "google/gemini-3.5-flash-lite", "reason": "tier"}]
     # The lookup index spells both the full and the bare (vendor-prefix-stripped)

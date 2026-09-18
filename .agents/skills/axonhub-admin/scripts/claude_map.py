@@ -31,7 +31,8 @@ from snapshot import (  # noqa: E402
     PlanningError,
     load_arena,
     load_extra_aliases,
-    load_extra_blocklist,
+    BLOCKLIST_PATH,
+    load_blocklist,
     load_extra_sections,
     number,
 )
@@ -251,13 +252,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         description="Pair Claude request models with candidates by the Arena/RP5H formula plus free fill"
     )
     parser.add_argument("--extra", type=Path, default=Path("data/models_extra.json"))
+    parser.add_argument("--blocklist", type=Path, default=BLOCKLIST_PATH)
     parser.add_argument("--arena", type=Path, default=Path("data/arena.json"))
     args = parser.parse_args(argv)
 
     try:
         sections = load_extra_sections(args.extra)
         aliases = load_extra_aliases(args.extra)
-        blocklist_raw = load_extra_blocklist(args.extra)
+        blocklist_raw = load_blocklist(args.blocklist)
         arena_models = load_arena(args.arena)
         result = build_registry(
             sections=sections,

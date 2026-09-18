@@ -70,13 +70,16 @@ def test_main_prints_plans_and_id_filter(tmp_path: Path, capsys) -> None:
     }), encoding="utf-8")
     arena = tmp_path / "arena.json"
     arena.write_text(json.dumps({"schema_version": 1, "models": {}}), encoding="utf-8")
+    blocklist = tmp_path / "blocklist.json"
+    blocklist.write_text(json.dumps({"schema_version": 1, "blocklist": {}}), encoding="utf-8")
 
-    assert main(["--extra", str(extra), "--arena", str(arena)]) == 0
+    argv = ["--extra", str(extra), "--arena", str(arena), "--blocklist", str(blocklist)]
+    assert main(argv) == 0
     plans = json.loads(capsys.readouterr().out)
     assert {plan["modelID"] for plan in plans} == {"tencent-hy3", "solo"}
 
-    assert main(["--extra", str(extra), "--arena", str(arena), "--id", "solo"]) == 0
+    assert main([*argv, "--id", "solo"]) == 0
     plans = json.loads(capsys.readouterr().out)
     assert [plan["modelID"] for plan in plans] == ["solo"]
 
-    assert main(["--extra", str(extra), "--arena", str(arena), "--id", "missing"]) == 1
+    assert main([*argv, "--id", "missing"]) == 1
