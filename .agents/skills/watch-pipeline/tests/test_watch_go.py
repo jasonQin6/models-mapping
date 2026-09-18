@@ -23,7 +23,7 @@ def test_build_go_section_fixture_yields_channel_facts() -> None:
     models = build_go_section(_fixture_content())
 
     # go.mdx owns the list: exactly its ids, the channel claude model dropped.
-    assert set(models) == {"grok-4.6", "sample-bot", "freebie"}
+    assert set(models) == {"grok-4.6", "sample-bot", "freebie", "union-alpha"}
     grok = models["grok-4.6"]
     assert grok["name"] == "Grok 4.6"
     assert grok["rp5h"] == 169
@@ -40,6 +40,36 @@ def test_build_go_section_fixture_yields_channel_facts() -> None:
     assert bot["rp5h"] == 1000
     assert bot["usage_quota"] == 60
     assert bot["cost"]["cache_write"] == 0.375
+
+
+def test_free_worded_pricing_row_transcribes_zero_prices() -> None:
+    models = build_go_section(_fixture_content())
+
+    # The real-world Union Alpha Free shape: the id cell has no free marker
+    # and the pricing row says ``Free`` in words.  Collection transcribes
+    # the declaration as zero prices — nothing else; freeness itself is a
+    # compute-layer determination from the declared cost.
+    alpha = models["union-alpha"]
+    assert alpha["name"] == "Union Alpha Free"
+    assert "free" not in alpha
+    assert alpha["rp5h"] is None
+    assert alpha["usage_quota"] is None
+    assert alpha["cost"] == {
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": None,
+    }
+
+
+def test_priced_rows_transcribe_their_numbers() -> None:
+    models = build_go_section(_fixture_content())
+
+    # A plain priced row and a ``$0`` row are numbers, not Free wording:
+    # both transcribe as-is and carry no freeness signal here.
+    assert models["grok-4.6"]["cost"]["output"] == 0.8
+    assert models["freebie"]["cost"] == {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0}
+    assert all("free" not in m for m in models.values())
 
 
 def test_free_model_transcribes_declarations_without_backfill() -> None:
@@ -85,6 +115,7 @@ def test_pricing_without_priced_rows_is_structural_drift() -> None:
         .replace("$2.40", "incl")
         .replace("$15.00", "incl")
         .replace("$0", "incl")
+        .replace("| Free   | Free   | Free        |", "| incl    | incl    | incl        |")
     )
 
     with pytest.raises(ValueError, match="no priced rows"):
@@ -133,4 +164,42 @@ def test_main_writes_section_from_local_fixture(tmp_path: Path) -> None:
 
     assert rc == 0
     document = json.loads(out.read_text(encoding="utf-8"))
-    assert set(document["channels"]["opencode-go"]) == {"grok-4.6", "sample-bot", "freebie"}
+    assert set(document["channels"]["opencode-go"]) == {
+        "grok-4.6",
+        "sample-bot",
+        "freebie",
+        "union-alpha",
+    }
+
+
+def test_update_channel_free_rescission_is_an_ordinary_cost_refresh(tmp_path: Path) -> None:
+    path = tmp_path / "models_extra.json"
+    update_channel(path, "opencode-go", {"union-alpha": {"cost": {"input": 0, "output": 0}}})
+
+    # Upstream charging again is just a contract-field refresh: no flag
+    # machinery exists on either side.
+    update_channel(
+        path, "opencode-go", {"union-alpha": {"cost": {"input": 0.2, "output": 0.8}}}
+    )
+
+    document = load_document(path)
+    assert document["channels"]["opencode-go"]["union-alpha"]["cost"] == {
+        "input": 0.2,
+        "output": 0.8,
+    }
+
+
+def test_update_channel_preserves_hand_maintained_record_fields(tmp_path: Path) -> None:
+    path = tmp_path / "models_extra.json"
+    update_channel(path, "commandcode-goat", {"laguna-s-2.1-free": {"rp5h": None, "note": "hand"}})
+
+    # A scraper never touches keys it does not produce: the goat section's
+    # refresh refreshes contract fields and leaves hand fields exactly as
+    # maintained.
+    update_channel(path, "commandcode-goat", {"laguna-s-2.1-free": {"rp5h": 900}})
+
+    document = load_document(path)
+    assert document["channels"]["commandcode-goat"]["laguna-s-2.1-free"] == {
+        "rp5h": 900,
+        "note": "hand",
+    }

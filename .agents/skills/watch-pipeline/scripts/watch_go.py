@@ -10,8 +10,10 @@ facts only (quotas, prices); public card data is filled offline by axonhub-admin
 
 Channel-provided ``claude-*`` models are not collected (ADR 0012).  The
 parser transcribes declarations only — the document's zero prices are kept
-as-is, and free quotas are re-derived at compute time from the model's
-owning channel so the rule lives in one place.
+as-is, the pricing table's ``Free`` wording transcribes as zero prices
+(freeness itself is compute-layer's call from the declared cost), and free
+quotas are re-derived at compute time from the model's owning channel so
+the rule lives in one place.
 """
 
 from __future__ import annotations
@@ -83,6 +85,14 @@ def parse_price(value: str) -> Optional[float]:
         return float(value)
     except ValueError:
         return None
+
+
+def parse_price_cell(value: str) -> Optional[float]:
+    """Parse a token-price cell; a literal ``Free`` declares a zero price."""
+
+    if value.strip().lower() == 'free':
+        return 0.0
+    return parse_price(value)
 
 
 def parse_int_or_none(value: str) -> Optional[int]:
@@ -173,9 +183,12 @@ def parse_mdx(content: str) -> Dict[str, dict]:
     Reads three tables — requests (rp5h), pricing (the four prices plus
     usage_quota, historically the ``Usage`` column) and endpoints.
     Variant rows of one model in the pricing table collapse to the row
-    with the cheapest output price.  The parser transcribes declarations
+    with the cheapest output price.  A row whose Input and Output cells
+    read ``Free`` declares zero token prices, transcribed as cost zeros;
+    freeness itself is a compute-layer determination from the declared
+    cost, never a collected field.  The parser transcribes declarations
     only: undeclared cells stay ``None`` and no value is derived from
-    other rows — free-model backfill and any other cleaning belong to the
+    other rows — free-model backfill and any other cleaning belong to
     axonhub-admin's offline scripts (registry.py).
 
     Raises ValueError on structural drift (a signature table missing or
@@ -219,10 +232,10 @@ def parse_mdx(content: str) -> Dict[str, dict]:
             continue
         record = {
             'name': re.sub(r'\s*\([^)]+\)', '', raw_name).strip() or raw_name,
-            'price_input': parse_price(row.get('Input', '-')),
-            'price_output': parse_price(row.get('Output', '-')),
-            'price_cached_read': parse_price(row.get('Cached Read', '-')),
-            'price_cached_write': parse_price(row.get('Cached Write', '-')),
+            'price_input': parse_price_cell(row.get('Input', '-')),
+            'price_output': parse_price_cell(row.get('Output', '-')),
+            'price_cached_read': parse_price_cell(row.get('Cached Read', '-')),
+            'price_cached_write': parse_price_cell(row.get('Cached Write', '-')),
             'usage_quota': parse_price(row.get('Usage') or row.get('Monthly limit') or '-'),
         }
         if record['price_output'] is None:
