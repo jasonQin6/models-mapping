@@ -86,7 +86,8 @@ loop:
 
 | 文件 | 内容 | 权威范围 |
 | --- | --- | --- |
-| `data/models_extra.json` | 渠道节（每渠道的模型、cost）、顶层 `aliases`、顶层 `blocklist`（唯一排除源：`speed:`/`lowscore:` 由 channel_sync.py 物化，`manual`/`tier`/`retired` 人工维护） | 渠道清单与渠道侧成本；`aliases`/`blocklist` 人工维护 |
+| `data/models_extra.json` | 渠道节（每渠道的模型、cost）、顶层 `aliases`（人工维护）；watch-pipeline 独占写，本层只读 | 渠道清单与渠道侧成本 |
+| `data/blocklist.json` | 渠道屏蔽条目（channel → `[{id, reason}]`，唯一排除源：`speed:`/`lowscore:` 由 ① 物化，`manual`/`tier`/`retired` 人工维护） | ①物化与正则的存储、②③④ 的排除输入 |
 | `data/all_models.json` | models.dev 快照卡片 | ②的卡片来源（覆盖不全，缺卡走内置目录/人工兜底，不臆造） |
 | `data/arena.json` | leaderboard 分数（`arena_score`/`organization`/`effort`，`manual: true` 人工指派） | ①物化与④映射的质量信号 |
 

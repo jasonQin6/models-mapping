@@ -10,7 +10,7 @@ AxonHub 每小时同步自动维护；本项目只治理屏蔽正则。
 
 ## 屏蔽来源：blocklist 是唯一真相源
 
-渠道同步正则就是 `data/models_extra.json` 顶层 `blocklist.<channel>` 的纯
+渠道同步正则就是 `data/blocklist.json` 的 `blocklist.<channel>` 的纯
 枚举——除此之外没有规则式屏蔽。条目为 `{id, reason}`，reason 前缀区分归属：
 
 | reason 前缀 | 归属 | 含义 |
@@ -32,7 +32,7 @@ AxonHub 每小时同步自动维护；本项目只治理屏蔽正则。
    ```bash
    python3 .agents/skills/axonhub-admin/scripts/channel_sync.py [--channel <name>]
    ```
-   物化结果原子写回 `models_extra.json`（摘要走 stderr），每渠道允许正则以
+   物化结果原子写回 `data/blocklist.json`（摘要走 stderr），每渠道允许正则以
    JSON 打到 stdout。正则形状：`(?i)` 前缀必需（同步 ID 是带厂商前缀的混合
    大小写，小写模式静默漏挡）；固定 `claude-*` 前缀屏蔽（Claude 由自建全局
    模型供给，永不采集）；条目按剥厂商前缀的裸 ID、`(^|/)ID($|[:/])` 匹配
