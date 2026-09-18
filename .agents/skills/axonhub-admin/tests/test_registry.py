@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Tests for the model registry construction (axonhub-admin)."""
 
-from registry import dedupe_registry  # noqa: E402
+from registry import dedupe_registry, is_free_model  # noqa: E402
 from testutil import arena_models, build, rec  # noqa: E402
 
 
@@ -61,7 +61,7 @@ def test_free_fill_recomputes_from_owning_channel() -> None:
     # The free model belongs to the goat channel, so its quotas must derive
     # from goat's non-free max (500), not from any other channel's values.
     sections = {
-        "commandcode-goat": {"freebie": rec(rp5h=None, quota=None, free=True), "paid": rec(rp5h=500)},
+        "commandcode-goat": {"freebie": rec(rp5h=None, quota=None, cost={"input": 0, "output": 0}), "paid": rec(rp5h=500)},
     }
 
     result = build(sections, arena={"paid": 1500.0})
@@ -77,7 +77,7 @@ def test_free_declaration_and_rp5h_fallback() -> None:
     # non-free rp5h basis fills the free pool with the 1000 default.
     sections = {
         "ant": {
-            "ling-3.0-flash": rec(rp5h=None, quota=None, free=True),
+            "ling-3.0-flash": rec(rp5h=None, quota=None, cost={"input": 0, "output": 0}),
             "qwen3.8-flash": rec(rp5h=None),
         },
     }
@@ -159,7 +159,7 @@ def test_lowscore_non_free_excluded_free_exempt() -> None:
     sections = {
         "commandcode-goat": {
             "minimax-m3": rec(rp5h=3200),            # arena 1487.3 -> excluded
-            "laguna-s-2.1-free": rec(rp5h=None, free=True),  # free, exempt
+            "laguna-s-2.1-free": rec(rp5h=None, cost={"input": 0, "output": 0}),  # free, exempt
         },
     }
     arena = {"minimax-m3": 1487.3, "laguna-s-2.1-free": 1500.0}
@@ -276,7 +276,7 @@ def test_alias_merges_cross_channel_naming() -> None:
 def test_free_variant_supersedes_plain_original() -> None:
     sections = {
         "opencode-go": {"longcat-2.0": rec(rp5h=11400)},
-        "commandcode-goat": {"longcat-2.0-free": rec(rp5h=None, free=True)},
+        "commandcode-goat": {"longcat-2.0-free": rec(rp5h=None, cost={"input": 0, "output": 0})},
     }
 
     result = build(sections)
@@ -302,15 +302,44 @@ def test_contributor_variant_supersedes_plain_original() -> None:
     assert any(w["type"] == "variant_superseded" and w["model"] == "muse-spark-1.2" for w in result["warnings"])
 
 
-def test_free_suffix_default_covers_unflagged_record() -> None:
-    # A refresh cycle that deletes and re-adds an id wipes the hand flag;
-    # the -free suffix keeps the model free (fill, pricing, reachability)
-    # and the gap surfaces as free_flag_missing for the maintainer.
-    sections = {"commandcode-goat": {"longcat-2.0-free": rec(rp5h=None, quota=None)}}
+
+
+def test_declared_zero_prices_are_free() -> None:
+    # Collection transcribes every channel's freeness wording to zero
+    # cost; the planner reads prices, nothing else.
+    assert is_free_model(rec(cost={"input": 0, "output": 0})) is True
+
+
+def test_positive_prices_are_not_free() -> None:
+    assert is_free_model(rec(cost={"input": 0.15, "output": 0.6})) is False
+
+
+def test_undeclared_prices_are_not_free() -> None:
+    # No declared prices: the rp5h-missing triage owns the record,
+    # freeness does not step in.
+    assert is_free_model(rec()) is False
+
+
+def test_flags_are_no_longer_read() -> None:
+    # Legacy markers from the flag era must not resurrect freeness: only
+    # the declared prices decide.
+    assert is_free_model(rec(free=True, cost={"input": 0.15, "output": 0.6})) is False
+    assert is_free_model(rec(free=True)) is False
+
+
+def test_zero_declared_cost_model_gets_free_fill() -> None:
+    sections = {
+        "opencode-go": {
+            "union-alpha": rec(rp5h=None, quota=None, cost={"input": 0, "output": 0}),
+            "paid": rec(rp5h=500),
+        },
+    }
 
     result = build(sections)
 
-    candidates = {c["model_id"]: c for c in result["candidates"]}
-    assert candidates["longcat-2.0-free"]["arena_score"] == 1500.0
-    assert candidates["longcat-2.0-free"]["free"] is True
-    assert any(w["type"] == "free_flag_missing" and w["model"] == "longcat-2.0-free" for w in result["warnings"])
+    record = result["registry"]["union-alpha"]["record"]
+    assert record["rp5h"] == 500
+    assert any(
+        w["type"] == "free_default_filled" and w["provider"] == "opencode-go"
+        for w in result["warnings"]
+    )

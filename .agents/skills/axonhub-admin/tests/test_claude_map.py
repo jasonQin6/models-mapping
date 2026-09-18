@@ -19,7 +19,7 @@ def test_claude_mapping_uses_formula_and_free_fill() -> None:
         "opencode-go": {
             "muse-spark-1.2": rec(rp5h=800),      # arena 1650, closest to opus
             "qwen3.8-max": rec(rp5h=100),          # arena 1600, farther below
-            "freebie": rec(rp5h=500, free=True),   # free, arena 1500 default
+            "freebie": rec(rp5h=500, cost={"input": 0, "output": 0}),   # free, arena 1500 default
         },
     }
     requests = [
@@ -44,8 +44,8 @@ def test_free_fill_pairs_lowest_request_with_lowest_free_model() -> None:
     # sonnet-4-6 gets longcat; the rest fall through to the formula.
     sections = {
         "commandcode-goat": {
-            "laguna-s-2.1-free": rec(rp5h=None, free=True),
-            "longcat-2.0-free": rec(rp5h=None, free=True),
+            "laguna-s-2.1-free": rec(rp5h=None, cost={"input": 0, "output": 0}),
+            "longcat-2.0-free": rec(rp5h=None, cost={"input": 0, "output": 0}),
             "muse-spark-1.3-contributor": rec(rp5h=45300),
             "paid-filler": rec(rp5h=900),
         },

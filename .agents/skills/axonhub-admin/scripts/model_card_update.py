@@ -167,7 +167,7 @@ def build_target_state(
                 "type": "chat",
                 "icon": icon,
                 "group": group,
-                "cost": _merge_channel_cost(card or {}, record, is_free_model(canonical, record)),
+                "cost": _merge_channel_cost(card or {}, record, is_free_model(record)),
                 "remark": remark_json(remark),
             },
         }

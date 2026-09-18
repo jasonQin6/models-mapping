@@ -58,7 +58,7 @@ def build_associations(result: Mapping[str, Any]) -> list[dict[str, Any]]:
         ]
         plan = {
             "modelID": canonical,
-            "free": is_free_model(canonical, record),
+            "free": is_free_model(record),
             "channelPriority": channel_priority,
         }
         if entry["channel_aliases"]:

@@ -122,7 +122,7 @@ def materialize_blocklist(
             if match_type in ("version_downgrade", "prefix_match"):
                 score = None
             if (
-                not is_free_model(canonical, record)
+                not is_free_model(record)
                 and score is not None
                 and score < LOWSCORE_EXCLUDE_THRESHOLD
             ):

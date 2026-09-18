@@ -51,7 +51,7 @@ def test_alias_case_keeps_native_spellings_in_channel_aliases() -> None:
 
 
 def test_free_flag_carries_into_the_plan() -> None:
-    sections = {"commandcode-goat": {"longcat-2.0-free": rec(rp5h=None, free=True)}}
+    sections = {"commandcode-goat": {"longcat-2.0-free": rec(rp5h=None, cost={"input": 0, "output": 0})}}
 
     result = build(sections)
     plans = {plan["modelID"]: plan for plan in build_associations(result)}

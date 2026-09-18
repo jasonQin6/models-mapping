@@ -75,7 +75,7 @@ def test_free_record_zeroes_silent_cost_fields() -> None:
     # the card values.
     sections = {
         "ant": {
-            "free-a": rec(rp5h=None, quota=None, free=True, cost={}),
+            "free-a": rec(rp5h=None, quota=None, cost={"input": 0, "output": 0}),
             "paid": rec(rp5h=500, cost={}),
         },
     }
@@ -98,20 +98,20 @@ def test_free_record_zeroes_silent_cost_fields() -> None:
     }
 
 
-def test_free_suffix_default_renders_zero_cost_and_filled_remark() -> None:
-    # A refresh cycle that deletes and re-adds an id wipes the hand flag;
-    # the -free suffix keeps the model free so pricing zeroes and the
-    # remark carries the derived defaults.
-    sections = {"commandcode-goat": {"longcat-2.0-free": rec(rp5h=None, quota=None)}}
+def test_zero_declared_cost_renders_zero_card_and_filled_remark() -> None:
+    # Collection transcribed the channel's freeness wording to zero prices;
+    # pricing zeroes and the remark carries the derived defaults.
+    sections = {
+        "commandcode-goat": {
+            "longcat-2.0-free": rec(rp5h=None, quota=None, cost={"input": 0, "output": 0}),
+        },
+    }
 
     models, warnings = _target(sections)
 
     entry = models[0]
     assert entry["input"]["cost"] == {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0}
     assert entry["input"]["remark"] == '{"manual":"","rp5h":1000,"usage_quota":60}'
-    assert any(w["type"] == "free_flag_missing" and w["model"] == "longcat-2.0-free" for w in warnings)
-
-
 def test_assemble_renders_card_from_reference_and_keeps_target_cost() -> None:
     assembled = assemble(_entry(), _CARDS)
 

@@ -30,20 +30,20 @@ FREE_DEFAULT_ARENA_SCORE = 1500.0
 RP5H_MISSING_EXCLUDE_THRESHOLD = 1500.0
 
 
-def is_free_model(canonical: str, record: Mapping[str, Any]) -> bool:
-    """Freeness: the hand-maintained flag is authoritative; otherwise the
-    ``-free`` suffix is the derived default.
+def is_free_model(record: Mapping[str, Any]) -> bool:
+    """Freeness reads the declared prices: input and output both declared
+    zero is free; a positive or undeclared headline price is not — an
+    undeclared non-free record belongs to the rp5h-missing triage.
 
-    The default keeps re-inserted records safe: a collector refresh cycle
-    that deletes and re-adds an id wipes hand-maintained fields, and the
-    derived freeness prevents the loss from miscarrying the model (missing
-    rp5h triage, card pricing).  An explicit ``free: false`` still wins.
+    Collection normalizes every channel's freeness into zero cost — the
+    watchers transcribe their price tables' ``Free`` wording, the static
+    sections declare it by hand — so no flag or id-suffix heuristic
+    remains here.  A free model's undeclared cache tiers still price as
+    zero on the card (``_merge_channel_cost``).
     """
 
-    flag = record.get("free")
-    if flag is not None:
-        return flag is True
-    return canonical.strip().lower().endswith("-free")
+    cost = record.get("cost") or {}
+    return number(cost.get("input")) == 0 and number(cost.get("output")) == 0
 
 
 def canonical_id(model_id: str, aliases: Mapping[str, str]) -> str:
@@ -220,13 +220,13 @@ def fill_free_records(
         non_free = [
             number(record.get("rp5h"), 0.0) or 0.0
             for model_id, record in records.items()
-            if not is_free_model(model_id, record)
+            if not is_free_model(record)
         ]
         max_rp5h = max(non_free) if non_free else 0.0
         if max_rp5h <= 0:
             max_rp5h = FREE_RP5H_DEFAULT
         for model_id, record in sorted(records.items()):
-            if not is_free_model(model_id, record):
+            if not is_free_model(record):
                 continue
             filled: list[str] = []
             derived = int(max_rp5h) if float(max_rp5h).is_integer() else max_rp5h
@@ -279,11 +279,7 @@ def build_registry(
     for canonical in sorted(registry):
         entry = registry[canonical]
         record = entry["record"]
-        # Freeness: the declared flag wins; the ``-free`` suffix is the
-        # derived default that keeps refresh-cycled records safe.
-        is_free = is_free_model(canonical, record)
-        if record.get("free") is None and canonical.endswith("-free"):
-            warnings.append({"type": "free_flag_missing", "model": canonical})
+        is_free = is_free_model(record)
         match, match_type = find_best_match(canonical, dict(arena_models))
         arena_score = number((match or {}).get("rating"))
         if match_type == "no_match":
