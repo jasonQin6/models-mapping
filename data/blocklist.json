@@ -10,8 +10,16 @@
         "reason": "lowscore: arena 1435.91 < 1500"
       },
       {
+        "id": "glm-5.1",
+        "reason": "retired: 被 glm-5.2 取代"
+      },
+      {
         "id": "glm-5.2-fast",
         "reason": "speed: fast/highspeed suffix"
+      },
+      {
+        "id": "glm-5.3-flashx",
+        "reason": "manual: 新候选，用户裁决屏蔽（2026-09-18）"
       },
       {
         "id": "google/gemini-3.1-flash-lite",
@@ -28,6 +36,10 @@
       {
         "id": "google/gemini-3.6-flash",
         "reason": "tier"
+      },
+      {
+        "id": "google/gemini-3.7-flash",
+        "reason": "manual: 上游认证失败"
       },
       {
         "id": "gpt-5.3-codex",
@@ -50,6 +62,10 @@
         "reason": "tier"
       },
       {
+        "id": "grok-4.5",
+        "reason": "retired: 被 grok-4.6 取代"
+      },
+      {
         "id": "inkling",
         "reason": "lowscore: arena 1409.99 < 1500"
       },
@@ -64,6 +80,10 @@
       {
         "id": "kimi-k2.7-code-highspeed",
         "reason": "speed: fast/highspeed suffix"
+      },
+      {
+        "id": "longcat-2.0",
+        "reason": "manual: 收费版性价比低于 deepseek-v4.1-flash"
       },
       {
         "id": "meta/muse-spark-1.1",
@@ -90,6 +110,14 @@
         "reason": "lowscore: arena 1486.7 < 1500"
       },
       {
+        "id": "muse-spark-1.2",
+        "reason": "superseded: replaced by muse-spark-1.2-contributor"
+      },
+      {
+        "id": "muse-spark-1.3",
+        "reason": "superseded: replaced by muse-spark-1.3-contributor"
+      },
+      {
         "id": "qwen3.6-max-preview",
         "reason": "lowscore: arena 1479.06 < 1500"
       },
@@ -104,6 +132,10 @@
       {
         "id": "qwen3.7-plus",
         "reason": "lowscore: arena 1480 < 1500"
+      },
+      {
+        "id": "qwen3.8-omni-flash",
+        "reason": "manual: 新候选，用户裁决屏蔽（2026-09-18）"
       },
       {
         "id": "sakana/fugu-ultra",
@@ -128,6 +160,10 @@
         "reason": "retired"
       },
       {
+        "id": "glm-5.1",
+        "reason": "retired: 被 glm-5.2 取代"
+      },
+      {
         "id": "grok-4.5",
         "reason": "retired"
       },
@@ -142,6 +178,10 @@
       {
         "id": "kimi-k2.7-code",
         "reason": "lowscore: arena 1472.72 < 1500"
+      },
+      {
+        "id": "longcat-2.0",
+        "reason": "manual: 收费版性价比低于 deepseek-v4.1-flash"
       },
       {
         "id": "mimo-v2-omni",
@@ -172,10 +212,6 @@
         "reason": "lowscore: arena 1486.7 < 1500"
       },
       {
-        "id": "omen-alpha",
-        "reason": "retired"
-      },
-      {
         "id": "qwen3.5-plus",
         "reason": "retired"
       },
@@ -195,6 +231,14 @@
       }
     ]
   },
+  "reason_classes": {
+    "lowscore:": "derived — arena score below 1500 and not free (rebuilt on every run)",
+    "manual": "human — maintainer-ordered removal (e.g. upstream auth/id issues)",
+    "retired": "human — superseded by a successor or otherwise withdrawn; suggestions come from model-card-update's retire_suggested report",
+    "speed:": "derived — '-fast'/'-highspeed' speed-marketing variants (rebuilt on every run)",
+    "superseded:": "derived — variant supersession, '-free' beats '-contributor' beats plain (rebuilt on every run)",
+    "tier": "human — subscription-tier gap (stable set)"
+  },
   "schema_version": 1,
-  "updated_at": "2026-09-18T05:19:09Z"
+  "updated_at": "2026-09-19T10:54:50Z"
 }
