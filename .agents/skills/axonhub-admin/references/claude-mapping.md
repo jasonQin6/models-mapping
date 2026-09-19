@@ -49,16 +49,17 @@ stdout 是"请求 → 候选"映射 JSON（含请求 Arena 分与置信度），
   所以一条人工指派的基础记录覆盖所有变种。Arena ID 原样保留榜单参数规格
   后缀（`qwen3.8-27b`），带规格的渠道 ID 可直接精确匹配。置信度：直接匹配
   高、变种后缀中、free 默认低。`version_downgrade`/`prefix_match` 的命中被
-  拒收（`arena_borrowed_rejected`），绝不静默归分。带注册表外字母尾巴的
-  未匹配 ID（如 `-vq`）抛 `unrecognized_variant_suffix`，绝不静默打分——
+  拒收（`arena_borrowed_rejected`），绝不静默归分。带未登记字母后缀（如
+  `-vq`）的未匹配 ID 抛 `unrecognized_variant_suffix`，绝不静默打分——
   人工三选一：为完整 ID 人工指派 Arena 记录；经 `aliases` 合并拼写；或
   后缀被证实为复现家族标记时登记进 `MATCH_VARIANT_SUFFIXES`。版本化尾巴
   （`-a55b`、`-0902`）永不告警。
-- **无分与缺 rp5h 分诊**——非 free 无任何 Arena 匹配则带分入册但不进映射池
-  （`arena_missing`）；缺 `rp5h` 的非 free 模型分两档：分数（或无分视 0）
-  低于 1500 的整体出册（`rp5h_missing_excluded`，有分场景已被 lowscore 物化
-  先行接管，本档实际覆盖查无分数者），分数达到 1500 保留、仅不参与映射目标
-  挑选（`rp5h_missing_review`，记入 INELIGIBLE）。
+- **无分与缺 rp5h 的处理**——非 free 无任何 Arena 匹配：仍进候选清单、
+  照常建卡，但不参与映射挑选（`arena_missing`）；缺 `rp5h` 的非 free 模型分
+  两档：分数（无分按 0 算）低于 1500 的连候选清单都不进、不建卡
+  （`rp5h_missing_excluded`，有分场景已被 lowscore 屏蔽先行接管，本档实际
+  覆盖查无分数者），分数达到 1500 保留在候选清单、只是不参与映射目标挑选
+  （`rp5h_missing_review`，记入 INELIGIBLE）。
 
 ## 流程
 

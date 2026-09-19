@@ -5,9 +5,10 @@
 实体用裸 ID，association 按精确字符串匹配（详见 [SKILL.md](../SKILL.md) 的
 部署怪癖）。
 
-## 注册表裁决（channelPriority 的来源）
+## 候选清单裁决（channelPriority 的来源）
 
-`channelPriority` 链由共享注册表的三组裁决决定（`duplicate_model_across_sources`/
+`channelPriority` 链由共享的候选清单计算（`scripts/registry.py`）的三组裁决决定
+（`duplicate_model_across_sources`/
 `variant_superseded` 警告即后两组的审计记录），脚本输出：
 
 ```bash
@@ -15,7 +16,7 @@ python3 .agents/skills/axonhub-admin/scripts/channel_assoc.py [--id <modelID>]
 ```
 
 - **别名归一**——`models_extra.json` 顶层人工维护的 `aliases` 映射（如
-  `tencent-hy3` → `hy3`）合并跨渠道拼写：去重与分组都以规范 ID 进行；注册表
+  `tencent-hy3` → `hy3`）合并跨渠道拼写：去重与分组都以规范 ID 进行；候选清单
   用规范 ID，各渠道实际暴露的原生拼写记入 `channelAliases`，供 association
   按渠道精确路由。
 - **跨渠道去重**——一个 id 被多个渠道声明时归属 `rp5h` 最高者（null 输给有值，
@@ -27,9 +28,12 @@ python3 .agents/skills/axonhub-admin/scripts/channel_assoc.py [--id <modelID>]
   的 free 变种合并落到同一条 association 链上。
 
 脚本输出的 `channelPriority` 即默认链形状：`channel_model` 规则按 rp5h 降序、
-优先级数字即回退顺序；每条要钉住的原生 ID 取 `channelAliases` 中该渠道的
-拼写，未列出的渠道用规范 ID——association 输入的整数 `channelId` 属线上
-状态，对账读后替换。
+优先级数字即回退顺序；要钉住的 ID 默认取规范 ID——主渠道 commandcode-goat 已开
+`autoTrimedModelPrefixes`（前缀全量提取）+`lowercaseModelId`+`hideOriginalModels`，
+路由键统一为裸小写，规范 ID 精确命中。例外钉渠道原生拼写：清单带 `:free` 冒号
+后缀的（`ling-3.0-flash-sante:free`）、`channelAliases` 有值的别名渠道拼写、
+未开统一开关的新渠道——association 输入的整数 `channelId` 属线上状态，对账读后
+替换。
 
 ## 流程
 
@@ -48,7 +52,7 @@ python3 .agents/skills/axonhub-admin/scripts/channel_assoc.py [--id <modelID>]
 6. 写入走 SKILL.md 的执行循环：`settings.associations` 是全量替换——读全对象、
    只改目标字段、整体回写；`-v` 按形状嵌套变量。
 7. 验证：`queryModelChannelConnections(associations: $assocs)`——目标渠道解析
-   出预期 `actualModel` 且 `source: mapping` 或 `direct` 即完成。
+   出预期 `actualModel` 且 `source: mapping` / `direct` / `auto_trim` 即完成。
 
 ## 约定
 

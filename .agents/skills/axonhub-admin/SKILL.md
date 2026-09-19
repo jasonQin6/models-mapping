@@ -1,6 +1,6 @@
 ---
 name: axonhub-admin
-description: 本仓对 AxonHub 部署（https://axon.jasonqin.site）的四步治理流水线：渠道同步过滤正则（blocklist 物化 + autoSyncModelPattern）、模型卡增量更新、非 Claude 关联路由（channelPriority 回退链）、Claude 映射（Arena 加权公式 + free 补全）。每步一个离线计算脚本（stdout 呈报，无中间产物文件）加确认后的受控写入。凡任务涉及刷新渠道清单、更新模型卡/成本/备注、写关联路由、或把上游模型映射到 Claude 请求模型，都先用本 skill。工具机制（token、endpoint、find/query/mutate 用法）以 axonhub-cli skill 为准；仓库外的一次性通用查询也用 axonhub-cli。
+description: 本仓对 AxonHub 部署（https://axon.jasonqin.site）的四步治理流水线：渠道同步过滤正则（屏蔽条目重建 + autoSyncModelPattern）、模型卡增量更新、非 Claude 关联路由（channelPriority 回退链）、Claude 映射（Arena 加权公式 + free 补全）。每步一个离线计算脚本（stdout 呈报，无中间产物文件）加确认后的受控写入。凡任务涉及刷新渠道清单、更新模型卡/成本/备注、写关联路由、或把上游模型映射到 Claude 请求模型，都先用本 skill。工具机制（token、endpoint、find/query/mutate 用法）以 axonhub-cli skill 为准；仓库外的一次性通用查询也用 axonhub-cli。
 ---
 
 # AxonHub Admin
@@ -13,7 +13,7 @@ description: 本仓对 AxonHub 部署（https://axon.jasonqin.site）的四步�
 
 - 两阶段：**离线计算**（每步一个脚本，只消费仓库内快照，不联网、不持凭据、
   可随时重跑，stdout 呈报）→ **受控写入**（交互会话、凭据、逐次确认）。
-  没有中间产物文件：差集（目标态 × 线上状态）在会话里对照得出。
+  没有中间产物文件：差集（目标清单 × 线上状态）在会话里对照得出。
 - 采集只发生在 watch-pipeline（另一 skill）；CI（GitHub Actions）永不写
   AxonHub，也不持有其凭据。
 - 写入与变换使用**独立的确认材料**，确认其一不授权另一。
@@ -24,14 +24,15 @@ description: 本仓对 AxonHub 部署（https://axon.jasonqin.site）的四步�
 ## 流水线（四步串联）
 
 采集（watch-pipeline）→ ① 渠道过滤 → ② 模型卡 → ③ 非 Claude 关联 →
-④ Claude 关联。②③④ 共享同一注册表（`scripts/snapshot.py` 加载快照 +
-`scripts/registry.py` 去重/变种/free/分诊），①拥有 blocklist 物化——
-注册表只消费物化后的 blocklist。各步可独立重跑；快照更新后按需从①或②起跑。
+④ Claude 关联。②③④ 共用同一套候选清单计算（`scripts/snapshot.py` 加载快照 +
+`scripts/registry.py` 去重/变种/免费判定/缺数据处理）；① 先把屏蔽条目重建进
+`data/blocklist.json`，候选清单计算只看排除后的记录。各步可独立重跑；
+快照更新后按需从①或②起跑。
 
 | 步骤 | 任务 | 计算/工具（仓库根运行） | 流程 |
 | --- | --- | --- | --- |
-| ① | 同步渠道清单：物化派生 blocklist、生成屏蔽正则 | `channel_sync.py` | [channel-sync.md](references/channel-sync.md) |
-| ② | 模型卡更新：目标态增量、建/改/启/清理、整体重建 | `model_card_update.py [--id <modelID>]` | [model-card-update.md](references/model-card-update.md) |
+| ① | 同步渠道清单：重建屏蔽条目、生成屏蔽正则 | `channel_sync.py` | [channel-sync.md](references/channel-sync.md) |
+| ② | 模型卡更新：目标清单增量、建/改/启/清理、整体重建 | `model_card_update.py [--id <modelID>]` | [model-card-update.md](references/model-card-update.md) |
 | ③ | 非 Claude 模型关联：channelPriority 回退链 | `channel_assoc.py [--id <modelID>]` | [非Claude模型关联.md](references/非Claude模型关联.md) |
 | ④ | Claude 模型关联：请求 → 候选映射（请求清单 = 脚本内 `REQUESTS` 字典） | `claude_map.py` | [claude-mapping.md](references/claude-mapping.md) |
 
@@ -82,20 +83,29 @@ loop:
 写入）可短路本循环：确认目标值 → 一次 mutate → 回读该对象。任务文档标注了短路权
 的以任务文档为准。
 
+向用户呈报结论用直白链条：抓了哪个页面/清单 → 看到什么 → 改什么，用页面和清单
+的实际内容说话；AxonHub 相关概念以页面与接口自带的叫法为准（模型、渠道、支持的
+模型、关联、模型卡、autoSyncModelPattern）。
+
 ## 数据源
 
 | 文件 | 内容 | 权威范围 |
 | --- | --- | --- |
 | `data/models_extra.json` | 渠道节（每渠道的模型、cost）、顶层 `aliases`（人工维护）；watch-pipeline 独占写，本层只读 | 渠道清单与渠道侧成本 |
-| `data/blocklist.json` | 渠道屏蔽条目（channel → `[{id, reason}]`，唯一排除源：`speed:`/`lowscore:` 由 ① 物化，`manual`/`tier`/`retired` 人工维护） | ①物化与正则的存储、②③④ 的排除输入 |
+| `data/blocklist.json` | 渠道屏蔽条目（channel → `[{id, reason}]`，唯一排除源：`speed:`/`lowscore:` 由 ① 从快照重建，`manual`/`tier`/`retired` 人工维护） | ①重建与正则的存储、②③④ 的排除输入 |
 | `data/all_models.json` | models.dev 快照卡片 | ②的卡片来源（覆盖不全，缺卡走内置目录/人工兜底，不臆造） |
-| `data/arena.json` | leaderboard 分数（`arena_score`/`organization`/`effort`，`manual: true` 人工指派） | ①物化与④映射的质量信号 |
+| `data/arena.json` | leaderboard 分数（`arena_score`/`organization`/`effort`，`manual: true` 人工指派） | ①重建与④映射的质量信号 |
 
 请求模型的 free 判定横切各步，只读渠道声明价：input/output 均声明为零价即免费；
 正价或未声明即非免费，未声明的非免费模型交 rp5h 缺失门禁。零价由采集层统一供给：
 watcher 转写渠道价格表的 `Free` 字样（go/goat），ant/sensenova 静态节人工以零价
 声明——判定链上不存在旗标或 id 后缀启发式。判定免费而渠道未声明缓存价时，卡片
 成本以零起步（`_merge_channel_cost`）。
+
+上表文件都是**采集时刻的镜像**：判断上游现在提供什么、页面列着什么，只认两个
+现场来源——`syncChannelModels(channelID, pattern: "")` 返回的原始上游清单
+（配方与清理判据见 channel-sync.md），以及 live 页面抓取。本地快照是滞后的；
+`supportedModels` 是过滤后的（被挡 id 不出现，无法反推上游是否还提供）。
 
 ## 部署怪癖与已知事实
 
@@ -112,9 +122,25 @@ watcher 转写渠道价格表的 `Free` 字样（go/goat），ant/sensenova 静�
   未变就省略——多传反而可能触发瞬态校验器。
 - GraphQL ID 是 GID（`gid://axonhub/Model/23`）；association 输入的 `channelId` 用整数。
 - 模型 ID 陷阱：上游用厂商前缀 ID（`deepseek/deepseek-v4-flash`、`zai-org/GLM-5.3`），Model 实体用
-  裸 ID（`deepseek-v4-flash`），association 按**精确字符串**匹配。两种修复：渠道侧
-  `settings.modelMappings`（from=裸 ID，to=前缀 ID）；模型侧 association 链
+  裸 ID（`deepseek-v4-flash`），association 按**精确字符串**匹配渠道路由键。commandcode-goat 已开
+  `autoTrimedModelPrefixes`（前缀全量提取）+`lowercaseModelId`+`hideOriginalModels`，路由键统一为
+  裸小写规范 ID——写入默认钉规范 ID。残余例外：`:free` 冒号后缀（`ling-3.0-flash-sante:free`）、
+  别名渠道拼写（`tencent-hy3` 类，`channelAliases` 有值时）、未开统一开关的渠道。
+  其余修复手段：渠道侧 `settings.modelMappings`；模型侧 association 链
   （`channel_model` 钉渠道+精确 ID / `model` 全局精确 ID / `regex` 全局正则）。
+  验证分工：`testChannel(channelID, modelID)` 真实打上游测可达（不走映射/trim 层，id 须在
+  supportedModels 内）；`queryModelChannelConnections(associations:…)` 测路由解析
+  （是查询不是 mutation，返回 source=direct/mapping/auto_trim）。两者不可互替。
+- 后端为 SQLite：批量写/测试必须**串行**，并发（如同时发多个 `testChannel`）即报
+  `database is locked (SQLITE_BUSY)`；串行加短间隔稳定。
+- graphql-cli 的 `query`/`mutate` stdout 是不带 `{"data": …}` 包装的多行裸 JSON
+  （顶层直接是字段名），整体取首尾大括号解析；先过滤 `npm notice` 行。
+- `CreateModelInput` 必填 `settings`（如 `{associations: []}`），而
+  `model_card_update.py --id` 的 payload 不含 settings——建卡前需注入。
+- 软删探测的 `node(id:…)` 对不存在的 ID 抛整请求级错误：一条查询带多个别名
+  探测不可行，只能逐 ID 请求（可并发）。
+- 排查「上游现在还提供哪些模型」用 `syncChannelModels(channelID, pattern: "")`
+  一次性同步拿原始清单（不污染存储 pattern；配方与清理判据见 channel-sync.md）。
 
 ## 事件响应
 
