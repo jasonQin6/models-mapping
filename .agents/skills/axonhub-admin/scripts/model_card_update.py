@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence
@@ -39,6 +40,72 @@ from snapshot import (  # noqa: E402
 )
 
 REMARK_FIELDS = ("rp5h", "usage_quota")
+
+# Version-succession triage: a plain ``<family>-<major>.<minor>`` id whose
+# next-minor successor scores higher (beyond Arena ELO noise) at a comparable
+# quota tier (rp5h ratio below the limit, either direction) looks fully
+# displaced.  Report-only: the suggestion lands in stderr for the maintainer
+# to rule on — never auto-materialized into the blocklist.
+VERSION_ID_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*-v?\d+\.\d+$")
+VERSION_SCORE_MARGIN = 10.0
+VERSION_RP5H_RATIO_LIMIT = 2.0
+
+
+def retire_suggestions(
+    result: Mapping[str, Any], warnings: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Emit per-pair succession suggestions into the warning stream.
+
+    Pairing is adjacency-only within one ``(family, major)`` group of plain
+    versioned ids — variant suffixes and tier words (``-flash``/``-max``/…)
+    never pair.  Each suggestion lists the channels still serving the
+    predecessor (native spelling where one exists) so the maintainer can see
+    what a retirement would rewire.
+    """
+
+    registry = result["registry"]
+    standings = {candidate["model_id"]: candidate for candidate in result["candidates"]}
+
+    groups: dict[tuple[str, int], list[tuple[int, str]]] = {}
+    for model_id in registry:
+        lowered = model_id.lower()
+        if not VERSION_ID_PATTERN.match(lowered):
+            continue
+        head, _, minor = lowered.rpartition(".")
+        family, _, major = head.rpartition("-")
+        groups.setdefault((family, int(major.lstrip("v"))), []).append((int(minor), model_id))
+
+    suggestions: list[dict[str, Any]] = []
+    for _family_major, members in sorted(groups.items()):
+        members.sort()
+        for (minor, predecessor), (_next_minor, successor) in zip(members, members[1:]):
+            before, after = standings.get(predecessor), standings.get(successor)
+            if not before or not after:
+                continue
+            scores = (before.get("arena_score"), after.get("arena_score"))
+            quotas = (before.get("rp5h"), after.get("rp5h"))
+            if None in scores or None in quotas:
+                continue
+            if after["arena_score"] <= before["arena_score"] + VERSION_SCORE_MARGIN:
+                continue
+            if min(quotas) <= 0 or max(quotas) / min(quotas) >= VERSION_RP5H_RATIO_LIMIT:
+                continue
+            entry = registry[predecessor]
+            serving = {
+                channel: (entry.get("channel_aliases") or {}).get(channel) or predecessor
+                for channel in (entry.get("serving") or {})
+            }
+            suggestion = {
+                "type": "retire_suggested",
+                "model": predecessor,
+                "replaced_by": successor,
+                "arena": {"before": before["arena_score"], "after": after["arena_score"]},
+                "rp5h": {"before": before["rp5h"], "after": after["rp5h"]},
+                "serving": dict(sorted(serving.items())),
+            }
+            suggestions.append(suggestion)
+            warnings.append(suggestion)
+    return suggestions
 
 
 def _cost_from_model(model: Mapping[str, Any]) -> dict[str, Any]:
@@ -241,6 +308,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     warnings = list(result["warnings"])
     models = build_target_state(result, cards, refs, warnings)
+    retire_suggestions(result, warnings)
     _render_stderr(warnings, models)
 
     if args.id:

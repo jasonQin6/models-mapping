@@ -30,6 +30,7 @@ def test_sync_pattern_dedupes_bare_forms() -> None:
     assert pattern.count("glm") == 1
 
 
+
 def test_sync_pattern_blocks_and_allows_by_id(tmp_path: Path) -> None:
     pattern = sync_pattern(["minimax-m3", "deepseek-v4-flash-fast"])
 
@@ -89,6 +90,50 @@ def test_materialize_blocklist_human_wins_over_derived() -> None:
     merged = materialize_blocklist(raw, sections, {}, arena_models(arena))
 
     assert merged["commandcode-goat"] == [{"id": "minimax-m3", "reason": "manual"}]
+
+
+def test_materialize_blocklist_supersedes_lost_variants() -> None:
+    # A losing variant a channel still serves is blocked; the winner is not.
+    # Grouping is global: opencode-go's plain longcat-2.0 loses to the -free
+    # variant served by another channel.
+    sections = {
+        "commandcode-goat": {
+            "muse-spark-1.2": rec(rp5h=11400),
+            "muse-spark-1.2-contributor": rec(rp5h=45300),
+            "longcat-2.0-free": rec(rp5h=None),
+        },
+        "opencode-go": {
+            "longcat-2.0": rec(rp5h=11400),
+        },
+    }
+
+    merged = materialize_blocklist({}, sections, {}, arena_models({}))
+
+    goat = {e["id"]: e["reason"] for e in merged["commandcode-goat"]}
+    open_go = {e["id"]: e["reason"] for e in merged["opencode-go"]}
+    assert goat["muse-spark-1.2"] == "superseded: replaced by muse-spark-1.2-contributor"
+    assert "muse-spark-1.2-contributor" not in goat  # survivor never blocked
+    assert open_go["longcat-2.0"] == "superseded: replaced by longcat-2.0-free"
+    assert "longcat-2.0-free" not in open_go
+
+
+def test_materialize_blocklist_superseded_yields_to_human_and_triage() -> None:
+    # A human ruling keeps its reason; a plain id that never competes in a
+    # variant group derives nothing.
+    raw = {"commandcode-goat": [{"id": "muse-spark-1.2", "reason": "retired: keep human"}]}
+    sections = {
+        "commandcode-goat": {
+            "muse-spark-1.2": rec(rp5h=11400),
+            "muse-spark-1.2-contributor": rec(rp5h=45300),
+            "glm-5.3": rec(rp5h=220),  # -flash is not a variant suffix: no group
+        },
+    }
+
+    merged = materialize_blocklist(raw, sections, {}, arena_models({}))
+
+    goat = {e["id"]: e["reason"] for e in merged["commandcode-goat"]}
+    assert goat["muse-spark-1.2"] == "retired: keep human"
+    assert "glm-5.3" not in goat
 
 
 def test_main_materializes_and_prints_patterns(tmp_path: Path, capsys) -> None:
@@ -158,3 +203,33 @@ def test_main_channel_filter_and_unknown(tmp_path: Path, capsys) -> None:
     patterns = json.loads(captured.out)
     assert set(patterns) == {"opencode-go"}
     assert "no blocklist section for channel 'missing'" in captured.err
+
+
+def test_main_reports_section_missing_human_entries(tmp_path: Path, capsys) -> None:
+    # A human entry whose id has left the channel's section is reported on
+    # stderr: the derived classes heal themselves, human entries go stale.
+    extra = tmp_path / "models_extra.json"
+    extra.write_text(json.dumps({
+        "schema_version": 1,
+        "aliases": {},
+        "channels": {"opencode-go": {"qwen3.8-flash": {"name": "Q", "cost": {}}}},
+    }, ensure_ascii=False))
+    arena = tmp_path / "arena.json"
+    arena.write_text(json.dumps({"schema_version": 1, "models": {}}))
+    blocklist = tmp_path / "blocklist.json"
+    blocklist.write_text(json.dumps({
+        "schema_version": 1,
+        "updated_at": "2026-09-18T00:00:00Z",
+        "blocklist": {"opencode-go": [
+            {"id": "omen-alpha", "reason": "retired"},
+            {"id": "qwen3.8-flash", "reason": "tier"},
+        ]},
+    }, ensure_ascii=False))
+
+    exit_code = main(["--extra", str(extra), "--arena", str(arena), "--blocklist", str(blocklist)])
+
+    assert exit_code == 0
+    err = capsys.readouterr().err
+    assert "omen-alpha" in err
+    # qwen3.8-flash is still a section key: alive, not reported.
+    assert "tier" not in err.split("人工条目已不在节键")[-1]

@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """Tests for the model registry construction (axonhub-admin)."""
 
-from registry import dedupe_registry, is_free_model  # noqa: E402
+from registry import (  # noqa: E402
+    build_registry,
+    dedupe_registry,
+    is_free_model,
+    variant_supersessions,
+)
 from testutil import arena_models, build, rec  # noqa: E402
 
 
@@ -274,12 +279,14 @@ def test_alias_merges_cross_channel_naming() -> None:
 
 
 def test_free_variant_supersedes_plain_original() -> None:
+    # Unit-level: the registry's own supersession rule (the channel-sync
+    # materializer normally blocks these ids one step earlier).
     sections = {
         "opencode-go": {"longcat-2.0": rec(rp5h=11400)},
         "commandcode-goat": {"longcat-2.0-free": rec(rp5h=None, cost={"input": 0, "output": 0})},
     }
 
-    result = build(sections)
+    result = build_registry(sections=sections, aliases={}, blocklist_raw={}, arena_models={})
 
     assert set(result["registry"]) == {"longcat-2.0-free"}
     assert any(
@@ -296,7 +303,7 @@ def test_contributor_variant_supersedes_plain_original() -> None:
         },
     }
 
-    result = build(sections)
+    result = build_registry(sections=sections, aliases={}, blocklist_raw={}, arena_models={})
 
     assert set(result["registry"]) == {"muse-spark-1.2-contributor"}
     assert any(w["type"] == "variant_superseded" and w["model"] == "muse-spark-1.2" for w in result["warnings"])
@@ -343,3 +350,20 @@ def test_zero_declared_cost_model_gets_free_fill() -> None:
         w["type"] == "free_default_filled" and w["provider"] == "opencode-go"
         for w in result["warnings"]
     )
+
+
+def test_variant_supersessions_maps_losers_to_winners() -> None:
+    # -free beats -contributor beats plain; ids outside any variant group are
+    # absent from the map.
+    assert variant_supersessions(
+        [
+            "muse-spark-1.2",
+            "muse-spark-1.2-contributor",
+            "longcat-2.0",
+            "longcat-2.0-free",
+            "glm-5.2",
+        ]
+    ) == {
+        "muse-spark-1.2": "muse-spark-1.2-contributor",
+        "longcat-2.0": "longcat-2.0-free",
+    }

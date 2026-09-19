@@ -4,7 +4,7 @@
 import json
 from pathlib import Path
 
-from model_card_update import assemble, build_target_state, main  # noqa: E402
+from model_card_update import assemble, build_target_state, main, retire_suggestions  # noqa: E402
 from testutil import build, rec  # noqa: E402
 
 
@@ -191,3 +191,47 @@ def test_main_unknown_id_fails(tmp_path: Path, capsys) -> None:
     rc = main(["--extra", str(extra), "--cards", str(cards), "--arena", str(arena), "--id", "missing"])
 
     assert rc == 1
+
+
+def test_retire_suggestions_reports_displaced_predecessor() -> None:
+    # Adjacent-minor pair, successor ahead beyond ELO noise at a comparable
+    # quota tier: the predecessor is reported with the channels still serving
+    # it.  A speed-suffixed sibling never enters the pairing.
+    sections = {
+        "commandcode-goat": {
+            "glm-5.1": rec(rp5h=880),
+            "glm-5.2": rec(rp5h=880),
+        },
+    }
+    result = build(sections, arena={"glm-5.1": 1505.0, "glm-5.2": 1560.0})
+
+    warnings: list[dict] = []
+    suggestions = retire_suggestions(result, warnings)
+
+    assert [s["model"] for s in suggestions] == ["glm-5.1"]
+    assert suggestions[0]["replaced_by"] == "glm-5.2"
+    assert suggestions[0]["arena"] == {"before": 1505.0, "after": 1560.0}
+    assert suggestions[0]["serving"] == {"commandcode-goat": "glm-5.1"}
+    assert warnings == suggestions
+
+
+def test_retire_suggestions_stay_silent_without_full_displacement() -> None:
+    # Quota jump of 2.5x reads as a tier change; a 5-point score gap reads as
+    # ELO noise.  Neither pair is suggested.
+    loud = {
+        "commandcode-goat": {
+            "glm-5.1": rec(rp5h=880),
+            "glm-5.2": rec(rp5h=2200),
+        },
+    }
+    quiet = {
+        "commandcode-goat": {
+            "glm-5.1": rec(rp5h=880),
+            "glm-5.2": rec(rp5h=880),
+        },
+    }
+    loud_result = build(loud, arena={"glm-5.1": 1505.0, "glm-5.2": 1560.0})
+    quiet_result = build(quiet, arena={"glm-5.1": 1505.0, "glm-5.2": 1510.0})
+
+    assert retire_suggestions(loud_result, []) == []
+    assert retire_suggestions(quiet_result, []) == []

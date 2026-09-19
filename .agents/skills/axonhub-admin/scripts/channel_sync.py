@@ -7,9 +7,9 @@ regex ``autoSyncModelPattern``.  This script is the single owner of that
 filter's logic:
 
 1. Materialize the derived blocklist classes — rebuild the planner-owned
-   ``speed:``/``lowscore:`` entries from the current snapshots (human-owned
-   reasons pass through, conflicts keep the human entry) and write
-   ``data/blocklist.json`` atomically.
+   ``speed:``/``lowscore:``/``superseded:`` entries from the current snapshots
+   (human-owned reasons pass through, conflicts keep the human entry) and
+   write ``data/blocklist.json`` atomically.
 2. Generate the per-channel allow regex as a pure enumeration of the stored
    blocklist: a fixed ``claude-*`` block (Claude is served by AxonHub's own
    global models and is never collected) plus one terminated match per
@@ -32,7 +32,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, Mapping, Optional, Sequence
 
-from registry import canonical_id, is_free_model  # noqa: E402
+from registry import canonical_id, is_free_model, variant_supersessions  # noqa: E402
 from name_matching import find_best_match  # noqa: E402
 from snapshot import (  # noqa: E402
     BLOCKLIST_PATH,
@@ -52,7 +52,7 @@ SPEED_VARIANT_SUFFIXES = ("-fast", "-highspeed")
 # Planner-owned blocklist reason prefixes: entries with these reasons are
 # regenerated from scratch on every run; every other reason is human-owned
 # and passes through untouched.
-PLANNER_OWNED_REASON_PREFIXES = ("speed:", "lowscore:")
+PLANNER_OWNED_REASON_PREFIXES = ("speed:", "lowscore:", "superseded:")
 SPEED_VARIANT_EXCLUDE_REASON = "speed: fast/highspeed suffix"
 # Derived exclusion materialized into the blocklist: a scored non-free model
 # below this leaves the registry (aligned with the models.md "低分非免费不入册"
@@ -70,6 +70,38 @@ def speed_variant_exclude(model_id: str) -> Optional[str]:
     return None
 
 
+def superseded_variant_excludes(
+    sections: Mapping[str, Mapping[str, dict[str, Any]]],
+    aliases: Mapping[str, str],
+) -> dict[tuple[str, str], dict[str, str]]:
+    """Derived entries for variant-superseded ids a channel still serves.
+
+    Ruling mirrors the registry's variant groups exactly (``-free`` beats
+    ``-contributor`` beats plain, via :func:`registry.variant_supersessions`):
+    a losing variant leaves the registry, so a channel still exposing it
+    serves an id no global model routes to — block it.  Grouping is global
+    over every section, so a plain id loses to a ``-free`` variant served by
+    another channel too.
+    """
+
+    canonicals = {
+        canonical_id(native_id, aliases)
+        for records in sections.values()
+        for native_id in records
+    }
+    supersessions = variant_supersessions(canonicals)
+    derived: dict[tuple[str, str], dict[str, str]] = {}
+    for channel, records in sections.items():
+        for native_id in sorted(records):
+            winner = supersessions.get(canonical_id(native_id, aliases))
+            if winner:
+                derived[(channel.lower(), native_id.strip().lower())] = {
+                    "id": native_id,
+                    "reason": f"superseded: replaced by {winner}",
+                }
+    return derived
+
+
 def materialize_blocklist(
     raw_blocklist: Mapping[str, Sequence[Any]],
     sections: Mapping[str, Mapping[str, dict[str, Any]]],
@@ -79,9 +111,9 @@ def materialize_blocklist(
     """Regenerate the planner-owned blocklist entries; human entries pass through.
 
     The blocklist is the single source of truth for every exclusion: this
-    step owns the ``speed:`` and ``lowscore:`` reason classes and rebuilds
-    them from the current snapshots (stale derived entries disappear,
-    refreshed ones update in place); every other reason
+    step owns the ``speed:``, ``lowscore:`` and ``superseded:`` reason
+    classes and rebuilds them from the current snapshots (stale derived
+    entries disappear, refreshed ones update in place); every other reason
     (``manual``/``tier``/``retired``/…) belongs to the human maintainers and
     is preserved verbatim.  A human entry for the same id wins over a
     derived one.  The sync regex is a pure enumeration of the result.
@@ -133,6 +165,15 @@ def materialize_blocklist(
                     "reason": f"lowscore: arena {score:g} < {LOWSCORE_EXCLUDE_THRESHOLD:g}",
                 }
 
+    human_keys = set(human)
+    for key, entry in superseded_variant_excludes(sections, aliases).items():
+        # Human rulings and the per-id speed/lowscore triage already covering
+        # the id win; supersession is the residual derived class.
+        bare_key = (key[0], key[1].split("/")[-1])
+        if key in human_keys or bare_key in human_keys or key in derived:
+            continue
+        derived[key] = entry
+
     merged: dict[str, list[dict[str, str]]] = {}
     for (channel, _key), entry in sorted(human.items()):
         bucket = merged.setdefault(channel, [])
@@ -152,14 +193,19 @@ def run_materialize_blocklist(
     extra_path: Path,
     arena_path: Path,
     blocklist_path: Path = BLOCKLIST_PATH,
-) -> dict[str, list[dict[str, str]]]:
+) -> tuple[dict[str, list[dict[str, str]]], dict[str, dict[str, dict[str, Any]]]]:
     """Materialize the derived blocklist classes and persist them.
 
-    Rebuilds the planner-owned ``speed:``/``lowscore:`` entries from the
-    current snapshots (human-owned reasons pass through, conflicts keep the
-    human entry) and writes ``data/blocklist.json`` atomically, so the sync
+    Rebuilds the planner-owned ``speed:``/``lowscore:``/``superseded:``
+    entries from the current snapshots (human-owned reasons pass through,
+    conflicts keep the human entry) and writes ``data/blocklist.json``
+    atomically, so the sync
     regex is a pure enumeration of the stored result.  ``extra_path`` is
     read-only here — the collection store belongs to watch-pipeline.
+
+    Returns the merged blocklist and the channel sections (the main flow
+    reports human entries whose id has left the channel's section, so the
+    caller needs both).
     """
 
     sections = load_extra_sections(extra_path)
@@ -168,7 +214,19 @@ def run_materialize_blocklist(
     arena_models = load_arena(arena_path)
     merged = materialize_blocklist(raw_blocklist, sections, aliases, arena_models)
     _write_blocklist(blocklist_path, merged)
-    return merged
+    return merged, sections
+
+
+# Self-description persisted into the blocklist store so the file records its
+# own ownership and class semantics (AGENTS.md deliberately does not).
+REASON_CLASSES_DOC = {
+    "lowscore:": "derived — arena score below 1500 and not free (rebuilt on every run)",
+    "speed:": "derived — '-fast'/'-highspeed' speed-marketing variants (rebuilt on every run)",
+    "superseded:": "derived — variant supersession, '-free' beats '-contributor' beats plain (rebuilt on every run)",
+    "manual": "human — maintainer-ordered removal (e.g. upstream auth/id issues)",
+    "tier": "human — subscription-tier gap (stable set)",
+    "retired": "human — superseded by a successor or otherwise withdrawn; suggestions come from model-card-update's retire_suggested report",
+}
 
 
 def _write_blocklist(path: Path, blocklist: Mapping[str, list[dict[str, str]]]) -> None:
@@ -176,6 +234,7 @@ def _write_blocklist(path: Path, blocklist: Mapping[str, list[dict[str, str]]]) 
 
     document = {
         "schema_version": EXTRA_SCHEMA_VERSION,
+        "reason_classes": REASON_CLASSES_DOC,
         "updated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "blocklist": {
             channel: [dict(entry) for entry in entries]
@@ -232,7 +291,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        merged = run_materialize_blocklist(
+        merged, sections = run_materialize_blocklist(
             extra_path=args.extra, arena_path=args.arena, blocklist_path=args.blocklist
         )
     except PlanningError as exc:
@@ -242,6 +301,26 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     total = sum(len(entries) for entries in merged.values())
     counts = ", ".join(f"{ch}={len(entries)}" for ch, entries in sorted(merged.items()))
     print(f"channel-sync: blocklist materialized ({total} entries: {counts})", file=sys.stderr)
+
+    # 人工条目生命周期呈报：派生类随快照自愈，人工类会积累死条目。条目 id
+    # 离开该渠道节键（公开事实源）即失去明确对象——上游是否也不再提供只有
+    # 维护者能确认，确认后删条目；正则里的死亡条目无害但属噪音。
+    for channel, entries in sorted(merged.items()):
+        section_keys = {native_id.strip().lower() for native_id in sections.get(channel, {})}
+        section_bare = {key.split("/")[-1] for key in section_keys}
+        stale = [
+            entry["id"]
+            for entry in entries
+            if not entry["reason"].startswith(PLANNER_OWNED_REASON_PREFIXES)
+            and entry["id"].strip().lower() not in section_keys
+            and entry["id"].strip().lower().split("/")[-1] not in section_bare
+        ]
+        if stale:
+            print(
+                f"channel-sync: {channel} 人工条目已不在节键，若上游也不再提供即可清理: "
+                f"{', '.join(sorted(stale))}",
+                file=sys.stderr,
+            )
 
     selected = merged
     if args.channel:

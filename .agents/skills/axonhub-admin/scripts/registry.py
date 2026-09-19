@@ -13,7 +13,7 @@ materialized by the channel-sync step, never here).
 
 from __future__ import annotations
 
-from typing import Any, Mapping, Optional
+from typing import Any, Iterable, Mapping, Optional
 
 from name_matching import find_best_match, unrecognized_variant_suffix  # noqa: E402
 from snapshot import index_blocklist, missing, number  # noqa: E402
@@ -179,6 +179,28 @@ def dedupe_registry(
     return registry
 
 
+def variant_supersessions(canonical_ids: Iterable[str]) -> dict[str, str]:
+    """Loser→winner map for variant groups: -free beats -contributor beats plain.
+
+    Shared by the registry build (dropping losing variants) and the
+    channel-sync materializer (blocking losing variants a channel still
+    serves), so both sides rule identically.
+    """
+
+    groups: dict[str, list[str]] = {}
+    for canonical in canonical_ids:
+        groups.setdefault(_variant_base(canonical), []).append(canonical)
+    supersessions: dict[str, str] = {}
+    for base, members in sorted(groups.items()):
+        if len(members) < 2:
+            continue
+        ranked = sorted(members, key=lambda m: (_variant_rank(m), m))
+        survivor = ranked[0]
+        for member in ranked[1:]:
+            supersessions[member] = survivor
+    return supersessions
+
+
 def supersede_variants(
     registry: dict[str, dict[str, Any]], warnings: list[dict[str, Any]]
 ) -> dict[str, dict[str, Any]]:
@@ -189,17 +211,9 @@ def supersede_variants(
     exposes, and free detection relies on the suffix.
     """
 
-    groups: dict[str, list[str]] = {}
-    for canonical in registry:
-        groups.setdefault(_variant_base(canonical), []).append(canonical)
-    for base, members in sorted(groups.items()):
-        if len(members) < 2:
-            continue
-        ranked = sorted(members, key=lambda m: (_variant_rank(m), m))
-        survivor = ranked[0]
-        for member in ranked[1:]:
-            del registry[member]
-            warnings.append({"type": "variant_superseded", "model": member, "replaced_by": survivor})
+    for member, survivor in variant_supersessions(registry).items():
+        del registry[member]
+        warnings.append({"type": "variant_superseded", "model": member, "replaced_by": survivor})
     return registry
 
 
