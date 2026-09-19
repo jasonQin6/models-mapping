@@ -2,7 +2,7 @@
   "schema_version": 1,
   "source": {
     "url": "https://lmarena.ai/leaderboard/code/webdev",
-    "fetched_at": "2026-09-15T14:23:32.217098+00:00"
+    "fetched_at": "2026-09-19T03:48:42.324883+00:00"
   },
   "models": {
     "Inkling Small": {
@@ -13,7 +13,7 @@
       "arena_score": 1255.06,
       "organization": ""
     },
-    "claude-fable-5": {
+    "claude-fable-5-high": {
       "arena_score": 1627.98,
       "organization": "Anthropic"
     },
