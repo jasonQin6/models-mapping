@@ -123,8 +123,10 @@ watcher 转写渠道价格表的 `Free` 字样（go/goat），ant/sensenova 静�
 - GraphQL ID 是 GID（`gid://axonhub/Model/23`）；association 输入的 `channelId` 用整数。
 - 模型 ID 陷阱：上游用厂商前缀 ID（`deepseek/deepseek-v4-flash`、`zai-org/GLM-5.3`），Model 实体用
   裸 ID（`deepseek-v4-flash`），association 按**精确字符串**匹配渠道路由键。commandcode-goat 已开
-  `autoTrimedModelPrefixes`（前缀全量提取）+`lowercaseModelId`+`hideOriginalModels`，路由键统一为
-  裸小写规范 ID——写入默认钉规范 ID。残余例外：`:free` 冒号后缀（`ling-3.0-flash-sante:free`）、
+  `autoTrimedModelPrefixes`（前缀全量提取）+`lowercaseModelId`，带前缀条目派生出裸小写路由键
+  （source=auto_trim），写入默认钉规范 ID 即命中；`hideOriginalModels` 保持关闭——direct 键与
+  trim 键并存是同一模型的两个入口别名（非冲突），开着它裸拼写条目反而会失去路由键
+  （gpt-5.6-sol/luna 断链先例）。残余例外：`:free` 冒号后缀（`ling-3.0-flash-sante:free`）、
   别名渠道拼写（`tencent-hy3` 类，`channelAliases` 有值时）、未开统一开关的渠道。
   其余修复手段：渠道侧 `settings.modelMappings`；模型侧 association 链
   （`channel_model` 钉渠道+精确 ID / `model` 全局精确 ID / `regex` 全局正则）。
