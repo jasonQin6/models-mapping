@@ -10,7 +10,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 
 from models_extra import ExtraStoreError, is_excluded_model, load_document, update_channel
-from watch_go import build_go_section, main
+from watch_go import build_go_section, main, normalize_model_key
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -157,6 +157,22 @@ def test_update_channel_rejects_unknown_schema_version(tmp_path: Path) -> None:
         update_channel(path, "opencode-go", {})
 
 
+def test_main_reports_new_model_ids_on_stderr(tmp_path: Path, capsys) -> None:
+    out = tmp_path / "models_extra.json"
+
+    rc = main(["--extra", str(out), str(FIXTURES / "go-sample.mdx")])
+
+    assert rc == 0
+    err = capsys.readouterr().err
+    assert "new model ids on the page" in err
+    assert "union-alpha" in err
+
+    # 第二次采集同一页面：没有新增，不再呈报
+    rc = main(["--extra", str(out), str(FIXTURES / "go-sample.mdx")])
+    assert rc == 0
+    assert "new model ids" not in capsys.readouterr().err
+
+
 def test_main_writes_section_from_local_fixture(tmp_path: Path) -> None:
     out = tmp_path / "models_extra.json"
 
@@ -203,3 +219,14 @@ def test_update_channel_preserves_hand_maintained_record_fields(tmp_path: Path) 
         "rp5h": 900,
         "note": "hand",
     }
+
+
+def test_normalize_model_key_collapses_decorated_cell_onto_clean_id() -> None:
+    # A promo-decorated Model cell keys onto its clean id (the tagged tail is
+    # annotation), so the historical markup-polluted key disappears through
+    # the normal merge.
+    assert (
+        normalize_model_key("DeepSeek V4.1 Flash<br /><small>4x · Ends Sep 20</small>")
+        == "deepseek-v4.1-flash"
+    )
+    assert normalize_model_key("Union Alpha Free (Peak)") == "union-alpha-free"

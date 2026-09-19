@@ -84,3 +84,13 @@ def test_update_channel_creates_section_and_document(tmp_path: Path) -> None:
     assert document["channels"]["opencode-go"] == {"a": {"name": "A"}}
     assert document["updated_at"]
     assert not list(tmp_path.glob(".models_extra.json.*"))
+
+
+def test_update_channel_returns_newly_inserted_ids(tmp_path: Path) -> None:
+    path = _write_store(tmp_path, {"opencode-go": {"kept": {"name": "Kept"}}})
+
+    new_ids = update_channel(
+        path, "opencode-go", {"kept": {"name": "Kept"}, "new": {"name": "New"}}
+    )
+
+    assert new_ids == ["new"]

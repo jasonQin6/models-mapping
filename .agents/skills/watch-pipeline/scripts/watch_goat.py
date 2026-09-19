@@ -327,7 +327,12 @@ def main(argv: Optional[list[str]] = None) -> int:
         if not models:
             raise ValueError("no models resolved from the GOAT plan page")
 
-        update_channel(args.extra, "commandcode-goat", models)
+        new_ids = update_channel(args.extra, "commandcode-goat", models)
+        if new_ids:
+            print(
+                f"watch-goat: new model ids on the page (待裁决：建卡或屏蔽): {', '.join(new_ids)}",
+                file=sys.stderr,
+            )
     except (OSError, ValueError) as exc:
         persist_error(CHANNEL, "watch_goat.py", str(exc), dump_ref)
         print(f"watch-goat: {exc}", file=sys.stderr)

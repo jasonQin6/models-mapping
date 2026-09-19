@@ -65,7 +65,7 @@ def update_channel(
     path: Path,
     channel: str,
     models: Mapping[str, Mapping[str, Any]],
-) -> None:
+) -> list[str]:
     """Merge one channel section atomically, leaving other sections alone.
 
     Scraped records carry the channel's contract fields only.  A model the
@@ -74,6 +74,9 @@ def update_channel(
     model that leaves the channel declaration leaves the section with its
     whole record — which is why hand-maintained model decisions live in
     axonhub-admin's ``data/blocklist.json``, not on records.
+
+    Returns the ids the scrape introduced that the stored section did not
+    have yet — the new-candidate signal for the curation workflow.
     """
 
     document = load_document(path)
@@ -84,9 +87,11 @@ def update_channel(
         merged[model_id] = (
             {**old, **dict(record)} if isinstance(old, Mapping) else dict(record)
         )
+    new_ids = [model_id for model_id in sorted(models) if model_id not in section]
     document["channels"][channel] = merged
     document["updated_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     write_json_atomic(path, document)
+    return new_ids
 
 
 def write_json_atomic(path: Path, payload: Mapping[str, Any]) -> None:

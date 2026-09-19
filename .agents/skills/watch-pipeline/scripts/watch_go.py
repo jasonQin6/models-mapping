@@ -61,17 +61,30 @@ def _json_value(value: Any) -> Any:
 # go.mdx parsing (single-consumer: this watcher is the only user)
 
 
+def clean_cell(name: str) -> str:
+    """Drop HTML annotation from a Model cell: the id is the text before the
+    first tag.  Cells like ``DeepSeek V4.1 Flash<br /><small>4x · Ends Sep
+    20</small>`` carry the promo note in a tagged tail that must not leak
+    into the store as part of the key or name.
+    """
+
+    return name.split('<', 1)[0].strip()
+
+
 def normalize_model_key(name: str) -> str:
     """Derive the channel key from an mdx table's Model cell.
 
-    Collection-side keying for the go.mdx tables (lowercase, spaces to
-    hyphens, parentheticals dropped, hyphens collapsed).  Kept local on
-    purpose: axonhub-admin's ``name_matching`` serves arena/registry
-    matching, and the collection layer does not import across layers.  The
-    transformation must stay byte-compatible with historical snapshot keys.
+    Collection-side keying for the go.mdx tables (markup annotation dropped,
+    lowercase, spaces to hyphens, parentheticals dropped, hyphens collapsed).
+    Kept local on purpose: axonhub-admin's ``name_matching`` serves
+    arena/registry matching, and the collection layer does not import across
+    layers.  The transformation must stay byte-compatible with historical
+    snapshot keys — a decorated cell collapses onto its clean id, so the
+    historical markup-polluted key disappears through the normal merge.
     """
 
-    value = re.sub(r'\s*\([^)]+\)', '', name)
+    value = clean_cell(name)
+    value = re.sub(r'\s*\([^)]+\)', '', value)
     value = value.strip().lower().replace(' ', '-')
     return re.sub(r'-+', '-', value)
 
@@ -211,7 +224,7 @@ def parse_mdx(content: str) -> Dict[str, dict]:
         if not key:
             continue
         models[key] = {
-            'name': raw_name,
+            'name': clean_cell(raw_name),
             'rp5h': parse_int_or_none(row.get('requests per 5 hour', '-')),
         }
     if not any(m.get('rp5h') is not None for m in models.values()):
@@ -231,7 +244,7 @@ def parse_mdx(content: str) -> Dict[str, dict]:
         if not key:
             continue
         record = {
-            'name': re.sub(r'\s*\([^)]+\)', '', raw_name).strip() or raw_name,
+            'name': re.sub(r'\s*\([^)]+\)', '', clean_cell(raw_name)).strip() or raw_name,
             'price_input': parse_price_cell(row.get('Input', '-')),
             'price_output': parse_price_cell(row.get('Output', '-')),
             'price_cached_read': parse_price_cell(row.get('Cached Read', '-')),
@@ -269,7 +282,7 @@ def parse_mdx(content: str) -> Dict[str, dict]:
             elif '/completions' in endpoint:
                 protocol = 'completions'
             if key not in models:
-                models[key] = {'name': raw_name}
+                models[key] = {'name': clean_cell(raw_name)}
             models[key] = merge_model(models[key], {
                 'model_id': model_id,
                 'endpoint': endpoint,
@@ -336,7 +349,12 @@ def main(argv: Optional[list[str]] = None) -> int:
         models = build_go_section(content)
         if not models:
             raise ValueError("no models found in go.mdx")
-        update_channel(args.extra, "opencode-go", models)
+        new_ids = update_channel(args.extra, "opencode-go", models)
+        if new_ids:
+            print(
+                f"watch-go: new model ids on the page (待裁决：建卡或屏蔽): {', '.join(new_ids)}",
+                file=sys.stderr,
+            )
     except (OSError, ValueError) as exc:
         dump = dump_page(CHANNEL, content) if "content" in locals() else None
         persist_error(CHANNEL, "watch_go.py", str(exc), dump)

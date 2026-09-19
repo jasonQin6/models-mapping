@@ -166,6 +166,17 @@
         "tok_s": 114,
         "usage_quota": 40.0
       },
+      "glm-5.3-flashx": {
+        "cost": {
+          "cache_read": 0.075,
+          "input": 0.37,
+          "output": 1.25
+        },
+        "name": "GLM-5.3 FlashX",
+        "rp5h": 945,
+        "tok_s": null,
+        "usage_quota": 20.0
+      },
       "gpt-5.6-luna": {
         "cost": {
           "cache_read": 0.02,
@@ -322,16 +333,16 @@
         "tok_s": null,
         "usage_quota": null
       },
-      "longcat-2.0-free": {
+      "longcat-2.0": {
         "cost": {
-          "cache_read": 0.0,
-          "input": 0.0,
-          "output": 0.0
+          "cache_read": 0.006,
+          "input": 0.3,
+          "output": 1.2
         },
         "name": "LongCat 2.0",
-        "rp5h": null,
+        "rp5h": 12800,
         "tok_s": null,
-        "usage_quota": null
+        "usage_quota": 50.0
       },
       "mimo-v2.5": {
         "cost": {
@@ -547,6 +558,17 @@
         "tok_s": null,
         "usage_quota": 20.0
       },
+      "qwen3.8-omni-flash": {
+        "cost": {
+          "cache_read": 0.016,
+          "input": 0.15,
+          "output": 0.47
+        },
+        "name": "Qwen 3.8 Omni Flash",
+        "rp5h": 3940,
+        "tok_s": null,
+        "usage_quota": 20.0
+      },
       "step-3.5-flash": {
         "cost": {
           "cache_read": 0.02,
@@ -623,17 +645,6 @@
           "output": 0.6
         },
         "name": "DeepSeek V4.1 Flash",
-        "rp5h": null,
-        "usage_quota": null
-      },
-      "deepseek-v4.1-flash<br-/><small>4x-·-ends-sep-20</small>": {
-        "cost": {
-          "cache_read": null,
-          "cache_write": null,
-          "input": null,
-          "output": null
-        },
-        "name": "DeepSeek V4.1 Flash<br /><small>4x · Ends Sep 20</small>",
         "rp5h": null,
         "usage_quota": null
       },
@@ -900,17 +911,6 @@
         "name": "Qwen3.8 Max",
         "rp5h": 160,
         "usage_quota": 15.0
-      },
-      "union-alpha": {
-        "cost": {
-          "cache_read": 0.0,
-          "cache_write": null,
-          "input": 0.0,
-          "output": 0.0
-        },
-        "name": "Union Alpha Free",
-        "rp5h": null,
-        "usage_quota": null
       }
     },
     "sensenova": {
@@ -977,5 +977,5 @@
     }
   },
   "schema_version": 1,
-  "updated_at": "2026-09-18T03:53:27Z"
+  "updated_at": "2026-09-19T05:01:21Z"
 }
