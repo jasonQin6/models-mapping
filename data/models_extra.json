@@ -75,7 +75,7 @@
         "name": "DeepSeek V4.1 Flash",
         "rp5h": 30800,
         "tok_s": 247,
-        "usage_quota": 4060.0
+        "usage_quota": null
       },
       "gemini-3.7-flash": {
         "cost": {
@@ -223,6 +223,17 @@
         "tok_s": 71,
         "usage_quota": 20.0
       },
+      "grok-4.7": {
+        "cost": {
+          "cache_read": 0.3,
+          "input": 1.2,
+          "output": 3.6
+        },
+        "name": "Grok 4.7",
+        "rp5h": 252,
+        "tok_s": null,
+        "usage_quota": null
+      },
       "hy4-preview": {
         "cost": {
           "cache_read": 0.042,
@@ -365,6 +376,39 @@
         "rp5h": 5700,
         "tok_s": 43,
         "usage_quota": 20.0
+      },
+      "mimo-v2.6-flash": {
+        "cost": {
+          "cache_read": 0.0028,
+          "input": 0.14,
+          "output": 0.28
+        },
+        "name": "MiMo V2.6 Flash",
+        "rp5h": 43500,
+        "tok_s": null,
+        "usage_quota": null
+      },
+      "mimo-v2.6-pro": {
+        "cost": {
+          "cache_read": 0.0036,
+          "input": 0.435,
+          "output": 0.87
+        },
+        "name": "MiMo V2.6 Pro",
+        "rp5h": 5700,
+        "tok_s": null,
+        "usage_quota": 20.0
+      },
+      "mimo-v2.6-pro-ultraspeed": {
+        "cost": {
+          "cache_read": 0.036,
+          "input": 4.35,
+          "output": 8.7
+        },
+        "name": "MiMo V2.6 Pro UltraSpeed",
+        "rp5h": 285,
+        "tok_s": null,
+        "usage_quota": 10.0
       },
       "minimax-m2.5": {
         "cost": {
@@ -589,6 +633,17 @@
         "name": "Step 3.7 Flash",
         "rp5h": 1670,
         "tok_s": 126,
+        "usage_quota": 20.0
+      },
+      "step-5-preview": {
+        "cost": {
+          "cache_read": 0.05,
+          "input": 1.0,
+          "output": 2.7
+        },
+        "name": "Step 5 Preview",
+        "rp5h": 1040,
+        "tok_s": null,
         "usage_quota": 20.0
       },
       "tencent-hy3": {
@@ -1010,5 +1065,5 @@
     }
   },
   "schema_version": 1,
-  "updated_at": "2026-09-22T03:58:32Z"
+  "updated_at": "2026-09-22T03:58:45Z"
 }
