@@ -714,6 +714,17 @@
         "rp5h": 169,
         "usage_quota": 15.0
       },
+      "grok-4.7": {
+        "cost": {
+          "cache_read": 0.5,
+          "cache_write": null,
+          "input": 2.0,
+          "output": 6.0
+        },
+        "name": "Grok 4.7",
+        "rp5h": 169,
+        "usage_quota": 15.0
+      },
       "hy3": {
         "cost": {
           "cache_read": 0.035,
@@ -799,6 +810,28 @@
           "output": 0.87
         },
         "name": "MiMo-V2.5-Pro",
+        "rp5h": 3250,
+        "usage_quota": 15.0
+      },
+      "mimo-v2.6-flash": {
+        "cost": {
+          "cache_read": 0.0028,
+          "cache_write": null,
+          "input": 0.14,
+          "output": 0.28
+        },
+        "name": "MiMo-V2.6-Flash",
+        "rp5h": 30100,
+        "usage_quota": 60.0
+      },
+      "mimo-v2.6-pro": {
+        "cost": {
+          "cache_read": 0.003625,
+          "cache_write": null,
+          "input": 0.435,
+          "output": 0.87
+        },
+        "name": "MiMo-V2.6-Pro",
         "rp5h": 3250,
         "usage_quota": 15.0
       },
@@ -977,5 +1010,5 @@
     }
   },
   "schema_version": 1,
-  "updated_at": "2026-09-21T04:01:13Z"
+  "updated_at": "2026-09-22T03:58:32Z"
 }
