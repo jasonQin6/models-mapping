@@ -201,6 +201,18 @@
         "tok_s": 69,
         "usage_quota": 70.0
       },
+      "gpt-6-luna": {
+        "cost": {
+          "cache_read": 0.01,
+          "cache_write": 0.125,
+          "input": 0.1,
+          "output": 0.5
+        },
+        "name": "GPT-6 Luna",
+        "rp5h": 6060,
+        "tok_s": null,
+        "usage_quota": 20.0
+      },
       "grok-4.5": {
         "cost": {
           "cache_read": 0.5,
@@ -266,6 +278,17 @@
         "rp5h": 709,
         "tok_s": 162,
         "usage_quota": 20.0
+      },
+      "jev": {
+        "cost": {
+          "cache_read": 0.0,
+          "input": 0.0,
+          "output": 0.0
+        },
+        "name": "Jev",
+        "rp5h": null,
+        "tok_s": null,
+        "usage_quota": null
       },
       "kimi-k2.5": {
         "cost": {
@@ -1065,5 +1088,5 @@
     }
   },
   "schema_version": 1,
-  "updated_at": "2026-09-23T03:56:04Z"
+  "updated_at": "2026-09-23T03:56:15Z"
 }
