@@ -781,6 +781,17 @@
         "rp5h": 2050,
         "usage_quota": 15.0
       },
+      "gpt-6-luna": {
+        "cost": {
+          "cache_read": 0.01,
+          "cache_write": 0.125,
+          "input": 0.1,
+          "output": 0.5
+        },
+        "name": "GPT 6 Luna",
+        "rp5h": 4230,
+        "usage_quota": 15.0
+      },
       "grok-4.6": {
         "cost": {
           "cache_read": 0.5,
@@ -1022,6 +1033,17 @@
         "name": "Qwen3.8 Max",
         "rp5h": 160,
         "usage_quota": 15.0
+      },
+      "space-bunny-free": {
+        "cost": {
+          "cache_read": 0.0,
+          "cache_write": null,
+          "input": 0.0,
+          "output": 0.0
+        },
+        "name": "Space Bunny Free",
+        "rp5h": null,
+        "usage_quota": null
       }
     },
     "sensenova": {
@@ -1088,5 +1110,5 @@
     }
   },
   "schema_version": 1,
-  "updated_at": "2026-09-23T03:56:15Z"
+  "updated_at": "2026-09-24T03:49:16Z"
 }
