@@ -282,7 +282,7 @@
       "jev": {
         "cost": {
           "cache_read": 0.0,
-          "input": 0.0,
+          "input": 0.042,
           "output": 0.0
         },
         "name": "Jev",
@@ -407,9 +407,9 @@
           "output": 0.28
         },
         "name": "MiMo V2.6 Flash",
-        "rp5h": 43500,
+        "rp5h": 13000,
         "tok_s": null,
-        "usage_quota": null
+        "usage_quota": 20.0
       },
       "mimo-v2.6-pro": {
         "cost": {
@@ -650,11 +650,11 @@
       "step-3.5-flash": {
         "cost": {
           "cache_read": 0.02,
-          "input": 0.1,
+          "input": 0.09,
           "output": 0.3
         },
         "name": "Step 3.5 Flash",
-        "rp5h": 3510,
+        "rp5h": 3530,
         "tok_s": null,
         "usage_quota": 20.0
       },
@@ -1121,5 +1121,5 @@
     }
   },
   "schema_version": 1,
-  "updated_at": "2026-09-25T04:04:24Z"
+  "updated_at": "2026-09-25T04:04:36Z"
 }
