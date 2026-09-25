@@ -2,7 +2,7 @@
   "schema_version": 1,
   "source": {
     "url": "https://lmarena.ai/leaderboard/code/webdev",
-    "fetched_at": "2026-09-24T03:49:42.143314+00:00"
+    "fetched_at": "2026-09-25T04:05:21.584803+00:00"
   },
   "models": {
     "Inkling Small": {
@@ -297,6 +297,10 @@
       "arena_score": 1792.18,
       "organization": "OpenAI"
     },
+    "gpt-6-luna-max": {
+      "arena_score": 1593.16,
+      "organization": "OpenAI"
+    },
     "gpt-6-sol-max": {
       "arena_score": 1685.9,
       "organization": "OpenAI"
@@ -422,7 +426,7 @@
       "organization": "Xiaomi"
     },
     "mimo-v2.6-pro": {
-      "arena_score": 1628.15,
+      "arena_score": 1619.4,
       "organization": "Xiaomi"
     },
     "minimax-m2": {
