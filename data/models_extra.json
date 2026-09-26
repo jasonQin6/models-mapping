@@ -286,9 +286,9 @@
           "output": 0.0
         },
         "name": "Jev",
-        "rp5h": null,
+        "rp5h": 119000,
         "tok_s": null,
-        "usage_quota": null
+        "usage_quota": 20.0
       },
       "kimi-k2.5": {
         "cost": {
@@ -520,6 +520,17 @@
         "rp5h": 575,
         "tok_s": 159,
         "usage_quota": 20.0
+      },
+      "pixel-canary": {
+        "cost": {
+          "cache_read": 0.0,
+          "input": 0.0,
+          "output": 0.0
+        },
+        "name": "Pixel Canary",
+        "rp5h": null,
+        "tok_s": null,
+        "usage_quota": null
       },
       "qwen3.6-max-preview": {
         "cost": {
@@ -1121,5 +1132,5 @@
     }
   },
   "schema_version": 1,
-  "updated_at": "2026-09-26T04:09:25Z"
+  "updated_at": "2026-09-26T04:09:39Z"
 }
