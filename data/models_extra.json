@@ -734,8 +734,8 @@
           "output": 0.6
         },
         "name": "DeepSeek V4.1 Flash",
-        "rp5h": null,
-        "usage_quota": null
+        "rp5h": 26000,
+        "usage_quota": 60.0
       },
       "glm-5.1": {
         "cost": {
@@ -1121,5 +1121,5 @@
     }
   },
   "schema_version": 1,
-  "updated_at": "2026-09-25T04:04:36Z"
+  "updated_at": "2026-09-26T04:09:25Z"
 }
