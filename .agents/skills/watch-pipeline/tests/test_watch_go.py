@@ -94,10 +94,21 @@ def test_channel_claude_models_are_not_collected() -> None:
 
 def test_missing_requests_table_is_structural_drift() -> None:
     # Upstream reshuffles must fail the run, never silently null rp5h.
-    drifted = _fixture_content().replace("requests per 5 hour", "requests hourly")
+    drifted = _fixture_content().replace("Requests per 5 hours", "requests hourly")
 
     with pytest.raises(ValueError, match="requests table"):
         build_go_section(drifted)
+
+
+def test_reworded_requests_header_still_parses_both_spellings() -> None:
+    # The 2026-09-29 drift was cosmetic (``requests per 5 hour`` ->
+    # ``Requests per 5 hours``) with the table intact: either spelling
+    # parses, so wording is not drift.
+    old_spelling = _fixture_content().replace(
+        "Requests per 5 hours", "requests per 5 hour"
+    )
+    assert build_go_section(old_spelling)["grok-4.6"]["rp5h"] == 169
+    assert build_go_section(_fixture_content())["grok-4.6"]["rp5h"] == 169
 
 
 def test_missing_pricing_table_is_structural_drift() -> None:

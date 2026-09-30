@@ -172,15 +172,38 @@ def _table_headers(table_lines: List[str]) -> List[str]:
     return [h.strip() for h in table_lines[0].split('|')[1:-1]]
 
 
+def _norm_header(name: str) -> str:
+    """Case-, spacing- and plural-insensitive form of a table header.
+
+    Upstream rewording stopped being structure on 2026-09-29: the requests
+    column drifted from ``requests per 5 hour`` to ``Requests per 5 hours``
+    with the table itself intact, so header comparison folds case and
+    whitespace and tolerates a trailing ``s``.  Genuine rewording (``requests
+    hourly``) still misses and fails the run.
+    """
+
+    value = re.sub(r'\s+', ' ', name.strip().casefold())
+    return re.sub(r's$', '', value)
+
+
 def _find_table_by_headers(
     tables: List[List[str]], required: tuple
 ) -> Optional[List[str]]:
     """First table whose header row carries all ``required`` columns."""
     for table in tables:
-        headers = _table_headers(table)
-        if all(col in headers for col in required):
+        headers = {_norm_header(h) for h in _table_headers(table)}
+        if all(_norm_header(col) in headers for col in required):
             return table
     return None
+
+
+def _row_get(row: dict, name: str, default: str = '') -> str:
+    """Cell of ``row`` under the header matching ``name`` (see _norm_header)."""
+
+    for key, value in row.items():
+        if _norm_header(key) == _norm_header(name):
+            return value
+    return default
 
 
 def parse_mdx(content: str) -> Dict[str, dict]:
@@ -191,7 +214,9 @@ def parse_mdx(content: str) -> Dict[str, dict]:
     limits" with the monthly quota column renamed ``Monthly limit``,
     requests moved under an "Estimated requests" subsection), and a
     positional reader then transcribed the pricing table as requests,
-    silently nulling every rp5h/cost field in the store.
+    silently nulling every rp5h/cost field in the store.  Header and
+    cell lookup compare via _norm_header, so cosmetic rewording (the
+    2026-09-29 ``Requests per 5 hours`` recase) is not drift.
 
     Reads three tables — requests (rp5h), pricing (the four prices plus
     usage_quota, historically the ``Usage`` column) and endpoints.
@@ -219,13 +244,13 @@ def parse_mdx(content: str) -> Dict[str, dict]:
     if requests_table is None:
         raise ValueError('go.mdx drift: requests table (requests per 5 hour) not found')
     for row in parse_table_lines(requests_table):
-        raw_name = row.get('Model', '').strip()
+        raw_name = _row_get(row, 'Model').strip()
         key = normalize_model_key(raw_name)
         if not key:
             continue
         models[key] = {
             'name': clean_cell(raw_name),
-            'rp5h': parse_int_or_none(row.get('requests per 5 hour', '-')),
+            'rp5h': parse_int_or_none(_row_get(row, 'requests per 5 hour', '-')),
         }
     if not any(m.get('rp5h') is not None for m in models.values()):
         raise ValueError('go.mdx drift: requests table parsed but no rp5h values')
@@ -239,17 +264,19 @@ def parse_mdx(content: str) -> Dict[str, dict]:
     rows = parse_table_lines(pricing_table)
     cheapest: Dict[str, dict] = {}
     for row in rows:
-        raw_name = row.get('Model', '').strip()
+        raw_name = _row_get(row, 'Model').strip()
         key = normalize_model_key(raw_name)
         if not key:
             continue
         record = {
             'name': re.sub(r'\s*\([^)]+\)', '', clean_cell(raw_name)).strip() or raw_name,
-            'price_input': parse_price_cell(row.get('Input', '-')),
-            'price_output': parse_price_cell(row.get('Output', '-')),
-            'price_cached_read': parse_price_cell(row.get('Cached Read', '-')),
-            'price_cached_write': parse_price_cell(row.get('Cached Write', '-')),
-            'usage_quota': parse_price(row.get('Usage') or row.get('Monthly limit') or '-'),
+            'price_input': parse_price_cell(_row_get(row, 'Input', '-')),
+            'price_output': parse_price_cell(_row_get(row, 'Output', '-')),
+            'price_cached_read': parse_price_cell(_row_get(row, 'Cached Read', '-')),
+            'price_cached_write': parse_price_cell(_row_get(row, 'Cached Write', '-')),
+            'usage_quota': parse_price(
+                _row_get(row, 'Usage') or _row_get(row, 'Monthly limit') or '-'
+            ),
         }
         if record['price_output'] is None:
             continue
@@ -268,12 +295,12 @@ def parse_mdx(content: str) -> Dict[str, dict]:
     endpoints_table = _find_table_by_headers(all_tables, ('Model', 'Model ID'))
     if endpoints_table is not None:
         for row in parse_table_lines(endpoints_table):
-            raw_name = row.get('Model', '').strip()
+            raw_name = _row_get(row, 'Model').strip()
             key = normalize_model_key(raw_name)
             if not key:
                 continue
-            model_id = row.get('Model ID', '').strip()
-            endpoint = row.get('Endpoint', '').strip()
+            model_id = _row_get(row, 'Model ID').strip()
+            endpoint = _row_get(row, 'Endpoint').strip()
             protocol = 'unknown'
             if '/responses' in endpoint:
                 protocol = 'responses'
