@@ -77,6 +77,17 @@
         "tok_s": null,
         "usage_quota": 60.0
       },
+      "deepseek-v4.1-flash-fast": {
+        "cost": {
+          "cache_read": 0.016,
+          "input": 0.16,
+          "output": 0.58
+        },
+        "name": "DeepSeek V4.1 Flash Fast",
+        "rp5h": 11500,
+        "tok_s": null,
+        "usage_quota": 60.0
+      },
       "gemini-3.7-flash": {
         "cost": {
           "cache_read": 0.15,
@@ -237,14 +248,14 @@
       },
       "grok-4.7": {
         "cost": {
-          "cache_read": 0.3,
-          "input": 1.2,
-          "output": 3.6
+          "cache_read": 0.5,
+          "input": 2.0,
+          "output": 6.0
         },
         "name": "Grok 4.7",
-        "rp5h": 252,
+        "rp5h": 144,
         "tok_s": null,
-        "usage_quota": null
+        "usage_quota": 20.0
       },
       "hy4-preview": {
         "cost": {
@@ -363,6 +374,17 @@
           "output": 0.0
         },
         "name": "Ling 3.0 Flash Sante",
+        "rp5h": null,
+        "tok_s": null,
+        "usage_quota": null
+      },
+      "ling-3.1-flash-free": {
+        "cost": {
+          "cache_read": 0.0,
+          "input": 0.0,
+          "output": 0.0
+        },
+        "name": "Ling 3.1 Flash",
         "rp5h": null,
         "tok_s": null,
         "usage_quota": null
@@ -1099,5 +1121,5 @@
     }
   },
   "schema_version": 1,
-  "updated_at": "2026-09-30T06:47:54Z"
+  "updated_at": "2026-09-30T06:48:06Z"
 }
