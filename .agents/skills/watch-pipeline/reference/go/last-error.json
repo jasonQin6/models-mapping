@@ -1,6 +1,0 @@
-{
-  "timestamp": "2026-09-30T04:41:48.949850+00:00",
-  "script": "watch_go.py",
-  "error": "go.mdx drift: requests table (requests per 5 hour) not found",
-  "dump": "/home/runner/work/models-mapping/models-mapping/.agents/skills/watch-pipeline/reference/go/failed-page.html"
-}
