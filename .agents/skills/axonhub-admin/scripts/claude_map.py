@@ -43,11 +43,19 @@ from snapshot import (  # noqa: E402
 # associations only.
 REQUESTS: dict[str, str] = {
     "claude-fable-5": "",
+    "claude-fable-5.1": "2026-09-30 扩充：榜上 claude-fable-5.1-max",
     "claude-haiku-4-5": "",
+    "claude-opus-4-1": "2026-09-30 扩充：榜上 claude-opus-4-1-20250805",
+    "claude-opus-4-5": "2026-09-30 扩充：榜上 claude-opus-4-5-20251101",
     "claude-opus-4-6": "",
+    "claude-opus-4-7": "2026-09-30 扩充：榜上直录",
+    "claude-opus-4-8": "2026-09-30 扩充：榜上直录",
     "claude-opus-5": "",
+    "claude-opus-5.5": "2026-09-30 扩充：榜上 claude-opus-5.5-max",
+    "claude-sonnet-4-5": "2026-09-30 扩充：榜上 claude-sonnet-4-5-20250929",
     "claude-sonnet-4-6": "",
     "claude-sonnet-5": "",
+    "claude-sonnet-5.5": "2026-09-30 扩充：榜上 claude-sonnet-5.5-high",
 }
 
 DEFAULT_WEIGHTS = {
