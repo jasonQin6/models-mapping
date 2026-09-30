@@ -41,21 +41,17 @@ from snapshot import (  # noqa: E402
 # entries to grow or shrink the mapped set.  GPT models pass through by name
 # in AxonHub and are deliberately absent — this step maintains Claude
 # associations only.
+# 2026-09-30 收敛到 7：goat-only 目标去重后恰 7 个，每目标一个代表
+# （5 免费档 + deepseek-v4-flash 档 + muse-spark-1.3-contributor 档）；
+# 免费池 5 个需恰好被最弱 5 个请求耗尽，两个公式档才能存活，7 是下限。
 REQUESTS: dict[str, str] = {
-    "claude-fable-5": "",
-    "claude-fable-5.1": "2026-09-30 扩充：榜上 claude-fable-5.1-max",
     "claude-haiku-4-5": "",
-    "claude-opus-4-1": "2026-09-30 扩充：榜上 claude-opus-4-1-20250805",
-    "claude-opus-4-5": "2026-09-30 扩充：榜上 claude-opus-4-5-20251101",
-    "claude-opus-4-6": "",
-    "claude-opus-4-7": "2026-09-30 扩充：榜上直录",
-    "claude-opus-4-8": "2026-09-30 扩充：榜上直录",
+    "claude-opus-4-1": "",
+    "claude-opus-4-5": "",
     "claude-opus-5": "",
-    "claude-opus-5.5": "2026-09-30 扩充：榜上 claude-opus-5.5-max",
-    "claude-sonnet-4-5": "2026-09-30 扩充：榜上 claude-sonnet-4-5-20250929",
+    "claude-sonnet-4-5": "",
     "claude-sonnet-4-6": "",
     "claude-sonnet-5": "",
-    "claude-sonnet-5.5": "2026-09-30 扩充：榜上 claude-sonnet-5.5-high",
 }
 
 DEFAULT_WEIGHTS = {
