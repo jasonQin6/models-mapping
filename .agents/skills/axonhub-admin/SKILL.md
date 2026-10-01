@@ -44,8 +44,7 @@ description: 本仓对 AxonHub 部署（https://axon.jasonqin.site）的四步�
 3. 注入 graphql-cli：`npx -y @axonhub/graphql-cli endpoint login axonhub --type token --token "$TOKEN"`。
 4. 校验：`curl -X POST .../admin/graphql` 查 `{ me { id email } }`，HTTP 200 且有 `data.me` 即通过；401 则回第 2 步重取。
 
-JWT 是凭据：只出现在 Authorization 头和环境变量里，不打印、不复制、不写入
-文件、提交、plan/CSV 或日志。`AXONHUB_JWT`（本 skill，浏览器会话 token）与
+`AXONHUB_JWT`（本 skill，浏览器会话 token）与
 `AXONHUB_TOKEN`（axonhub-cli，signin 接口换得）机制不同、互不通用。
 
 ## 执行循环（所有批量写操作的标准流程）
