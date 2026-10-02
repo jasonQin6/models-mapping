@@ -121,12 +121,13 @@ watcher 转写渠道价格表的 `Free` 字样（go/goat），ant/sensenova 静�
   未变就省略——多传反而可能触发瞬态校验器。
 - GraphQL ID 是 GID（`gid://axonhub/Model/23`）；association 输入的 `channelId` 用整数。
 - 模型 ID 陷阱：上游用厂商前缀 ID（`deepseek/deepseek-v4-flash`、`zai-org/GLM-5.3`），Model 实体用
-  裸 ID（`deepseek-v4-flash`），association 按**精确字符串**匹配渠道路由键。commandcode-goat 已开
+  裸 ID（`deepseek-v4-flash`），association 按**精确字符串**匹配渠道路由键。commandcode-goat 曾开
   `autoTrimedModelPrefixes`（前缀全量提取）+`lowercaseModelId`，带前缀条目派生出裸小写路由键
-  （source=auto_trim），写入默认钉规范 ID 即命中；`hideOriginalModels` 保持关闭——direct 键与
-  trim 键并存是同一模型的两个入口别名（非冲突），开着它裸拼写条目反而会失去路由键
+  （source=auto_trim），写入默认钉规范 ID 即命中；**该渠道已退役（ADR 0016）**，遗留经验仍有效：
+  `hideOriginalModels` 保持关闭——direct 键与 trim 键并存是同一模型的两个入口别名（非冲突），开着它裸拼写条目反而会失去路由键
   （gpt-5.6-sol/luna 断链先例）。残余例外：`:free` 冒号后缀（`ling-3.0-flash-sante:free`）、
-  别名渠道拼写（`tencent-hy3` 类，`channelAliases` 有值时）、未开统一开关的渠道。
+  别名渠道拼写（`tencent-hy3` 类，`channelAliases` 有值时）、未开统一开关的渠道（opencode-go 的
+  `stealth/` 前缀即此列，前缀提取表未收录时模型侧钉原生拼写是既定绕法）。
   其余修复手段：渠道侧 `settings.modelMappings`；模型侧 association 链
   （`channel_model` 钉渠道+精确 ID / `model` 全局精确 ID / `regex` 全局正则）。
   验证分工：`testChannel(channelID, modelID)` 真实打上游测可达（不走映射/trim 层，id 须在
@@ -142,6 +143,16 @@ watcher 转写渠道价格表的 `Free` 字样（go/goat），ant/sensenova 静�
   探测不可行，只能逐 ID 请求（可并发）。
 - 排查「上游现在还提供哪些模型」用 `syncChannelModels(channelID, pattern: "")`
   一次性同步拿原始清单（不污染存储 pattern；配方与清理判据见 channel-sync.md）。
+- `updateChannel` 的 `input.status` 会被服务端**静默忽略**（mutation 正常返回、
+  对账读仍为 enabled；remark 等其他字段写入正常）。禁用一个渠道的等效手段：
+  把其 `autoSyncModelPattern` 设为全排除式 `(?i)^(?!.*(^|/)claude-)$`——同步层
+  不再供给任何模型；彻底下线则配合模型侧清链（移除该渠道的 channel_model 条目）。
+- ADR 0016（2026-09-30）：commandcode-goat 渠道退役——订阅取消、insufficient
+  credits 实测确认。处置链：渠道正则全排除禁供给 → 全部回退链移除 ch12 条目 →
+  ④ 重算映射（候选池剔除 goat，免费池 9→4，公式三档不变，全部目标落
+  opencode-go/ant/sensenova）→ goat 独有死卡删除 → 快照 goat 节与 blocklist
+  goat 条目移除、采集 job 下线（watch-arena 改挂 fetch-opencode-go）。若恢复
+  订阅：重建 workflow job、恢复快照节、重新走 ①②③④。
 
 ## 事件响应
 

@@ -23,7 +23,7 @@ python3 -m pytest -q
 
 四个任务脚本均纯离线（仓库根运行）、stdout 呈报计算结果，不写 AxonHub、不落中间产物文件；`channel_sync.py` 的 blocklist 物化（写 `data/blocklist.json`）是唯一落盘写。
 
-采集脚本位于 `.agents/skills/watch-pipeline/scripts/`，由 `watch-pipeline` skill 维护并经 watch-pipeline.yml（每天）执行；本地运行 watch_* 仅作调试，产物仍归对应渠道。go 与 goat 两个采集 job 都写 `data/models_extra.json` 的各自节，必须串行（CI 已按 go → goat 排序）。脚本失败会在 `.agents/skills/watch-pipeline/reference/<channel>/last-error.json` 留痕，修复流程见 `.agents/skills/watch-pipeline/SKILL.md`。skill 校验见各自 `SKILL.md`。
+采集脚本位于 `.agents/skills/watch-pipeline/scripts/`，由 `watch-pipeline` skill 维护并经 watch-pipeline.yml（每天）执行；本地运行 watch_* 仅作调试，产物仍归对应渠道。goat 渠道已随订阅取消退役（ADR 0016）：采集 job 下线、快照节已移除，`watch_goat.py` 仅作本地调试保留。脚本失败会在 `.agents/skills/watch-pipeline/reference/<channel>/last-error.json` 留痕，修复流程见 `.agents/skills/watch-pipeline/SKILL.md`。skill 校验见各自 `SKILL.md`。
 
 ## 约束
 

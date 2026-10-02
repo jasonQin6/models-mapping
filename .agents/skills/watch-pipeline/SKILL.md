@@ -13,8 +13,13 @@ This skill is the maintenance manual for the collection layer. It owns `.agents/
 |---|---|---|---|---|
 | models-dev | *(pure `curl` in yml, no script)* | models.dev/models.json | `data/all_models.json` | — |
 | opencode-go | `scripts/watch_go.py` | opencode `go.mdx` | `data/models_extra.json` (`channels.opencode-go`) | `reference/go/` |
-| goat | `scripts/watch_goat.py` | commandcode.ai GOAT plan page | `data/models_extra.json` (`channels.commandcode-goat`) | `reference/goat/` |
+| goat *(ADR 0016 退役)* | `scripts/watch_goat.py` | commandcode.ai GOAT plan page | — | — |
 | arena | `scripts/watch_arena.py` | lmarena.ai WebDev leaderboard | `data/arena.json` | `reference/arena/` |
+
+ADR 0016（2026-09-30）：Command Code Goat 订阅取消，goat 采集 job 已从
+workflow 下线（watch-arena 依赖改挂 fetch-opencode-go），`channels.commandcode-goat`
+节已随退役从快照移除；`watch_goat.py` 与其测试/fixture 仅作本地调试保留，
+若恢复订阅需重建 workflow job 并按其 field contract 重新验收。
 
 Execution entrypoint is `.github/workflows/watch-pipeline.yml` (daily cron). Every script is stdlib-only Python 3.12+ and replays offline: `watch_go.py` takes a positional go.mdx path, `watch_goat.py` takes `--html`, and `watch_arena.py` takes `--input`.
 
