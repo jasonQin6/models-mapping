@@ -173,9 +173,9 @@
           "output": 0.5
         },
         "name": "GLM-5.3 Flash",
-        "rp5h": 4720,
+        "rp5h": 7080,
         "tok_s": null,
-        "usage_quota": 40.0
+        "usage_quota": 60.0
       },
       "glm-5.3-flashx": {
         "cost": {
@@ -352,9 +352,9 @@
           "output": 15.0
         },
         "name": "Kimi K3",
-        "rp5h": 196,
+        "rp5h": 588,
         "tok_s": null,
-        "usage_quota": 20.0
+        "usage_quota": null
       },
       "laguna-s-2.1-free": {
         "cost": {
@@ -542,17 +542,6 @@
         "rp5h": 575,
         "tok_s": null,
         "usage_quota": 20.0
-      },
-      "pixel-canary": {
-        "cost": {
-          "cache_read": 0.0,
-          "input": 0.0,
-          "output": 0.0
-        },
-        "name": "Pixel Canary",
-        "rp5h": null,
-        "tok_s": null,
-        "usage_quota": null
       },
       "qwen3.6-max-preview": {
         "cost": {
@@ -1121,5 +1110,5 @@
     }
   },
   "schema_version": 1,
-  "updated_at": "2026-10-02T04:44:26Z"
+  "updated_at": "2026-10-02T04:44:39Z"
 }
