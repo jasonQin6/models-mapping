@@ -341,16 +341,16 @@
         "rp5h": 160,
         "usage_quota": 15.0
       },
-      "space-bunny-free": {
+      "space-bunny": {
         "cost": {
-          "cache_read": 0.0,
+          "cache_read": 0.03,
           "cache_write": null,
-          "input": 0.0,
-          "output": 0.0
+          "input": 0.15,
+          "output": 0.6
         },
-        "name": "Space Bunny Free",
-        "rp5h": null,
-        "usage_quota": null
+        "name": "Space Bunny",
+        "rp5h": 3130,
+        "usage_quota": 30.0
       }
     },
     "sensenova": {
@@ -417,5 +417,5 @@
     }
   },
   "schema_version": 1,
-  "updated_at": "2026-10-05T04:44:59Z"
+  "updated_at": "2026-10-06T05:31:31Z"
 }
