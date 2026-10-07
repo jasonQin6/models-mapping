@@ -2,7 +2,7 @@
   "schema_version": 1,
   "source": {
     "url": "https://lmarena.ai/leaderboard/code/webdev",
-    "fetched_at": "2026-10-02T04:44:49.965323+00:00"
+    "fetched_at": "2026-10-07T05:01:18.812387+00:00"
   },
   "models": {
     "Inkling Small": {
@@ -441,8 +441,8 @@
       "arena_score": 1477.64,
       "organization": "Xiaomi"
     },
-    "mimo-v2.6-pro": {
-      "arena_score": 1618.41,
+    "mimo-v2.6-flash": {
+      "arena_score": 1642.62,
       "organization": "Xiaomi"
     },
     "minimax-m2": {
