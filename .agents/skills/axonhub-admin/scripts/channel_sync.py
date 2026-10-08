@@ -37,11 +37,13 @@ from name_matching import find_best_match  # noqa: E402
 from snapshot import (  # noqa: E402
     BLOCKLIST_PATH,
     EXTRA_SCHEMA_VERSION,
+    PROVIDER_CONF_PATH,
     PlanningError,
     load_arena,
     load_blocklist,
     load_extra_aliases,
     load_extra_sections,
+    load_provider_conf,
     number,
 )
 
@@ -73,6 +75,7 @@ def speed_variant_exclude(model_id: str) -> Optional[str]:
 def superseded_variant_excludes(
     sections: Mapping[str, Mapping[str, dict[str, Any]]],
     aliases: Mapping[str, str],
+    provider_canonicals: Mapping[str, str] | None = None,
 ) -> dict[tuple[str, str], dict[str, str]]:
     """Derived entries for variant-superseded ids a channel still serves.
 
@@ -81,11 +84,13 @@ def superseded_variant_excludes(
     a losing variant leaves the registry, so a channel still exposing it
     serves an id no global model routes to — block it.  Grouping is global
     over every section, so a plain id loses to a ``-free`` variant served by
-    another channel too.
+    another channel too.  Ids the PublicProviderConf catalog converges onto
+    a canonical form take part as their canonical id: they stay served (the
+    canonical model routes through them as a channel alias), never blocked.
     """
 
     canonicals = {
-        canonical_id(native_id, aliases)
+        canonical_id(native_id, aliases, provider_canonicals)
         for records in sections.values()
         for native_id in records
     }
@@ -93,7 +98,8 @@ def superseded_variant_excludes(
     derived: dict[tuple[str, str], dict[str, str]] = {}
     for channel, records in sections.items():
         for native_id in sorted(records):
-            winner = supersessions.get(canonical_id(native_id, aliases))
+            canonical = canonical_id(native_id, aliases, provider_canonicals)
+            winner = supersessions.get(canonical)
             if winner:
                 derived[(channel.lower(), native_id.strip().lower())] = {
                     "id": native_id,
@@ -107,6 +113,7 @@ def materialize_blocklist(
     sections: Mapping[str, Mapping[str, dict[str, Any]]],
     aliases: Mapping[str, str],
     arena_models: Mapping[str, Mapping[str, Any]],
+    provider_canonicals: Mapping[str, str] | None = None,
 ) -> dict[str, list[dict[str, str]]]:
     """Regenerate the planner-owned blocklist entries; human entries pass through.
 
@@ -150,7 +157,7 @@ def materialize_blocklist(
             if speed_variant_exclude(native_id):
                 derived[(channel, lowered)] = {"id": native_id, "reason": SPEED_VARIANT_EXCLUDE_REASON}
                 continue
-            canonical = canonical_id(native_id, aliases)
+            canonical = canonical_id(native_id, aliases, provider_canonicals)
             match, match_type = find_best_match(canonical, dict(arena_models))
             score = number((match or {}).get("rating"))
             if match_type in ("version_downgrade", "prefix_match"):
@@ -166,7 +173,7 @@ def materialize_blocklist(
                 }
 
     human_keys = set(human)
-    for key, entry in superseded_variant_excludes(sections, aliases).items():
+    for key, entry in superseded_variant_excludes(sections, aliases, provider_canonicals).items():
         # Human rulings and the per-id speed/lowscore triage already covering
         # the id win; supersession is the residual derived class.
         bare_key = (key[0], key[1].split("/")[-1])
@@ -193,6 +200,7 @@ def run_materialize_blocklist(
     extra_path: Path,
     arena_path: Path,
     blocklist_path: Path = BLOCKLIST_PATH,
+    provider_conf_path: Path = PROVIDER_CONF_PATH,
 ) -> tuple[dict[str, list[dict[str, str]]], dict[str, dict[str, dict[str, Any]]]]:
     """Materialize the derived blocklist classes and persist them.
 
@@ -212,7 +220,13 @@ def run_materialize_blocklist(
     aliases = load_extra_aliases(extra_path)
     raw_blocklist = load_blocklist(blocklist_path)
     arena_models = load_arena(arena_path)
-    merged = materialize_blocklist(raw_blocklist, sections, aliases, arena_models)
+    try:
+        _cards, _refs, provider_canonicals = load_provider_conf(provider_conf_path)
+    except PlanningError:
+        provider_canonicals = {}
+    merged = materialize_blocklist(
+        raw_blocklist, sections, aliases, arena_models, provider_canonicals
+    )
     _write_blocklist(blocklist_path, merged)
     return merged, sections
 

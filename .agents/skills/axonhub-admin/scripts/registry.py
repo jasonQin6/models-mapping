@@ -46,10 +46,26 @@ def is_free_model(record: Mapping[str, Any]) -> bool:
     return number(cost.get("input")) == 0 and number(cost.get("output")) == 0
 
 
-def canonical_id(model_id: str, aliases: Mapping[str, str]) -> str:
-    """Map a channel-native id onto its registry-canonical form."""
+def canonical_id(
+    model_id: str,
+    aliases: Mapping[str, str],
+    provider_canonicals: Mapping[str, str] | None = None,
+) -> str:
+    """Map a channel-native id onto its registry-canonical form.
 
-    return aliases.get(model_id, model_id)
+    Hand-maintained aliases rule first; the PublicProviderConf catalog's
+    ``canonical_model_id`` declarations come second — the upstream stating
+    which variant id is the same model as which canonical one (e.g.
+    ``muse-spark-1.3-contributor`` is ``muse-spark-1.3`` served under a
+    contributor plan).  Convergence re-keys the registry onto the canonical
+    id while the channel record keeps its native spelling for routing.
+    """
+
+    if model_id in aliases:
+        return aliases[model_id]
+    if provider_canonicals:
+        return provider_canonicals.get(model_id, model_id)
+    return model_id
 
 
 def _variant_base(model_id: str) -> str:
@@ -74,13 +90,14 @@ def _rp5h_of(record: Mapping[str, Any]) -> Optional[float]:
 def group_by_canonical(
     sections: Mapping[str, Mapping[str, dict[str, Any]]],
     aliases: Mapping[str, str],
+    provider_canonicals: Mapping[str, str] | None = None,
 ) -> dict[str, dict[str, tuple[str, dict[str, Any]]]]:
     """Group channel records by canonical id: canonical -> channel -> (native_id, record)."""
 
     groups: dict[str, dict[str, tuple[str, dict[str, Any]]]] = {}
     for channel in sorted(sections):
         for native_id, record in sections[channel].items():
-            canonical = canonical_id(native_id, aliases)
+            canonical = canonical_id(native_id, aliases, provider_canonicals)
             groups.setdefault(canonical, {})[channel] = (native_id, record)
     return groups
 
@@ -131,6 +148,7 @@ def dedupe_registry(
     aliases: Mapping[str, str],
     warnings: list[dict[str, Any]],
     blocklist: Mapping[str, Mapping[str, str]],
+    provider_canonicals: Mapping[str, str] | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Build the registry: one winning record per canonical id.
 
@@ -144,7 +162,9 @@ def dedupe_registry(
     """
 
     registry: dict[str, dict[str, Any]] = {}
-    for canonical, members in sorted(group_by_canonical(sections, aliases).items()):
+    for canonical, members in sorted(
+        group_by_canonical(sections, aliases, provider_canonicals).items()
+    ):
         active: dict[str, tuple[str, dict[str, Any]]] = {}
         for channel, (native_id, record) in members.items():
             reason = blocklist_reason(blocklist, channel, native_id)
@@ -154,6 +174,22 @@ def dedupe_registry(
             active[channel] = (native_id, record)
         if not active:
             continue
+        if provider_canonicals and any(
+            canonical_id(nid, aliases, provider_canonicals) == canonical
+            and canonical_id(nid, aliases) != canonical
+            for nid, _rec in active.values()
+        ):
+            warnings.append(
+                {
+                    "type": "canonical_converged",
+                    "model": canonical,
+                    "from": sorted(
+                        nid
+                        for nid, _rec in active.values()
+                        if canonical_id(nid, aliases) != canonical
+                    ),
+                }
+            )
         winner_channel = _pick_channel(active)
         native_id, record = active[winner_channel]
         if len(active) > 1:
@@ -173,7 +209,7 @@ def dedupe_registry(
                 channel: nid for channel, (nid, _rec) in active.items() if nid != canonical
             },
             # Every active serving channel with its declared rp5h; drives the
-            # channel-priority association plan (ADR 0016).
+            # channel-priority association plan.
             "serving": {channel: _rp5h_of(rec) for channel, (_nid, rec) in active.items()},
         }
     return registry
@@ -267,6 +303,7 @@ def build_registry(
     aliases: Mapping[str, str],
     blocklist_raw: Mapping[str, Any],
     arena_models: Mapping[str, Mapping[str, Any]],
+    provider_canonicals: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """Run the full registry pipeline over the snapshots.
 
@@ -275,7 +312,7 @@ def build_registry(
     materialized by the channel-sync step, never here.  Candidates carry the
     Arena standing each model needs for mapping — free models default to
     1500 when the board never listed them, non-free models without a
-    legitimate score stay unscored and out of the mapping pool (ADR 0015),
+    legitimate score stay unscored and out of the mapping pool,
     and non-free models missing rp5h leave the registry entirely below the
     review threshold.
     """
@@ -284,7 +321,7 @@ def build_registry(
     ineligible: list[dict[str, Any]] = []
     blocklist = index_blocklist(blocklist_raw)
 
-    registry = dedupe_registry(sections, aliases, warnings, blocklist)
+    registry = dedupe_registry(sections, aliases, warnings, blocklist, provider_canonicals)
     registry = supersede_variants(registry, warnings)
     fill_free_records(registry, warnings)
 
@@ -316,14 +353,13 @@ def build_registry(
                 )
             else:
                 # No invented standing: an unlisted non-free model carries no
-                # score and stays out of the mapping pool (ADR 0015).
+                # score and stays out of the mapping pool.
                 arena_score = None
                 match_type = "arena_missing"
                 warnings.append({"type": "arena_missing", "model": canonical})
         elif match_type in ("version_downgrade", "prefix_match"):
             # Borrowed scores put another version's or a name family's
-            # standing on this id; only same-model variant suffixes inherit
-            # (ADR 0015).
+            # standing on this id; only same-model variant suffixes inherit.
             arena_score = None
             warnings.append(
                 {"type": "arena_borrowed_rejected", "model": canonical, "match_type": match_type}

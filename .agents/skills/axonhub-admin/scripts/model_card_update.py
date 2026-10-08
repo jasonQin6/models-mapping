@@ -35,8 +35,10 @@ from snapshot import (  # noqa: E402
     load_cards,
     load_extra_aliases,
     BLOCKLIST_PATH,
+    PROVIDER_CONF_PATH,
     load_blocklist,
     load_extra_sections,
+    load_provider_conf,
 )
 
 REMARK_FIELDS = ("rp5h", "usage_quota")
@@ -166,7 +168,9 @@ def remark_json(value: Mapping[str, Any]) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
-def _model_meta(model: Mapping[str, Any], provider: str) -> tuple[str, str, str]:
+def _model_meta(
+    model: Mapping[str, Any], provider: str, vendor: str = ""
+) -> tuple[str, str, str]:
     family = str(model.get("family") or provider)
     lowered = family.lower()
     if lowered.startswith("deepseek"):
@@ -191,6 +195,11 @@ def _model_meta(model: Mapping[str, Any], provider: str) -> tuple[str, str, str]
         return "alibaba", "Qwen", family
     if lowered.startswith("hy"):
         return "hy", "Default", "hy"
+    if vendor:
+        # Catalog vendor attribution as the fallback: the id family carries
+        # no recognizable prefix, so the PublicProviderConf provider section
+        # states whose model this is (e.g. inclusionai for ling-*).
+        return vendor, "Default", family
     return provider, "Default", family
 
 
@@ -199,13 +208,16 @@ def build_target_state(
     cards: Mapping[str, Mapping[str, Any]],
     card_refs: Mapping[str, str],
     warnings: list[dict[str, Any]],
+    card_sources: Mapping[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     """Render the registry into per-model card target-state entries.
 
-    Card fields come only from ``all_models.json``: ``cardRef`` keeps the
-    original ``vendor/model`` key, a missing card yields ``cardRef: null``
-    plus a ``card_missing`` warning (never invented).  Cost starts from the
-    card and lets the channel's declared fields override field by field.
+    Card fields come only from the merged catalog (provider-conf over
+    models.dev): ``cardRef`` keeps the original ``vendor/model`` key and
+    ``cardSource`` names the snapshot the card came from; a missing card
+    yields ``cardRef: null`` plus a ``card_missing`` warning (never
+    invented).  Cost starts from the card and lets the channel's declared
+    fields override field by field.
     """
 
     models: list[dict[str, Any]] = []
@@ -218,7 +230,8 @@ def build_target_state(
         if card is None:
             warnings.append({"type": "card_missing", "model": canonical, "provider": entry["channel"]})
         merged = dict(card or {})
-        developer, icon, group = _model_meta(merged, axon_channel)
+        vendor = card_ref.rsplit("/", 1)[0] if card_ref else ""
+        developer, icon, group = _model_meta(merged, axon_channel, vendor)
         remark = {"manual": ""}
         for field in REMARK_FIELDS:
             remark[field] = record.get(field)
@@ -229,6 +242,7 @@ def build_target_state(
             "modelID": canonical,
             "channel": axon_channel,
             "cardRef": card_ref if card is not None else None,
+            "cardSource": ((card_sources or {}).get(canonical) or (card_sources or {}).get(entry["native_id"])) if card is not None else None,
             "input": {
                 "name": str(merged.get("name") or record.get("name") or canonical),
                 "developer": developer,
@@ -285,6 +299,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     )
     parser.add_argument("--extra", type=Path, default=Path("data/models_extra.json"))
     parser.add_argument("--blocklist", type=Path, default=BLOCKLIST_PATH)
+    parser.add_argument("--provider-conf", type=Path, default=PROVIDER_CONF_PATH)
     parser.add_argument("--cards", type=Path, default=Path("data/all_models.json"))
     parser.add_argument("--arena", type=Path, default=Path("data/arena.json"))
     parser.add_argument("--id", default=None, help="render the full write-time payload for one modelID")
@@ -295,19 +310,41 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         aliases = load_extra_aliases(args.extra)
         blocklist_raw = load_blocklist(args.blocklist)
         arena_models = load_arena(args.arena)
-        cards, refs = load_cards(args.cards)
+        md_cards, md_refs = load_cards(args.cards)
+        provider_canonicals: dict[str, str] = {}
+        card_sources: dict[str, str] = {}
+        ppc_cards: dict = {}
+        ppc_refs: dict = {}
+        try:
+            ppc_cards, ppc_refs, provider_canonicals = load_provider_conf(args.provider_conf)
+        except PlanningError as exc:
+            print(
+                f"model-card-update: provider-conf unavailable ({exc}); "
+                "cards fall back to models.dev, variant convergence off",
+                file=sys.stderr,
+            )
+        else:
+            card_sources = {bare: "provider-conf" for bare in ppc_cards}
+        # Tiered lookup: the provider-conf card answers first (it overlays
+        # the models.dev catalog upstream and carries the vendor/canonical
+        # attribution), a models.dev-only card fills the rest.
+        cards = {**md_cards, **ppc_cards} if ppc_cards else md_cards
+        refs = {**md_refs, **ppc_refs} if ppc_refs else md_refs
+        for bare in cards:
+            card_sources.setdefault(bare, "models.dev")
         result = build_registry(
             sections=sections,
             aliases=aliases,
             blocklist_raw=blocklist_raw,
             arena_models=arena_models,
+            provider_canonicals=provider_canonicals,
         )
     except PlanningError as exc:
         print(f"model-card-update: {exc}", file=sys.stderr)
         return 1
 
     warnings = list(result["warnings"])
-    models = build_target_state(result, cards, refs, warnings)
+    models = build_target_state(result, cards, refs, warnings, card_sources)
     retire_suggestions(result, warnings)
     _render_stderr(warnings, models)
 

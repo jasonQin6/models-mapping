@@ -19,6 +19,12 @@ python3 .agents/skills/axonhub-admin/scripts/channel_assoc.py [--id <modelID>]
   `tencent-hy3` → `hy3`）合并跨渠道拼写：去重与分组都以规范 ID 进行；候选清单
   用规范 ID，各渠道实际暴露的原生拼写记入 `channelAliases`，供 association
   按渠道精确路由。
+- **canonical 收敛**——PublicProviderConf 声明的变体收敛（仅"去变体尾部"方向，
+  见 CONTEXT.md 的 Canonical model）同样以基版 ID 为注册表键：变体实体并入
+  基版（`muse-spark-1.3-contributor` → `muse-spark-1.3`），渠道侧变体拼写落入
+  `channelAliases`，`channelPriority` 钉渠道+变体精确 ID——请求打基版 ID 解析
+  到实体，实体经 association 转发到渠道变体，与 free 家族合并同构。收敛事件
+  以 `canonical_converged` 警告呈报。
 - **跨渠道去重**——一个 id 被多个渠道声明时归属 `rp5h` 最高者（null 输给有值，
   平局取字母序靠前渠道）。胜出渠道即 p0 主用，其余实际服务渠道按 `rp5h` 降序
   排为回退——这就是回退链的来源。
@@ -56,6 +62,10 @@ python3 .agents/skills/axonhub-admin/scripts/channel_assoc.py [--id <modelID>]
 
 ## 约定
 
+- **快照外渠道（live 手工扩展）**：无 watcher 的渠道（如 dsh-auth，free tag
+  声明免费）不进候选清单计算，其关联条目是 live 状态手工维护。对快照模型应用
+  脚本链时按增量合并、保留既有快照外条目，不做整体替换；全量重写是例外路径
+  （见 [model-card-update.md](model-card-update.md) 整体重建的定位），几乎不触发。
 - association 类型：`channel_model`（钉住渠道+精确 ID）、`model`（全部渠道中的
   精确 ID）、`regex`（全局模式）。曾经的全局 `regex` 默认（到处
   `(?i)(^|/)deepseek-v4-flash$`）已退役；把模型锁定到特定渠道依旧是例外用法。

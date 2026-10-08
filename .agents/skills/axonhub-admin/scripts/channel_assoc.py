@@ -25,16 +25,18 @@ from typing import Any, Mapping, Optional, Sequence
 
 from registry import build_registry, is_free_model  # noqa: E402
 from snapshot import (  # noqa: E402
+    BLOCKLIST_PATH,
+    PROVIDER_CONF_PATH,
     PlanningError,
     load_arena,
     load_extra_aliases,
-    BLOCKLIST_PATH,
     load_blocklist,
     load_extra_sections,
+    load_provider_conf,
 )
 
 # The two collected channels whose shared models drive channel-priority
-# associations (ADR 0016); the static sections (ant, sensenova) are not part
+# associations; the static sections (ant, sensenova) are not part
 # of the intersection.
 INTERSECTION_CHANNELS = ("commandcode-goat", "opencode-go")
 
@@ -46,7 +48,7 @@ def build_associations(result: Mapping[str, Any]) -> list[dict[str, Any]]:
     for canonical in sorted(result["registry"]):
         entry = result["registry"][canonical]
         record = entry["record"]
-        # Association plan (ADR 0016): channel_model rules chained by
+        # Association plan: channel_model rules chained by
         # descending rp5h — p0 is the primary channel, later entries are the
         # fallback order. Single-channel models degrade to a p0 pin.
         ranked_channels = sorted(
@@ -82,6 +84,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     )
     parser.add_argument("--extra", type=Path, default=Path("data/models_extra.json"))
     parser.add_argument("--blocklist", type=Path, default=BLOCKLIST_PATH)
+    parser.add_argument("--provider-conf", type=Path, default=PROVIDER_CONF_PATH)
     parser.add_argument("--arena", type=Path, default=Path("data/arena.json"))
     parser.add_argument("--id", default=None, help="restrict output to one modelID")
     args = parser.parse_args(argv)
@@ -91,11 +94,20 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         aliases = load_extra_aliases(args.extra)
         blocklist_raw = load_blocklist(args.blocklist)
         arena_models = load_arena(args.arena)
+        try:
+            _cards, _refs, provider_canonicals = load_provider_conf(args.provider_conf)
+        except PlanningError as exc:
+            print(
+                f"channel-assoc: provider-conf unavailable ({exc}); variant convergence off",
+                file=sys.stderr,
+            )
+            provider_canonicals = {}
         result = build_registry(
             sections=sections,
             aliases=aliases,
             blocklist_raw=blocklist_raw,
             arena_models=arena_models,
+            provider_canonicals=provider_canonicals,
         )
     except PlanningError as exc:
         print(f"channel-assoc: {exc}", file=sys.stderr)

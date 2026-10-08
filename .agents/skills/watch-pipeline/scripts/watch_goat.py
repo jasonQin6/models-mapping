@@ -3,7 +3,7 @@
 
 ``watch-goat`` is the source watcher for the commandcode-goat channel.  The
 section's keys are the authoritative entitlement allowlist of the commandcode
-channel (ADR 0010): a partial parse must fail the run instead of publishing a
+channel: a partial parse must fail the run instead of publishing a
 shrunken list.  The section carries channel-declared facts only (quotas,
 GOAT deal prices, tok/s); public card data is filled offline by axonhub-admin from
 ``data/all_models.json``, never here.
@@ -13,7 +13,7 @@ Hard gates (any hit -> no write, last-error.json persisted):
 - two rows normalize to the same model_id (to_model_id collision);
 - zero models resolve.
 
-Channel-provided ``claude-*`` models are not collected (ADR 0012): Claude
+Channel-provided ``claude-*`` models are not collected: Claude
 requests are served by self-built AxonHub models mapped by arena score.
 
 Stdlib only. Pipeline entrypoint; see .github/workflows/watch-pipeline.yml.

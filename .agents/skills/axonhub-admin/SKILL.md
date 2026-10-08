@@ -32,7 +32,7 @@ description: 本仓对 AxonHub 部署（https://axon.jasonqin.site）的四步�
 | 步骤 | 任务 | 计算/工具（仓库根运行） | 流程 |
 | --- | --- | --- | --- |
 | ① | 同步渠道清单：重建屏蔽条目、生成屏蔽正则 | `channel_sync.py` | [channel-sync.md](references/channel-sync.md) |
-| ② | 模型卡更新：目标清单增量、建/改/启/清理、整体重建 | `model_card_update.py [--id <modelID>]` | [model-card-update.md](references/model-card-update.md) |
+| ② | 模型卡更新：目标清单增量、建/改/启/清理 | `model_card_update.py [--id <modelID>]` | [model-card-update.md](references/model-card-update.md) |
 | ③ | 非 Claude 模型关联：channelPriority 回退链 | `channel_assoc.py [--id <modelID>]` | [非Claude模型关联.md](references/非Claude模型关联.md) |
 | ④ | Claude 模型关联：请求 → 候选映射（请求清单 = 脚本内 `REQUESTS` 字典） | `claude_map.py` | [claude-mapping.md](references/claude-mapping.md) |
 
@@ -92,7 +92,8 @@ loop:
 | --- | --- | --- |
 | `data/models_extra.json` | 渠道节（每渠道的模型、cost）、顶层 `aliases`（人工维护）；watch-pipeline 独占写，本层只读 | 渠道清单与渠道侧成本 |
 | `data/blocklist.json` | 渠道屏蔽条目（channel → `[{id, reason}]`，唯一排除源：`speed:`/`lowscore:` 由 ① 从快照重建，`manual`/`tier`/`retired` 人工维护） | ①重建与正则的存储、②③④ 的排除输入 |
-| `data/all_models.json` | models.dev 快照卡片 | ②的卡片来源（覆盖不全，缺卡走内置目录/人工兜底，不臆造） |
+| `data/provider_conf.json` | PublicProviderConf 快照（models.dev 超集，含 vendor 归属与 `canonical_model_id` 收敛声明） | ②③④ 的首选卡源与变体收敛判定；同源线上镜像即 `providersCatalog(filtered: false)` |
+| `data/all_models.json` | models.dev 快照卡片 | 卡片兜底源（覆盖不全，缺卡走内置目录/人工兜底，不臆造） |
 | `data/arena.json` | leaderboard 分数（`arena_score`/`organization`/`effort`，`manual: true` 人工指派） | ①重建与④映射的质量信号 |
 
 请求模型的 free 判定横切各步，只读渠道声明价：input/output 均声明为零价即免费；
@@ -123,7 +124,7 @@ watcher 转写渠道价格表的 `Free` 字样（go/goat），ant/sensenova 静�
 - 模型 ID 陷阱：上游用厂商前缀 ID（`deepseek/deepseek-v4-flash`、`zai-org/GLM-5.3`），Model 实体用
   裸 ID（`deepseek-v4-flash`），association 按**精确字符串**匹配渠道路由键。commandcode-goat 曾开
   `autoTrimedModelPrefixes`（前缀全量提取）+`lowercaseModelId`，带前缀条目派生出裸小写路由键
-  （source=auto_trim），写入默认钉规范 ID 即命中；**该渠道已退役（ADR 0016）**，遗留经验仍有效：
+  （source=auto_trim），写入默认钉规范 ID 即命中；**该渠道已退役**，遗留经验仍有效：
   `hideOriginalModels` 保持关闭——direct 键与 trim 键并存是同一模型的两个入口别名（非冲突），开着它裸拼写条目反而会失去路由键
   （gpt-5.6-sol/luna 断链先例）。残余例外：`:free` 冒号后缀（`ling-3.0-flash-sante:free`）、
   别名渠道拼写（`tencent-hy3` 类，`channelAliases` 有值时）、未开统一开关的渠道（opencode-go 的
@@ -147,12 +148,11 @@ watcher 转写渠道价格表的 `Free` 字样（go/goat），ant/sensenova 静�
   对账读仍为 enabled；remark 等其他字段写入正常）。禁用一个渠道的等效手段：
   把其 `autoSyncModelPattern` 设为全排除式 `(?i)^(?!.*(^|/)claude-)$`——同步层
   不再供给任何模型；彻底下线则配合模型侧清链（移除该渠道的 channel_model 条目）。
-- ADR 0016（2026-09-30）：commandcode-goat 渠道退役——订阅取消、insufficient
-  credits 实测确认。处置链：渠道正则全排除禁供给 → 全部回退链移除 ch12 条目 →
-  ④ 重算映射（候选池剔除 goat，免费池 9→4，公式三档不变，全部目标落
-  opencode-go/ant/sensenova）→ goat 独有死卡删除 → 快照 goat 节与 blocklist
-  goat 条目移除、采集 job 下线（watch-arena 改挂 fetch-opencode-go）。若恢复
-  订阅：重建 workflow job、恢复快照节、重新走 ①②③④。
+- 渠道退役先例（commandcode-goat，2026-09-30）：订阅取消、insufficient
+  credits 实测确认。处置链：渠道正则全排除禁供给 → 全部回退链移除该渠道条目 →
+  ④ 重算映射（候选池剔除该渠道，free 池与公式档重排）→ 该渠道独有死卡删除 →
+  快照节与 blocklist 条目移除、采集 job 下线。若恢复订阅：重建 workflow job、
+  恢复快照节、重新走 ①②③④。
 
 ## 事件响应
 

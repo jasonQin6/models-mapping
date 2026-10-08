@@ -28,12 +28,14 @@ from typing import Any, Mapping, Optional, Sequence
 from name_matching import find_best_match  # noqa: E402
 from registry import build_registry  # noqa: E402
 from snapshot import (  # noqa: E402
+    BLOCKLIST_PATH,
+    PROVIDER_CONF_PATH,
     PlanningError,
     load_arena,
     load_extra_aliases,
-    BLOCKLIST_PATH,
     load_blocklist,
     load_extra_sections,
+    load_provider_conf,
     number,
 )
 
@@ -195,7 +197,7 @@ def build_mappings(
     )
     # Candidates without an arena standing (arena_missing or a rejected
     # borrowed score) cannot enter the formula: proximity and the arena term
-    # are undefined for them (ADR 0015).
+    # are undefined for them.
     non_free_candidates = [
         c for c in candidates if not c["free"] and c["arena_score"] is not None
     ]
@@ -257,6 +259,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     )
     parser.add_argument("--extra", type=Path, default=Path("data/models_extra.json"))
     parser.add_argument("--blocklist", type=Path, default=BLOCKLIST_PATH)
+    parser.add_argument("--provider-conf", type=Path, default=PROVIDER_CONF_PATH)
     parser.add_argument("--arena", type=Path, default=Path("data/arena.json"))
     args = parser.parse_args(argv)
 
@@ -265,11 +268,20 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         aliases = load_extra_aliases(args.extra)
         blocklist_raw = load_blocklist(args.blocklist)
         arena_models = load_arena(args.arena)
+        try:
+            _cards, _refs, provider_canonicals = load_provider_conf(args.provider_conf)
+        except PlanningError as exc:
+            print(
+                f"claude-map: provider-conf unavailable ({exc}); variant convergence off",
+                file=sys.stderr,
+            )
+            provider_canonicals = {}
         result = build_registry(
             sections=sections,
             aliases=aliases,
             blocklist_raw=blocklist_raw,
             arena_models=arena_models,
+            provider_canonicals=provider_canonicals,
         )
     except PlanningError as exc:
         print(f"claude-map: {exc}", file=sys.stderr)

@@ -42,6 +42,43 @@ jobs:
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
+  fetch-provider-conf:
+    # PublicProviderConf overlay catalog — a superset of models.dev (manual
+    # templates + live fetchers) that also carries per-model canonical_model_id
+    # declarations; the card-source tier above all_models.json for the
+    # axonhub-admin compute layer. Ordered after fetch-all-models only to
+    # serialize commits.
+    needs: fetch-all-models
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.commit.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch PublicProviderConf aggregate
+        run: |
+          set -euo pipefail
+          curl -fsSL --max-time 120 \
+            https://raw.githubusercontent.com/ThinkInAIXYZ/PublicProviderConf/dev/dist/all.json \
+            -o data/provider_conf.json
+          echo "provider_conf.json: $(wc -c < data/provider_conf.json) bytes"
+
+      - name: Commit provider_conf snapshot
+        id: commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "40985853+github-actions[bot]@users.noreply.github.com"
+          git add data/provider_conf.json
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No provider_conf changes"
+          else
+            git commit -m "data: update provider_conf snapshot"
+            git pull --rebase origin "$GITHUB_REF_NAME"
+            git push
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
   fetch-opencode-go:
     # Ordered after fetch-all-models only to serialize commits; the go.mdx
     # list is independent of models.dev drift, so this job is never gated on it.
@@ -106,58 +143,6 @@ jobs:
             git push
           fi
 
-  watch-arena:
-    # Ordered after the models_extra writers only to serialize commits; the
-    # arena crawl is independent of channel snapshot drift and always runs.
-    # ADR 0016: commandcode-goat 采集已随订阅取消（2026-09-30）下线，本 job
-    # 改挂在 fetch-opencode-go 之后。goat section 为冻结镜像，watch_goat.py
-    # 仅作本地调试保留。
-    needs: [fetch-all-models, fetch-opencode-go]
-    runs-on: ubuntu-latest
-    outputs:
-      changed: ${{ steps.commit.outputs.changed }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Fetch arena data
-        run: |
-          python3 .agents/skills/watch-pipeline/scripts/watch_arena.py --top-n 0 --output data/arena.json
-
-      - name: Commit arena snapshot
-        id: commit
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "40985853+github-actions[bot]@users.noreply.github.com"
-          git add data/arena.json
-          # A success clears the channel's last-error.json; commit its
-          # removal in the same batch as the data change.
-          if [ -d .agents/skills/watch-pipeline/reference/arena ]; then
-            git add .agents/skills/watch-pipeline/reference/arena
-          fi
-          if git diff --cached --quiet; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "No Arena snapshot changes"
-          else
-            git commit -m "data: update Arena snapshot"
-            git pull --rebase origin "$GITHUB_REF_NAME"
-            git push
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Commit arena error state
-        if: failure()
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "40985853+github-actions[bot]@users.noreply.github.com"
-          if [ -d .agents/skills/watch-pipeline/reference/arena ]; then
-            git add .agents/skills/watch-pipeline/reference/arena
-          fi
-          if ! git diff --cached --quiet; then
-            git commit -m "watch-arena: record failure state"
-            git pull --rebase origin "$GITHUB_REF_NAME"
-            git push
-          fi
+# Arena collection moved to its own weekly workflow (watch-arena.yml): the
+# leaderboard moves slowly, the crawler is the most brittle of the channels,
+# and daily runs bought nothing the mapping formula needs.

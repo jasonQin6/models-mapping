@@ -27,7 +27,7 @@
       },
       {
         "id": "kimi-k2.7-code",
-        "reason": "lowscore: arena 1473.03 < 1500"
+        "reason": "lowscore: arena 1472.9 < 1500"
       },
       {
         "id": "longcat-2.0",
@@ -43,19 +43,19 @@
       },
       {
         "id": "mimo-v2.5",
-        "reason": "lowscore: arena 1437.66 < 1500"
+        "reason": "lowscore: arena 1437.57 < 1500"
       },
       {
         "id": "mimo-v2.5-pro",
-        "reason": "lowscore: arena 1476.85 < 1500"
+        "reason": "lowscore: arena 1477.64 < 1500"
       },
       {
         "id": "minimax-m2.7",
-        "reason": "lowscore: arena 1397.02 < 1500"
+        "reason": "lowscore: arena 1396.98 < 1500"
       },
       {
         "id": "minimax-m3",
-        "reason": "lowscore: arena 1482.4 < 1500"
+        "reason": "lowscore: arena 1482.04 < 1500"
       },
       {
         "id": "qwen3.5-plus",
@@ -82,5 +82,5 @@
     "tier": "human — subscription-tier gap (stable set)"
   },
   "schema_version": 1,
-  "updated_at": "2026-10-02T10:48:09Z"
+  "updated_at": "2026-10-08T09:01:19Z"
 }

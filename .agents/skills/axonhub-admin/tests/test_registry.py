@@ -98,7 +98,7 @@ def test_free_declaration_and_rp5h_fallback() -> None:
 def test_variant_suffix_candidate_inherits_base_score() -> None:
     # -vl on the candidate side reaches the base model's hand-assigned
     # arena record through the chain's variant-suffix layer; same-model
-    # inheritance is accepted silently (ADR 0015).
+    # inheritance is accepted silently.
     sections = {"ant": {"ling-3.0-flash-vl": rec(name="Ling 3.0 Flash VL", rp5h=500)}}
     arena = {"ling-3.0-flash": 1520.0}
 
@@ -222,7 +222,7 @@ def test_rp5h_missing_low_arena_excluded_high_arena_review() -> None:
         for w in result["warnings"]
     )
     # No invented 1500: an unlisted model has no standing, so the missing-rp5h
-    # triage excludes it instead of reviewing it (ADR 0015).
+    # triage excludes it instead of reviewing it.
     assert any(w["type"] == "arena_missing" and w["model"] == "kimi-k2.5" for w in result["warnings"])
     assert any(w["type"] == "rp5h_missing_excluded" and w["model"] == "kimi-k2.5" for w in result["warnings"])
 
@@ -243,7 +243,7 @@ def test_missing_arena_leaves_candidate_unscored() -> None:
 def test_borrowed_arena_scores_are_rejected() -> None:
     # version_downgrade (qwen3.7-plus -> qwen3.6-plus) and prefix_match
     # (qwen3.8-flash -> the qwen3.8-* family) borrow another model's
-    # standing; both are rejected with an empty score (ADR 0015).
+    # standing; both are rejected with an empty score.
     sections = {
         "commandcode-goat": {
             "qwen3.7-plus": rec(rp5h=4300),

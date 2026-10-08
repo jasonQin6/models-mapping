@@ -101,7 +101,7 @@ def test_main_html_writes_channel_section_and_skips_claude(tmp_path: Path) -> No
     document = json.loads(out.read_text(encoding="utf-8"))
     assert document["schema_version"] == 1
     models = document["channels"]["commandcode-goat"]
-    # Channel-provided claude models are not collected (ADR 0012).
+    # Channel-provided claude models are not collected.
     assert set(models) == {"qwen3.30b", "qwen3.32b", "deepseek-v4-flash-fast"}
     assert models["qwen3.30b"]["rp5h"] == 1000
     assert models["qwen3.30b"]["usage_quota"] == 5.0

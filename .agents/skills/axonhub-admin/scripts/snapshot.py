@@ -22,6 +22,7 @@ from name_matching import normalize_arena_name  # noqa: E402
 
 EXTRA_SCHEMA_VERSION = 1
 BLOCKLIST_PATH = Path("data/blocklist.json")
+PROVIDER_CONF_PATH = Path("data/provider_conf.json")
 
 
 class PlanningError(RuntimeError):
@@ -162,6 +163,143 @@ def load_cards(path: Path) -> tuple[dict[str, dict[str, Any]], dict[str, str]]:
             cards[bare_id] = dict(value)
             refs[bare_id] = str(key)
     return cards, refs
+
+
+def load_provider_conf(
+    path: Path,
+) -> tuple[dict[str, dict[str, Any]], dict[str, str], dict[str, str]]:
+    """Aggregate the PublicProviderConf catalog into the flat catalog shape.
+
+    The snapshot mirrors the upstream ``all.json`` (``providers`` keyed by
+    provider, each with a ``models`` list).  Returns ``(cards, refs,
+    canonicals)`` in the same shape :func:`load_cards` uses — ``cards``
+    indexed by bare id, ``refs`` keeping the ``vendor/bare`` key — plus
+    ``canonicals``: bare id -> canonical bare id where the catalog declares
+    a ``canonical_model_id`` pointing elsewhere (per-bare votes resolved to
+    the most-voted, ties alphabetical; self-referencing declarations don't
+    converge but do vote their vendor as the model's authoritative home).
+
+    Gateways re-expose one model under many providers with drifting
+    capability bits, so the card is composed: the base record comes from
+    the most-identified vendor (canonical declarations first, then entries
+    whose id carries the vendor prefix), and the boolean capability bits
+    plus the context/output limits take the majority across candidates —
+    a lone gateway's outlier must not become the card the page shows.
+    """
+
+    payload = load_json(path)
+    if not isinstance(payload, Mapping):
+        raise PlanningError(f"{path} is not a JSON object")
+    providers = payload.get("providers")
+    if not isinstance(providers, Mapping):
+        raise PlanningError(f"{path} carries no providers object")
+    entries: dict[str, list[tuple[str, str, Mapping[str, Any]]]] = {}
+    canon_votes: dict[str, dict[str, int]] = {}
+    identity_votes: dict[str, dict[str, int]] = {}
+    for vendor, section in providers.items():
+        if not isinstance(section, Mapping):
+            continue
+        for model in section.get("models") or []:
+            if not isinstance(model, Mapping):
+                continue
+            raw_id = str(model.get("id") or "").strip()
+            bare = raw_id.rsplit("/", 1)[-1].strip()
+            if not bare:
+                continue
+            prefix = raw_id[: len(raw_id) - len(bare)].rstrip("/") if "/" in raw_id else ""
+            entries.setdefault(bare, []).append((str(vendor), prefix, model))
+            canon = str(model.get("canonical_model_id") or "").strip()
+            if not canon:
+                continue
+            canon_vendor, _, canon_bare = canon.rpartition("/")
+            canon_bare = (canon_bare or canon).strip()
+            canon_vendor = canon_vendor.strip()
+            # Two guards before a declaration may converge this id:
+            # - the registry's id space is bare lowercase, so a capitalized
+            #   canonical form (minimax-m3 -> MiniMax-M3) is a spelling
+            #   normalization, not a variant convergence;
+            # - convergence may only strip a variant tail (the canonical form
+            #   must be a prefix of the id, muse-spark-1.3-contributor ->
+            #   muse-spark-1.3).  Renaming declarations (deepseek-v4-flash ->
+            #   deepseek-v4-flash-0731, qwen3.8-max -> -preview) rebrand the
+            #   model out of the channel id namespace, break Arena matching,
+            #   and are the gateway's snapshot naming, not this repo's.
+            if (
+                canon_bare
+                and canon_bare != bare
+                and canon_bare == canon_bare.lower()
+                and bare.startswith(canon_bare)
+            ):
+                votes = canon_votes.setdefault(bare, {})
+                votes[canon_bare] = votes.get(canon_bare, 0) + 1
+            if canon_bare == bare and canon_vendor:
+                identified = identity_votes.setdefault(bare, {})
+                identified[canon_vendor] = identified.get(canon_vendor, 0) + 1
+            elif canon_vendor and canon_bare:
+                # A gateway entry declaring another model canonical also
+                # vouches for whose catalog the canonical one is.
+                identified = identity_votes.setdefault(canon_bare, {})
+                identified[canon_vendor] = identified.get(canon_vendor, 0) + 1
+    canonicals = {
+        bare: sorted(votes.items(), key=lambda item: (-item[1], item[0]))[0][0]
+        for bare, votes in canon_votes.items()
+    }
+    majority_fields = (
+        "tool_call",
+        "reasoning",
+        "temperature",
+        "structured_output",
+        "attachment",
+    )
+    cards: dict[str, dict[str, Any]] = {}
+    refs: dict[str, str] = {}
+    for bare, candidates in entries.items():
+        identified = identity_votes.get(bare) or {}
+        ranked = sorted(
+            candidates,
+            key=lambda item: (
+                -identified.get(item[0], 0),
+                -identified.get(item[1], 0),
+                -bool(item[1]),
+                -(item[1] == item[0]),
+                item[0],
+            ),
+        )
+        vendor, _prefix, base = ranked[0]
+        card = dict(base)
+        for field in majority_fields:
+            votes: dict[Any, int] = {}
+            for _candidate_vendor, _candidate_prefix, model in candidates:
+                value = model.get(field)
+                if isinstance(value, dict):
+                    continue
+                votes[value] = votes.get(value, 0) + 1
+            top = max(votes.items(), key=lambda item: (item[1], str(item[0])))[0] if votes else None
+            if top is not None and votes[top] > 1:
+                card[field] = top
+        for field in ("context", "output"):
+            votes = {}
+            for _candidate_vendor, _candidate_prefix, model in candidates:
+                value = (model.get("limit") or {}).get(field) if isinstance(model.get("limit"), Mapping) else None
+                if value is not None:
+                    votes[value] = votes.get(value, 0) + 1
+            if votes:
+                top = sorted(votes.items(), key=lambda item: (-item[1], item[0]))[0][0]
+                if votes[top] > 1:
+                    limit = dict(card.get("limit") or {})
+                    limit[field] = top
+                    card["limit"] = limit
+        cards[bare] = card
+        # The ref carries the attribution (canonical-consensus or self-declared
+        # vendor when there is one, the provider section otherwise) so it reads
+        # as ``vendor/model`` exactly like a models.dev reference does.
+        attribution = (
+            max(identified.items(), key=lambda item: (item[1], item[0]))[0]
+            if identified
+            else (ranked[0][1] or ranked[0][0])
+        )
+        refs[bare] = f"{attribution}/{bare}"
+    return cards, refs, canonicals
 
 
 def load_arena(path: Path) -> dict[str, dict[str, Any]]:

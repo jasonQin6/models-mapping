@@ -45,13 +45,17 @@
 
 ## 卡片与备注规则
 
-- **卡片来源分层**：① AxonHub 内置目录（`providersCatalog`，上游默认
-  `ThinkInAIXYZ/PublicProviderConf` 每小时刷新，拉取失败回退二进制内嵌快照；
-  models 页「批量添加」从目录条目自动组装完整卡片，整体重建优先走这条路）
-  → ② `data/all_models.json`（models.dev 快照，脚本 `cardRef` 与 `--id`
-  组装的来源）→ ③ 人工兜底（渠道特有/最新 ID，两个源都常缺，绝不臆造）。
-- **cardRef 与成本终值（card_missing 的裁决）**——目标清单的卡片字段只来自
-  `all_models.json`：`cardRef` 为原始 `vendor/model` 键，无卡即 `cardRef: null`
+- **卡片来源分层**：① AxonHub 内置目录（`providersCatalog(filtered: false)`，
+  即 PublicProviderConf 的线上托管镜像，每小时刷新；models 页「批量添加」从目录
+  条目自动组装完整卡片，整体重建优先走这条路）→ ② `data/provider_conf.json`
+  （同一 PublicProviderConf 的仓库快照，②③④ 离线计算的首选卡源：它叠加在
+  models.dev 目录之上，带 vendor 归属与 `canonical_model_id` 收敛声明，能力位
+  取跨 provider 多数）→ ③ `data/all_models.json`（models.dev 快照，兜底）
+  → ④ 人工兜底（渠道特有/最新 ID，各源都缺，绝不臆造）。
+- **cardRef 与成本终值（card_missing 的裁决）**——目标清单的卡片字段来自
+  分层合并目录（provider_conf 优先、all_models 兜底；`cardSource` 呈报卡片
+  实际来源）：`cardRef` 为 `vendor/model` 键（provider_conf 条目按 canonical
+  共识或条目自报前缀归属 vendor），无卡即 `cardRef: null`
   并报 `card_missing`（绝不臆造；写时依次尝试内置目录 → 人工兜底，都缺则
   `--id` 渲染默认卡：reasoning/toolCall false、temperature true、text 模态、
   零上限）。成本从卡片出发，渠道声明字段（`input`/`output`/`cache_read`/
@@ -85,7 +89,8 @@
 
 ## 整体重建（rebuild）
 
-目录被清空或迁移后的整体重建；单条/增量写入属上面的日常流程。调用纪律见
+目录被清空或迁移后的整体重建——例外路径，几乎不会触发，日常只有上面的增量
+流程（快照外渠道的 live 手工扩展同样按增量对待）。调用纪律见
 SKILL.md 执行循环。
 
 1. 对账读：`models(first:100)` 从线上状态重算"剩余工作"——被中断/取消的

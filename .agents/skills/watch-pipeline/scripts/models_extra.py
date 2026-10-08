@@ -25,7 +25,7 @@ DEFAULT_EXTRA_PATH = Path("data/models_extra.json")
 
 # Channel-provided claude models are out of scope everywhere: Claude requests
 # are served by self-built AxonHub models mapped by arena score, never by a
-# channel's own claude list (ADR 0012).
+# channel's own claude list.
 EXCLUDED_ID_PREFIXES = ("claude",)
 
 

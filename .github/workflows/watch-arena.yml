@@ -1,0 +1,69 @@
+name: Watch Arena
+
+# Arena collection is weekly: the leaderboard moves slowly, the crawler is
+# the most brittle of the channels (page-header drift history), and daily
+# runs bought nothing the mapping formula needs. Manual backfill stays
+# available via workflow_dispatch or a local watch_arena.py run.
+
+on:
+  schedule:
+    - cron: '0 3 * * 1'  # weekly Monday UTC 03:00 = CST 11:00
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: model-data-writes
+  cancel-in-progress: false
+
+jobs:
+  watch-arena:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.commit.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Fetch arena data
+        run: |
+          python3 .agents/skills/watch-pipeline/scripts/watch_arena.py --top-n 0 --output data/arena.json
+
+      - name: Commit arena snapshot
+        id: commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "40985853+github-actions[bot]@users.noreply.github.com"
+          git add data/arena.json
+          # A success clears the channel's last-error.json; commit its
+          # removal in the same batch as the data change.
+          if [ -d .agents/skills/watch-pipeline/reference/arena ]; then
+            git add .agents/skills/watch-pipeline/reference/arena
+          fi
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No Arena snapshot changes"
+          else
+            git commit -m "data: update Arena snapshot"
+            git pull --rebase origin "$GITHUB_REF_NAME"
+            git push
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit arena error state
+        if: failure()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "40985853+github-actions[bot]@users.noreply.github.com"
+          if [ -d .agents/skills/watch-pipeline/reference/arena ]; then
+            git add .agents/skills/watch-pipeline/reference/arena
+          fi
+          if ! git diff --cached --quiet; then
+            git commit -m "watch-arena: record failure state"
+            git pull --rebase origin "$GITHUB_REF_NAME"
+            git push
+          fi

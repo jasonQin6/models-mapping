@@ -4,11 +4,11 @@
 ``watch-go`` is the source watcher for the opencode-go channel.  The
 ``go.mdx`` document is the channel's model-list fact source: the channel
 section's keys are exactly the go.mdx model ids, and an id that leaves the
-document leaves the section (ADR 0011).  The section carries channel-declared
+document leaves the section.  The section carries channel-declared
 facts only (quotas, prices); public card data is filled offline by axonhub-admin from
 ``data/all_models.json``, never here.
 
-Channel-provided ``claude-*`` models are not collected (ADR 0012).  The
+Channel-provided ``claude-*`` models are not collected.  The
 parser transcribes declarations only — the document's zero prices are kept
 as-is, the pricing table's ``Free`` wording transcribes as zero prices
 (freeness itself is compute-layer's call from the declared cost), and free

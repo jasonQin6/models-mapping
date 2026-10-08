@@ -48,6 +48,9 @@ _Avoid_: Free-form note, metadata
 **Model variant**：同一基础模型的衍生 id（如 `-free`、`-contributor`、`-fast` 后缀）。尺寸后缀（如 `-27b`）是模型 id 的一部分，不构成变种关系。
 _Avoid_: Alias（别名指跨渠道对同一 id 的拼写归一）
 
+**Canonical model（规范模型）**：变体收敛的目标模型 id。PublicProviderConf 目录对每个模型声明 `canonical_model_id`，仅"去掉变体尾部"方向的声明（`muse-spark-1.3-contributor` → `muse-spark-1.3`）会被采纳：规范实体用基版 id 建卡，渠道侧变体 id 记入 `channelAliases` 由关联钉住。改名式声明（基版 → 日期快照/preview 拼写）与大写拼写归一不采纳。
+_Avoid_: 模型改名（收敛不改渠道侧 id，只换实体键）
+
 **目标清单**：axonhub-admin ② 从快照算出的模型卡应有状态清单（`modelID`、归属渠道、`cardRef`、成本、备注）。写入前与线上实体做差集。
 _Avoid_: 目标态、注册表（这两个自创词已弃用）
 
