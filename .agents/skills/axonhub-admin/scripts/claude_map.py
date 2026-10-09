@@ -59,6 +59,12 @@ REQUESTS: dict[str, str] = {
 
 # 2026-10-09 调权：接近度为最高权重（0.50），绝对分与 rp5h 降为辅助
 # （0.30/0.20）——映射优先挑分数最邻近的候选，而非绝对分最高者。
+# 2026-10-09 规则：自动免费填充只取该渠道的 free 模型，且只落这两个
+# 请求；其他渠道的 free 模型变动少，由维护者在 AxonHub 手动接线，不进
+# 算法（free_fill_manual 警告呈报，池多余/不足也有对应警告）。
+FREE_FILL_CHANNEL = "opencode-go"
+FREE_FILL_REQUESTS = ("claude-sonnet-4-6", "claude-opus-4-6")
+
 DEFAULT_WEIGHTS = {
     "score": 0.30,
     "rp5h": 0.20,
@@ -195,9 +201,14 @@ def build_mappings(
 
     scored_requests.sort(key=lambda item: (float(item["arena_score"]), str(item["model_id"])))
     free_candidates = sorted(
-        (c for c in candidates if c["free"]),
+        (c for c in candidates if c["free"] and c["channel"] == FREE_FILL_CHANNEL),
         key=lambda c: ((c["arena_score"] if c["arena_score"] is not None else 0.0), c["model_id"]),
     )
+    for c in candidates:
+        if c["free"] and c["channel"] != FREE_FILL_CHANNEL:
+            warnings.append(
+                {"type": "free_fill_manual", "model": c["model_id"], "channel": c["channel"]}
+            )
     # Candidates without an arena standing (arena_missing or a rejected
     # borrowed score) cannot enter the formula: proximity and the arena term
     # are undefined for them.
@@ -214,12 +225,20 @@ def build_mappings(
         )
         resolved[str(request["model_id"])] = (target, _confidence(match_type))
 
+    fill_requests = sorted(
+        (r for r in scored_requests if str(r["model_id"]) in FREE_FILL_REQUESTS),
+        key=lambda item: (float(item["arena_score"]), str(item["model_id"])),
+    )
     free_supply = iter(free_candidates)
-    for request in scored_requests:
+    for request in fill_requests:
         free_entry = next(free_supply, None)
         if free_entry is None:
-            break
+            warnings.append({"type": "free_fill_short", "model": request["model_id"]})
+            continue
         resolved[str(request["model_id"])] = (free_entry["model_id"], "free_fill")
+    surplus = [c["model_id"] for c in free_supply]
+    if surplus:
+        warnings.append({"type": "free_fill_surplus", "models": surplus})
 
     mappings: list[dict[str, Any]] = []
     for request in scored_requests:

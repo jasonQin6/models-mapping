@@ -15,33 +15,46 @@ def _map(sections, requests, arena=None):
 
 
 def test_claude_mapping_uses_formula_and_free_fill() -> None:
+    # Free fill is scoped: opencode-go's free pool fills only the designated
+    # requests (FREE_FILL_REQUESTS); everything else rides the formula.
     sections = {
         "opencode-go": {
             "muse-spark-1.2": rec(rp5h=800),      # arena 1650, closest to opus
             "qwen3.8-max": rec(rp5h=100),          # arena 1600, farther below
             "freebie": rec(rp5h=500, cost={"input": 0, "output": 0}),   # free, arena 1500 default
+            "freebie-b": rec(rp5h=400, cost={"input": 0, "output": 0}), # free, arena 1500 default
         },
     }
     requests = [
-        {"model_id": "claude-haiku-4-5"},
+        {"model_id": "claude-sonnet-4-6"},
+        {"model_id": "claude-opus-4-6"},
         {"model_id": "claude-opus-5"},
     ]
-    arena = {"muse-spark-1.2": 1650.0, "qwen3.8-max": 1600.0, "claude-haiku-4-5": 1150.0, "claude-opus-5": 1700.0}
+    arena = {
+        "muse-spark-1.2": 1650.0,
+        "qwen3.8-max": 1600.0,
+        "claude-sonnet-4-6": 1520.0,
+        "claude-opus-4-6": 1545.0,
+        "claude-opus-5": 1700.0,
+    }
 
     report = _map(sections, requests, arena=arena)
 
     mapping_by_request = {m["request_model"]: m for m in report["mappings"]}
-    # Free fill: the lowest-scored request takes the lowest-scored free model.
-    assert mapping_by_request["claude-haiku-4-5"]["suggested_target"] == "freebie"
-    assert mapping_by_request["claude-haiku-4-5"]["match_confidence"] == "free_fill"
-    # Free pool exhausted: the remaining request uses the formula over
-    # non-free candidates (closest score wins over the farther one).
+    # Designated requests take the opencode-go free pool in ascending order.
+    assert mapping_by_request["claude-sonnet-4-6"]["suggested_target"] == "freebie"
+    assert mapping_by_request["claude-sonnet-4-6"]["match_confidence"] == "free_fill"
+    assert mapping_by_request["claude-opus-4-6"]["suggested_target"] == "freebie-b"
+    assert mapping_by_request["claude-opus-4-6"]["match_confidence"] == "free_fill"
+    # Non-designated requests use the formula even when the pool has models.
     assert mapping_by_request["claude-opus-5"]["suggested_target"] == "muse-spark-1.2"
+    assert mapping_by_request["claude-opus-5"]["match_confidence"] != "free_fill"
 
 
-def test_free_fill_pairs_lowest_request_with_lowest_free_model() -> None:
-    # User example: haiku (lowest request) gets laguna (lowest free), then
-    # sonnet-4-6 gets longcat; the rest fall through to the formula.
+def test_free_fill_skips_other_channel_pools_as_manual() -> None:
+    # Other channels' free models never enter the algorithm: they surface as
+    # free_fill_manual warnings for hand wiring in AxonHub, and requests
+    # without an opencode-go free model keep their formula target.
     sections = {
         "commandcode-goat": {
             "laguna-s-2.1-free": rec(rp5h=None, cost={"input": 0, "output": 0}),
@@ -52,13 +65,13 @@ def test_free_fill_pairs_lowest_request_with_lowest_free_model() -> None:
         "opencode-go": {"longcat-2.0": rec(rp5h=1540)},
     }
     requests = [
-        {"model_id": "claude-haiku-4-5"},
         {"model_id": "claude-sonnet-4-6"},
+        {"model_id": "claude-opus-4-6"},
         {"model_id": "claude-opus-5"},
     ]
     arena = {
-        "claude-haiku-4-5": 1328.9,
         "claude-sonnet-4-6": 1521.49,
+        "claude-opus-4-6": 1545.0,
         "claude-opus-5": 1687.61,
         "muse-spark-1.3-contributor": 1622.48,
         "longcat-2.0": 1540,
@@ -68,12 +81,40 @@ def test_free_fill_pairs_lowest_request_with_lowest_free_model() -> None:
     report = _map(sections, requests, arena=arena)
 
     mapping_by_request = {m["request_model"]: m for m in report["mappings"]}
-    assert mapping_by_request["claude-haiku-4-5"]["suggested_target"] == "laguna-s-2.1-free"
-    assert mapping_by_request["claude-sonnet-4-6"]["suggested_target"] == "longcat-2.0-free"
-    # Free pool exhausted -> formula over non-free candidates.
+    # The opencode-go pool has no free model: designated requests keep their
+    # formula targets.
+    for request_id in ("claude-sonnet-4-6", "claude-opus-4-6", "claude-opus-5"):
+        assert mapping_by_request[request_id]["match_confidence"] != "free_fill"
     assert mapping_by_request["claude-opus-5"]["suggested_target"] == "muse-spark-1.3-contributor"
-    assert mapping_by_request["claude-haiku-4-5"]["match_confidence"] == "free_fill"
-    assert mapping_by_request["claude-opus-5"]["match_confidence"] in ("high", "medium", "none")
+    manual = {w["model"] for w in report["warnings"] if w["type"] == "free_fill_manual"}
+    assert manual == {"laguna-s-2.1-free", "longcat-2.0-free"}
+
+
+def test_free_fill_surplus_and_short_are_reported() -> None:
+    # Pool larger than the designated pair -> surplus warning; designated
+    # request without any pool model -> short warning.
+    sections = {
+        "opencode-go": {
+            "free-a": rec(rp5h=100, cost={"input": 0, "output": 0}),
+            "free-b": rec(rp5h=100, cost={"input": 0, "output": 0}),
+            "free-c": rec(rp5h=100, cost={"input": 0, "output": 0}),
+        },
+    }
+    requests = [{"model_id": "claude-sonnet-4-6"}, {"model_id": "claude-opus-4-6"}]
+    arena = {"claude-sonnet-4-6": 1520.0, "claude-opus-4-6": 1545.0}
+
+    report = _map(sections, requests, arena=arena)
+
+    surplus = next(w for w in report["warnings"] if w["type"] == "free_fill_surplus")
+    assert len(surplus["models"]) == 1
+    assert not any(w["type"] == "free_fill_short" for w in report["warnings"])
+
+    # Pool smaller than the designated pair in the request list -> short.
+    sections = {"opencode-go": {"free-a": rec(rp5h=100, cost={"input": 0, "output": 0})}}
+    report = _map(sections, requests, arena=arena)
+    assert any(w["type"] == "free_fill_short" and w["model"] == "claude-opus-4-6"
+               for w in report["warnings"])
+    assert not any(w["type"] == "free_fill_surplus" for w in report["warnings"])
 
 
 def test_request_without_arena_score_is_blocking() -> None:

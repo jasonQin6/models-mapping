@@ -43,9 +43,13 @@ stdout 是"请求 → 候选"映射 JSON（含请求 Arena 分与置信度），
   ```
   全部候选同分时 `proximity` 为 1；惩罚只在候选低于请求分时生效，加成只在
   高于时生效。价格与 `usage_quota` 是源元数据，不是映射维度。
-- **free 补全**（`free_fill`）——free 池按 Arena 分升序与按 Arena 分升序的
-  请求配对，替换这些请求的公式目标：最弱请求拿分最低的 free 模型。没有
-  人工覆盖：算出的配对就是评审建议。
+- **free 补全**（`free_fill`）——自动填充只取 `FREE_FILL_CHANNEL`
+  （opencode-go）渠道的 free 模型，按 Arena 分升序与 `FREE_FILL_REQUESTS`
+  （claude-sonnet-4-6、claude-opus-4-6）升序配对，替换其公式目标。
+  其他渠道的 free 模型不进算法（`free_fill_manual` 警告呈报），由维护者
+  在 AxonHub 手动接线；池多于指定请求报 `free_fill_surplus`，指定请求
+  无池可配报 `free_fill_short` 并保留公式靶。没有人工覆盖：算出的配对
+  就是评审建议。
 - **Arena 匹配链与置信度**——匹配链剥离固定变种后缀（`-contributor`、
   `-free`、`-vl`，`scripts/name_matching.py` 的 `MATCH_VARIANT_SUFFIXES`）：
   榜单未列的变种继承基础模型分数（`ling-3.0-flash-vl` ← `ling-3.0-flash`），
