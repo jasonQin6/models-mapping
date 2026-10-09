@@ -4,6 +4,17 @@
   },
   "channels": {
     "opencode-go": {
+      "claude-haiku-5-5": {
+        "cost": {
+          "cache_read": 0.01,
+          "cache_write": 0.125,
+          "input": 0.1,
+          "output": 0.5
+        },
+        "name": "Claude Haiku 5.5",
+        "rp5h": 3850,
+        "usage_quota": 15.0
+      },
       "deepseek-v4-flash": {
         "cost": {
           "cache_read": 0.003,
@@ -410,5 +421,5 @@
     }
   },
   "schema_version": 1,
-  "updated_at": "2026-10-09T06:32:46Z"
+  "updated_at": "2026-10-09T06:34:52Z"
 }
