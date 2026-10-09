@@ -46,15 +46,15 @@ from snapshot import (  # noqa: E402
 # claude-haiku-5.5）与 effort 后缀（-high/-max）由匹配链归一，-high 只是
 # reasoning effort，不构成不同模型。
 REQUESTS: dict[str, str] = {
-    # 2026-10-09 定稿：仅保留 *-4-6 / *-5 / *-5-5 三档（opus-4-7/4-8、
-    # fable-5-1 删除；fable-5 尾缀 -5 保留，系 1600 段唯一请求）。
-    # 渠道直供的 claude-*（claude-haiku-5-5）不进 REQUESTS：它们自服
-    # （渠道链即路由），在④只作公式候选。
+    # 2026-10-09 最终名单（用户确认）：sonnet-4-6 / opus-4-6 / haiku-5-5 /
+    # fable-5 / opus-5 / sonnet-5-5 / opus-5-5。claude-haiku-5-5 虽为渠道
+    # 直供（opencode-go 真 Claude），经用户裁决入列映射——写入时其自服链
+    # 由映射关联整体替代。
     "claude-sonnet-4-6": "",
     "claude-opus-4-6": "",
-    "claude-sonnet-5": "",
-    "claude-opus-5": "",
+    "claude-haiku-5-5": "",
     "claude-fable-5": "",
+    "claude-opus-5": "",
     "claude-sonnet-5-5": "",
     "claude-opus-5-5": "",
 }
