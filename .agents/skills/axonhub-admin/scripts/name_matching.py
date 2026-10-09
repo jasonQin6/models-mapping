@@ -26,10 +26,10 @@ MATCH_VARIANT_SUFFIXES = ("-contributor", "-free", "-vl")
 
 def normalize(name: str) -> str:
     """Normalize a model name to a standardized id.
-    
+
     Removes parenthetical suffixes, converts to lowercase, replaces spaces
     with hyphens, and collapses consecutive hyphens.
-    
+
     Examples:
         "Claude Opus 5" -> "claude-opus-5"
         "GPT-5.4 Mini (20250320)" -> "gpt-5.4-mini"
@@ -39,6 +39,16 @@ def normalize(name: str) -> str:
     name = name.strip().lower().replace(' ', '-')
     name = re.sub(r'-+', '-', name)
     return name
+
+
+def fold_punctuation(model_id: str) -> str:
+    """Fold version punctuation (``.`` -> ``-``) for cross-source comparison.
+
+    Sources spell version separators differently (arena ``claude-haiku-5.5``
+    vs channel id ``claude-haiku-5-5``); the separator itself never
+    distinguishes two models.
+    """
+    return model_id.replace('.', '-')
 
 
 def normalize_arena_name(name: str) -> Tuple[str, Optional[str]]:
@@ -97,11 +107,14 @@ def find_best_match(
 ) -> Tuple[Optional[dict], str]:
     """Find the best matching arena entry for a CSV model_id.
 
-    Implements a 4-layer fallback chain:
+    Implements a 5-layer fallback chain:
       1. Direct match
-      2. Known variant suffix (contributor/free/vl) -> base model
-      3. Version downgrade (e.g., qwen3.7-plus -> qwen3.6-plus)
-      4. Prefix match with wildcard (e.g., claude-haiku -> claude-haiku-*)
+      2. Punctuation-normalized match (``claude-haiku-5-5`` vs
+         ``claude-haiku-5.5``; effort/date suffixes are already stripped
+         from the lookup keys)
+      3. Known variant suffix (contributor/free/vl) -> base model
+      4. Version downgrade (e.g., qwen3.7-plus -> qwen3.6-plus)
+      5. Prefix match with wildcard (e.g., claude-haiku -> claude-haiku-*)
 
     A free model with no match carries no default here: the planner applies
     its own default score (1500, ``arena_defaulted``) so every free model
@@ -115,21 +128,36 @@ def find_best_match(
         (arena_entry, match_type) where:
         - arena_entry: dict with keys {rating, organization, effort}
           or None if no match found
-        - match_type: one of 'direct_match', 'variant_suffix', 'version_downgrade',
-          'prefix_match', 'no_match'
+        - match_type: one of 'direct_match', 'punctuation_normalized',
+          'variant_suffix', 'version_downgrade', 'prefix_match', 'no_match'
     """
     # Layer 1: Direct match
     if csv_id in arena_lookup:
         return (arena_lookup[csv_id], 'direct_match')
 
-    # Layer 2: Known variant suffix -> base model
+    # Layer 2: Punctuation-normalized match — the separator never
+    # distinguishes two models, but only fold across when the exact form
+    # is absent, in either direction.
+    folded_id = fold_punctuation(csv_id)
+    if folded_id != csv_id:
+        if folded_id in arena_lookup:
+            return (arena_lookup[folded_id], 'punctuation_normalized')
+    else:
+        for arena_id, entry in arena_lookup.items():
+            if arena_id != csv_id and fold_punctuation(arena_id) == csv_id:
+                return (entry, 'punctuation_normalized')
+
+    # Layer 3: Known variant suffix -> base model
     for suffix in MATCH_VARIANT_SUFFIXES:
         if csv_id.endswith(suffix):
             base_id = csv_id[: -len(suffix)]
             if base_id in arena_lookup:
                 return (arena_lookup[base_id], 'variant_suffix')
-    
-    # Layer 3: Version downgrade
+            folded_base = fold_punctuation(base_id)
+            if folded_base != base_id and folded_base in arena_lookup:
+                return (arena_lookup[folded_base], 'punctuation_normalized')
+
+    # Layer 4: Version downgrade
     match = re.match(r'^(.+?)(\d+)\.(\d+)(.*)$', csv_id)
     if match:
         prefix = match.group(1)
@@ -142,7 +170,7 @@ def find_best_match(
             if alt_id in arena_lookup:
                 return (arena_lookup[alt_id], 'version_downgrade')
     
-    # Layer 4: Prefix match with wildcard
+    # Layer 5: Prefix match with wildcard
     candidates = []
     for arena_id, entry in arena_lookup.items():
         if arena_id.startswith(f"{csv_id}-"):

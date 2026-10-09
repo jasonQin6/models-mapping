@@ -176,6 +176,55 @@ class TestFindBestMatch:
         assert result is None
         assert match_type == "no_match"
 
+    def test_punctuation_normalized_dash_query_dot_board(self):
+        # channel id spells 5-5, the board spells 5.5: same model, folded
+        lookup = dict(self.arena_lookup)
+        lookup["claude-haiku-5.5"] = {
+            "rating": 1586.94,
+            "organization": "Anthropic",
+            "effort": "high",
+        }
+        result, match_type = find_best_match("claude-haiku-5-5", lookup)
+        assert result is not None
+        assert result["rating"] == 1586.94
+        assert match_type == "punctuation_normalized"
+
+    def test_punctuation_normalized_dot_query_dash_board(self):
+        # reverse direction: the query carries the dot, the board the dash
+        lookup = dict(self.arena_lookup)
+        lookup["claude-haiku-5-5"] = {
+            "rating": 1586.94,
+            "organization": "Anthropic",
+            "effort": "high",
+        }
+        result, match_type = find_best_match("claude-haiku-5.5", lookup)
+        assert result is not None
+        assert result["rating"] == 1586.94
+        assert match_type == "punctuation_normalized"
+
+    def test_punctuation_normalized_never_overrides_direct(self):
+        # an exact hit always wins over the folded form
+        lookup = dict(self.arena_lookup)
+        lookup["qwen3.7-plus"] = {
+            "rating": 1400.0,
+            "organization": "Alibaba",
+            "effort": None,
+        }
+        result, match_type = find_best_match("qwen3.7-plus", lookup)
+        assert match_type == "direct_match"
+
+    def test_punctuation_distinct_versions_still_apart(self):
+        # folding must not collapse distinct versions: 5-5 vs 5-6
+        lookup = dict(self.arena_lookup)
+        lookup["claude-haiku-5.6"] = {
+            "rating": 1600.0,
+            "organization": "Anthropic",
+            "effort": None,
+        }
+        result, match_type = find_best_match("claude-haiku-5-5", lookup)
+        assert result is None
+        assert match_type == "no_match"
+
     def test_version_downgrade(self):
         # qwen3.7-plus should match qwen3.6-plus
         result, match_type = find_best_match("qwen3.7-plus", self.arena_lookup)

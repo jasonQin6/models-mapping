@@ -42,11 +42,11 @@ from snapshot import (  # noqa: E402
 # Hand-maintained Claude request models (id -> human note): add or remove
 # entries to grow or shrink the mapped set.  GPT models pass through by name
 # in AxonHub and are deliberately absent — this step maintains Claude
-# associations only.
-# 2026-09-30 收敛到 7：goat-only 目标去重后恰 7 个，每目标一个代表
-# （5 免费档 + deepseek-v4-flash 档 + muse-spark-1.3-contributor 档）；
-# 免费池 5 个需恰好被最弱 5 个请求耗尽，两个公式档才能存活，7 是下限。
+# associations only.  Ids use the dash spelling; arena 的点号拼写（
+# claude-haiku-5.5）与 effort 后缀（-high/-max）由匹配链归一，-high 只是
+# reasoning effort，不构成不同模型。
 REQUESTS: dict[str, str] = {
+    # 2026-09-30 首批 7 个（goat-only 目标收敛后的代表集）
     "claude-haiku-4-5": "",
     "claude-opus-4-1": "",
     "claude-opus-4-5": "",
@@ -54,6 +54,16 @@ REQUESTS: dict[str, str] = {
     "claude-sonnet-4-5": "",
     "claude-sonnet-4-6": "",
     "claude-sonnet-5": "",
+    # 2026-10-09 对齐 Arena 现行 Anthropic 阵容（opus-4-6/4-7/4-8、
+    # 5.5 双系、fable 家族）。渠道直供的 claude-*（claude-haiku-5-5）不进
+    # REQUESTS：它们自服（渠道链即路由），在④只作公式候选。
+    "claude-opus-4-6": "",
+    "claude-opus-4-7": "",
+    "claude-opus-4-8": "",
+    "claude-opus-5-5": "",
+    "claude-sonnet-5-5": "",
+    "claude-fable-5": "",
+    "claude-fable-5-1": "",
 }
 
 DEFAULT_WEIGHTS = {
@@ -142,7 +152,7 @@ def compute_mapping_for_request_model(
 def _confidence(match_type: str) -> str:
     if match_type == "direct_match":
         return "high"
-    if match_type in ("variant_suffix", "version_downgrade"):
+    if match_type in ("variant_suffix", "version_downgrade", "punctuation_normalized"):
         return "medium"
     if match_type == "prefix_match":
         return "low"
