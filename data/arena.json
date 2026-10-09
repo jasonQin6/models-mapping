@@ -2,215 +2,219 @@
   "schema_version": 1,
   "source": {
     "url": "https://lmarena.ai/leaderboard/code/webdev",
-    "fetched_at": "2026-10-08T05:11:54.570932+00:00"
+    "fetched_at": "2026-10-09T04:05:57.604949+00:00"
   },
   "models": {
     "Inkling Small": {
-      "arena_score": 1408.56,
+      "arena_score": 1408.78,
       "organization": "Thinky"
     },
     "KAT-Coder-Pro-V1": {
-      "arena_score": 1255.84,
+      "arena_score": 1255.76,
       "organization": ""
     },
     "claude-fable-5-high": {
-      "arena_score": 1624.09,
+      "arena_score": 1624.74,
       "organization": "Anthropic"
     },
     "claude-fable-5.1-max": {
-      "arena_score": 1744.81,
+      "arena_score": 1743.71,
       "organization": "Anthropic"
     },
     "claude-haiku-4-5-20251001": {
-      "arena_score": 1329.71,
+      "arena_score": 1329.68,
+      "organization": "Anthropic"
+    },
+    "claude-haiku-5.5-high": {
+      "arena_score": 1586.94,
       "organization": "Anthropic"
     },
     "claude-opus-4-1-20250805": {
-      "arena_score": 1390.19,
+      "arena_score": 1389.94,
       "organization": "Anthropic"
     },
     "claude-opus-4-5-20251101": {
-      "arena_score": 1469.1,
+      "arena_score": 1469.05,
       "organization": "Anthropic"
     },
     "claude-opus-4-5-20251101-high-32k": {
-      "arena_score": 1493.79,
+      "arena_score": 1493.78,
       "organization": "Anthropic"
     },
     "claude-opus-4-6": {
-      "arena_score": 1537.11,
+      "arena_score": 1537.22,
       "organization": "Anthropic"
     },
     "claude-opus-4-6-high": {
-      "arena_score": 1546.39,
+      "arena_score": 1546.55,
       "organization": "Anthropic"
     },
     "claude-opus-4-7": {
-      "arena_score": 1555.18,
+      "arena_score": 1555.17,
       "organization": "Anthropic"
     },
     "claude-opus-4-7-high": {
-      "arena_score": 1557.52,
+      "arena_score": 1557.47,
       "organization": "Anthropic"
     },
     "claude-opus-4-8": {
-      "arena_score": 1536.01,
+      "arena_score": 1535.77,
       "organization": "Anthropic"
     },
     "claude-opus-4-8-high": {
-      "arena_score": 1556.06,
+      "arena_score": 1555.88,
       "organization": "Anthropic"
     },
     "claude-opus-5-high": {
-      "arena_score": 1657.7,
+      "arena_score": 1656.87,
       "organization": "Anthropic"
     },
     "claude-opus-5-max": {
-      "arena_score": 1691.77,
+      "arena_score": 1691.31,
       "organization": "Anthropic"
     },
     "claude-opus-5.5-max": {
-      "arena_score": 1813.6,
+      "arena_score": 1813.03,
       "organization": "Anthropic"
     },
     "claude-sonnet-4-5-20250929": {
-      "arena_score": 1384.77,
+      "arena_score": 1384.51,
       "organization": "Anthropic"
     },
     "claude-sonnet-4-5-20250929-high-32k": {
-      "arena_score": 1393.55,
+      "arena_score": 1393.42,
       "organization": "Anthropic"
     },
     "claude-sonnet-4-6": {
-      "arena_score": 1522.14,
+      "arena_score": 1522.4,
       "organization": "Anthropic"
     },
     "claude-sonnet-5-high": {
-      "arena_score": 1540.86,
+      "arena_score": 1540.79,
       "organization": "Anthropic"
     },
     "claude-sonnet-5.5-high": {
-      "arena_score": 1716.02,
+      "arena_score": 1714.88,
       "organization": "Anthropic"
     },
     "claude-sonnet-5.5-xhigh": {
-      "arena_score": 1772.75,
+      "arena_score": 1774.29,
       "organization": "Anthropic"
     },
     "deepseek-v3.2": {
-      "arena_score": 1325.36,
+      "arena_score": 1325.15,
       "organization": "DeepSeek"
     },
     "deepseek-v3.2-exp": {
-      "arena_score": 1272.34,
+      "arena_score": 1272.36,
       "organization": "DeepSeek"
     },
     "deepseek-v3.2-thinking": {
-      "arena_score": 1362.19,
+      "arena_score": 1362.22,
       "organization": "DeepSeek"
     },
     "deepseek-v4-flash-high": {
-      "arena_score": 1581.43,
+      "arena_score": 1581.53,
       "organization": "DeepSeek"
     },
     "deepseek-v4-flash-high-preview": {
-      "arena_score": 1430.29,
+      "arena_score": 1430.69,
       "organization": "DeepSeek"
     },
     "deepseek-v4-pro": {
-      "arena_score": 1446.4,
+      "arena_score": 1446.72,
       "organization": "DeepSeek"
     },
     "deepseek-v4-pro-high-20260813": {
-      "arena_score": 1581.92,
+      "arena_score": 1582.04,
       "organization": "DeepSeek"
     },
     "deepseek-v4-pro-high-preview": {
-      "arena_score": 1463.7,
+      "arena_score": 1463.76,
       "organization": "DeepSeek"
     },
     "deepseek-v4.1-flash-max": {
-      "arena_score": 1618.56,
+      "arena_score": 1618.6,
       "organization": "DeepSeek"
     },
     "devstral-2": {
-      "arena_score": 1196.63,
+      "arena_score": 1196.57,
       "organization": "Mistral"
     },
     "devstral-medium-2507": {
-      "arena_score": 1076.48,
+      "arena_score": 1076.32,
       "organization": "Mistral"
     },
     "gemini-2.5-pro": {
-      "arena_score": 1227.71,
+      "arena_score": 1227.37,
       "organization": "Google"
     },
     "gemini-3-flash": {
-      "arena_score": 1439.44,
+      "arena_score": 1439.39,
       "organization": "Google"
     },
     "gemini-3-flash (thinking-minimal)": {
-      "arena_score": 1384.42,
+      "arena_score": 1384.59,
       "organization": "Google"
     },
     "gemini-3-pro": {
-      "arena_score": 1439.58,
+      "arena_score": 1439.52,
       "organization": "Google"
     },
     "gemini-3.1-flash-lite-preview": {
-      "arena_score": 1256.19,
+      "arena_score": 1256.33,
       "organization": "Google"
     },
     "gemini-3.1-pro-preview": {
-      "arena_score": 1446.57,
+      "arena_score": 1446.71,
       "organization": "Google"
     },
     "gemini-3.5-flash": {
-      "arena_score": 1509.11,
+      "arena_score": 1510.52,
       "organization": "Google"
     },
     "gemini-3.5-flash-high": {
-      "arena_score": 1498.97,
+      "arena_score": 1499.19,
       "organization": "Google"
     },
     "gemini-3.5-flash-lite": {
-      "arena_score": 1439.65,
+      "arena_score": 1439.69,
       "organization": "Google"
     },
     "gemini-3.5-flash-medium": {
-      "arena_score": 1490.91,
+      "arena_score": 1491.11,
       "organization": "Google"
     },
     "gemini-3.6-flash-high": {
-      "arena_score": 1537.76,
+      "arena_score": 1537.81,
       "organization": "Google"
     },
     "gemini-3.7-flash-high": {
-      "arena_score": 1591.95,
+      "arena_score": 1591.55,
       "organization": "Google"
     },
     "gemini-3.8-flash-high": {
-      "arena_score": 1583.31,
+      "arena_score": 1583.46,
       "organization": "Google"
     },
     "gemini-4-argon-high": {
-      "arena_score": 1678.39,
+      "arena_score": 1677.81,
       "organization": "Google"
     },
     "gemma-4-26b-a4b": {
-      "arena_score": 1359.32,
+      "arena_score": 1358.99,
       "organization": "Google"
     },
     "gemma-4-31b": {
-      "arena_score": 1365.35,
+      "arena_score": 1365.93,
       "organization": "Google"
     },
     "glm-4.6": {
-      "arena_score": 1340.06,
+      "arena_score": 1339.98,
       "organization": "Z.ai"
     },
     "glm-4.7": {
-      "arena_score": 1435.07,
+      "arena_score": 1435.0,
       "organization": "Z.ai"
     },
     "glm-5": {
@@ -218,199 +222,199 @@
       "organization": "Z.ai"
     },
     "glm-5.1": {
-      "arena_score": 1508.21,
+      "arena_score": 1508.31,
       "organization": "Z.ai"
     },
     "glm-5.2-max": {
-      "arena_score": 1602.95,
+      "arena_score": 1603.21,
       "organization": "Z.ai"
     },
     "glm-5.3-flash": {
-      "arena_score": 1610.03,
+      "arena_score": 1609.16,
       "organization": "Z.ai"
     },
     "glm-5.3-max": {
-      "arena_score": 1622.27,
+      "arena_score": 1622.22,
       "organization": "Z.ai"
     },
     "glm-5v-turbo": {
-      "arena_score": 1400.73,
+      "arena_score": 1401.02,
       "organization": "Z.ai"
     },
     "gpt-5-medium": {
-      "arena_score": 1417.82,
+      "arena_score": 1417.7,
       "organization": "OpenAI"
     },
     "gpt-5.1": {
-      "arena_score": 1341.66,
+      "arena_score": 1341.56,
       "organization": "OpenAI"
     },
     "gpt-5.1-codex": {
-      "arena_score": 1337.3,
+      "arena_score": 1337.44,
       "organization": "OpenAI"
     },
     "gpt-5.1-codex-mini": {
-      "arena_score": 1244.19,
+      "arena_score": 1244.08,
       "organization": "OpenAI"
     },
     "gpt-5.1-medium": {
-      "arena_score": 1395.2,
+      "arena_score": 1395.3,
       "organization": "OpenAI"
     },
     "gpt-5.2": {
-      "arena_score": 1416.07,
+      "arena_score": 1415.99,
       "organization": "OpenAI"
     },
     "gpt-5.2-codex": {
-      "arena_score": 1339.4,
+      "arena_score": 1339.43,
       "organization": "OpenAI"
     },
     "gpt-5.3-codex (codex-harness)": {
-      "arena_score": 1408.59,
+      "arena_score": 1408.6,
       "organization": "OpenAI"
     },
     "gpt-5.4": {
-      "arena_score": 1399.22,
+      "arena_score": 1400.21,
       "organization": "OpenAI"
     },
     "gpt-5.4-high (codex-harness)": {
-      "arena_score": 1465.23,
+      "arena_score": 1465.26,
       "organization": "OpenAI"
     },
     "gpt-5.4-medium (codex-harness)": {
-      "arena_score": 1444.37,
+      "arena_score": 1444.4,
       "organization": "OpenAI"
     },
     "gpt-5.4-mini-high": {
-      "arena_score": 1397.25,
+      "arena_score": 1397.35,
       "organization": "OpenAI"
     },
     "gpt-5.5 (codex-harness)": {
-      "arena_score": 1456.06,
+      "arena_score": 1455.76,
       "organization": "OpenAI"
     },
     "gpt-5.5-high (codex-harness)": {
-      "arena_score": 1487.58,
+      "arena_score": 1487.44,
       "organization": "OpenAI"
     },
     "gpt-5.5-xhigh (codex-harness)": {
-      "arena_score": 1512.71,
+      "arena_score": 1512.66,
       "organization": "OpenAI"
     },
     "gpt-5.6-luna-xhigh (codex-harness)": {
-      "arena_score": 1519.92,
+      "arena_score": 1518.95,
       "organization": "OpenAI"
     },
     "gpt-5.6-sol-xhigh (codex-harness)": {
-      "arena_score": 1617.76,
+      "arena_score": 1618.33,
       "organization": "OpenAI"
     },
     "gpt-5.6-terra-xhigh (codex-harness)": {
-      "arena_score": 1521.52,
+      "arena_score": 1521.79,
       "organization": "OpenAI"
     },
     "gpt-6-astra-max": {
-      "arena_score": 1787.6,
+      "arena_score": 1786.11,
       "organization": "OpenAI"
     },
     "gpt-6-luna-max": {
-      "arena_score": 1582.35,
+      "arena_score": 1580.9,
       "organization": "OpenAI"
     },
     "gpt-6-sol-max": {
-      "arena_score": 1687.49,
+      "arena_score": 1688.18,
       "organization": "OpenAI"
     },
     "gpt-6.1-sol-max": {
-      "arena_score": 1757.31,
+      "arena_score": 1755.4,
       "organization": "OpenAI"
     },
     "granite-4.1-8b": {
-      "arena_score": 1190.79,
+      "arena_score": 1191.62,
       "organization": "IBM"
     },
     "grok-4-1-fast-reasoning": {
-      "arena_score": 1241.88,
+      "arena_score": 1241.86,
       "organization": "SpaceXAI"
     },
     "grok-4-fast-reasoning": {
-      "arena_score": 1160.06,
+      "arena_score": 1159.4,
       "organization": "SpaceXAI"
     },
     "grok-4.1-thinking": {
-      "arena_score": 1214.38,
+      "arena_score": 1214.31,
       "organization": "SpaceXAI"
     },
     "grok-4.20-beta-0309-reasoning": {
-      "arena_score": 1374.6,
+      "arena_score": 1374.67,
       "organization": "SpaceXAI"
     },
     "grok-4.3": {
-      "arena_score": 1356.9,
+      "arena_score": 1357.11,
       "organization": "SpaceXAI"
     },
     "grok-4.5": {
-      "arena_score": 1552.85,
+      "arena_score": 1552.82,
       "organization": "SpaceXAI"
     },
     "grok-4.6-high": {
-      "arena_score": 1616.96,
+      "arena_score": 1617.16,
       "organization": "SpaceXAI"
     },
     "grok-4.7-xhigh": {
-      "arena_score": 1638.05,
+      "arena_score": 1639.09,
       "organization": "SpaceXAI"
     },
     "grok-code-fast-1": {
-      "arena_score": 1167.61,
+      "arena_score": 1167.47,
       "organization": "SpaceXAI"
     },
     "hunyuan-hy3-preview": {
-      "arena_score": 1356.23,
+      "arena_score": 1355.45,
       "organization": "Tencent"
     },
     "hy3": {
-      "arena_score": 1508.15,
+      "arena_score": 1508.4,
       "organization": "Tencent"
     },
     "hy4-preview": {
-      "arena_score": 1631.72,
+      "arena_score": 1631.76,
       "organization": "Tencent"
     },
     "inkling": {
-      "arena_score": 1412.18,
+      "arena_score": 1413.12,
       "organization": "Thinky"
     },
     "kimi-k2-thinking-turbo": {
-      "arena_score": 1322.49,
+      "arena_score": 1322.08,
       "organization": "Moonshot"
     },
     "kimi-k2.5-instant": {
-      "arena_score": 1404.22,
+      "arena_score": 1404.2,
       "organization": "Moonshot"
     },
     "kimi-k2.5-thinking": {
-      "arena_score": 1436.41,
+      "arena_score": 1436.5,
       "organization": "Moonshot"
     },
     "kimi-k2.6": {
-      "arena_score": 1509.12,
+      "arena_score": 1509.13,
       "organization": "Moonshot"
     },
     "kimi-k2.7-code": {
-      "arena_score": 1473.15,
+      "arena_score": 1473.36,
       "organization": "Moonshot"
     },
     "kimi-k3-max": {
-      "arena_score": 1655.02,
+      "arena_score": 1654.35,
       "organization": "Moonshot"
     },
     "laguna-m.1": {
-      "arena_score": 1348.4,
+      "arena_score": 1348.54,
       "organization": "Poolside"
     },
     "laguna-xs.2": {
-      "arena_score": 1302.44,
+      "arena_score": 1302.34,
       "organization": "Poolside"
     },
     "ling-3.0-flash": {
@@ -422,119 +426,119 @@
       "manual": true
     },
     "mercury-2": {
-      "arena_score": 1170.69,
+      "arena_score": 1170.71,
       "organization": "Inception AI"
     },
     "mimo-v2-flash (non-thinking)": {
-      "arena_score": 1330.21,
+      "arena_score": 1330.18,
       "organization": "Xiaomi"
     },
     "mimo-v2-flash (thinking)": {
-      "arena_score": 1292.52,
+      "arena_score": 1292.46,
       "organization": "Xiaomi"
     },
     "mimo-v2-pro": {
-      "arena_score": 1433.36,
+      "arena_score": 1433.27,
       "organization": "Xiaomi"
     },
     "mimo-v2.5": {
-      "arena_score": 1438.14,
+      "arena_score": 1438.07,
       "organization": "Xiaomi"
     },
     "mimo-v2.5-pro": {
-      "arena_score": 1478.43,
+      "arena_score": 1479.17,
       "organization": "Xiaomi"
     },
     "mimo-v2.6-flash": {
-      "arena_score": 1635.7,
+      "arena_score": 1636.81,
       "organization": "Xiaomi"
     },
     "mimo-v2.6-pro": {
-      "arena_score": 1629.51,
+      "arena_score": 1628.96,
       "organization": "Xiaomi"
     },
     "minimax-m2": {
-      "arena_score": 1297.22,
+      "arena_score": 1297.17,
       "organization": "MiniMax"
     },
     "minimax-m2.1-preview": {
-      "arena_score": 1384.45,
+      "arena_score": 1384.38,
       "organization": "MiniMax"
     },
     "minimax-m2.5": {
-      "arena_score": 1386.69,
+      "arena_score": 1386.72,
       "organization": "MiniMax"
     },
     "minimax-m2.7": {
-      "arena_score": 1397.69,
+      "arena_score": 1397.85,
       "organization": "MiniMax"
     },
     "minimax-m3": {
-      "arena_score": 1482.08,
+      "arena_score": 1481.7,
       "organization": "MiniMax"
     },
     "mistral-large-3": {
-      "arena_score": 1230.4,
+      "arena_score": 1230.37,
       "organization": "Mistral"
     },
     "mistral-large-4": {
-      "arena_score": 1533.76,
+      "arena_score": 1541.34,
       "organization": "Mistral"
     },
     "mistral-medium-3.5": {
-      "arena_score": 1263.31,
+      "arena_score": 1263.5,
       "organization": "Mistral"
     },
     "muse-glimmer": {
-      "arena_score": 1354.99,
+      "arena_score": 1355.03,
       "organization": "Meta"
     },
     "muse-spark-1.1": {
-      "arena_score": 1542.18,
+      "arena_score": 1542.12,
       "organization": "Meta"
     },
     "muse-spark-1.2 (xHigh)": {
-      "arena_score": 1532.3,
+      "arena_score": 1532.57,
       "organization": "Meta"
     },
     "muse-spark-1.3 (xHigh)": {
-      "arena_score": 1626.31,
+      "arena_score": 1625.86,
       "organization": "Meta"
     },
     "muse-spark-1.3-max": {
-      "arena_score": 1656.06,
+      "arena_score": 1656.86,
       "organization": "Meta"
     },
     "qwen3-coder-480b-a35b-instruct": {
-      "arena_score": 1274.7,
+      "arena_score": 1274.69,
       "organization": "Alibaba"
     },
     "qwen3.5-122b-a10b": {
-      "arena_score": 1360.34,
+      "arena_score": 1360.35,
       "organization": "Alibaba"
     },
     "qwen3.5-27b": {
-      "arena_score": 1357.97,
+      "arena_score": 1357.83,
       "organization": "Alibaba"
     },
     "qwen3.5-35b-a3b": {
-      "arena_score": 1253.93,
+      "arena_score": 1253.92,
       "organization": "Alibaba"
     },
     "qwen3.5-397b-a17b": {
-      "arena_score": 1399.85,
+      "arena_score": 1399.9,
       "organization": "Alibaba"
     },
     "qwen3.5-flash": {
-      "arena_score": 1243.64,
+      "arena_score": 1243.63,
       "organization": "Alibaba"
     },
     "qwen3.6-max-preview": {
-      "arena_score": 1481.97,
+      "arena_score": 1482.3,
       "organization": "Alibaba"
     },
     "qwen3.6-plus": {
-      "arena_score": 1461.2,
+      "arena_score": 1461.12,
       "organization": "Alibaba"
     },
     "qwen3.7-flash": {
@@ -542,7 +546,7 @@
       "manual": true
     },
     "qwen3.7-max-20260517": {
-      "arena_score": 1515.08,
+      "arena_score": 1515.13,
       "organization": "Alibaba"
     },
     "qwen3.7-plus": {
@@ -550,7 +554,7 @@
       "manual": true
     },
     "qwen3.8-27b": {
-      "arena_score": 1592.03,
+      "arena_score": 1592.84,
       "organization": "Alibaba"
     },
     "qwen3.8-flash": {
@@ -558,23 +562,23 @@
       "manual": true
     },
     "qwen3.8-flash-next": {
-      "arena_score": 1632.22,
+      "arena_score": 1632.6,
       "organization": "Alibaba"
     },
     "qwen3.8-max": {
-      "arena_score": 1672.2,
+      "arena_score": 1672.1,
       "organization": "Alibaba"
     },
     "qwen3.8-max-0902": {
-      "arena_score": 1672.04,
+      "arena_score": 1673.5,
       "organization": "Alibaba"
     },
     "seed-2.1-pro-preview": {
-      "arena_score": 1518.86,
+      "arena_score": 1519.06,
       "organization": "Bytedance"
     },
     "solar-pro4": {
-      "arena_score": 1370.93,
+      "arena_score": 1371.02,
       "organization": "Upstage"
     },
     "step-3.5-flash": {
@@ -586,11 +590,11 @@
       "manual": true
     },
     "step-5-preview-high": {
-      "arena_score": 1563.93,
+      "arena_score": 1563.52,
       "organization": "StepFun"
     },
     "trinity-large-thinking": {
-      "arena_score": 1238.15,
+      "arena_score": 1238.09,
       "organization": ""
     }
   }
