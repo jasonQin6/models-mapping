@@ -351,6 +351,17 @@
         "name": "Space Bunny",
         "rp5h": 3130,
         "usage_quota": 30.0
+      },
+      "step-5-preview-free": {
+        "cost": {
+          "cache_read": 0.0,
+          "cache_write": null,
+          "input": 0.0,
+          "output": 0.0
+        },
+        "name": "Step 5 Preview Free",
+        "rp5h": null,
+        "usage_quota": null
       }
     },
     "sensenova": {
@@ -417,5 +428,5 @@
     }
   },
   "schema_version": 1,
-  "updated_at": "2026-10-08T05:11:44Z"
+  "updated_at": "2026-10-09T04:05:45Z"
 }
