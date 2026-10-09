@@ -38,7 +38,8 @@
 9. 建后启用：`createModel` 与 Web UI 建出的模型都是 disabled，用
    `bulkEnableModels(ids)`（或 `updateModelStatus`）翻转。
 10. 删除纪律：删除前查关联引用——被任何其他模型的 association 规则引用的
-   模型保留并报告，不删。`deleteModel(id)` 是硬删（可重建同名）；
+   模型保留并报告，不删（扫描时排除待删模型自身的 `channel_model` 条目，
+   否则每个待删实体都会"自引用"误报）。`deleteModel(id)` 是硬删（可重建同名）；
    `bulkDeleteModels(ids)` 是软删（返回 true 但不清理，且阻塞同名重建）。
    以"随后的 createModel 成功"验证清除，不信返回值。
 11. 回读验证：逐项回读 + 全量对账计数（回读是唯一权威信号，CLI 输出只是线索）。
@@ -82,6 +83,8 @@
   `input: [text]` / `output: [image]`、`vision: false`——这类模型靠
   `data/blocklist.json` 条目排除出聊天候选清单，正常流程遇不到；
   只有整体重建从 `providersCatalog` 建条目时按目录自身的 type 走。
+- 手动校卡直接复用 `model_card()`（本步唯一转写映射）会把卡源里的牌价
+  `cost` 一起带进卡面；零价入口卡须像 `assemble()` 一样覆写 cost 字段。
 - `settings` 为 `{associations: []}`（关联接线是后续独立任务）；可选策略字段
   （`disableDeveloperSettingsInheritance`/`loadBalancerStrategy`/
   `traceStickyMode`）未变就省略——多传反而可能触发瞬态校验器（见 SKILL.md

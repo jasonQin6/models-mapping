@@ -73,7 +73,8 @@ loop:
    （实例：37 条 updateModel 全部报 OK，实际全被 422 拒绝，靠回读才暴露。）
 4. **回读验证是唯一权威**。CLI 的成功输出只是线索：npm notice 噪音、多段 JSON 拼接、
    解析失败都常见——服务端成功而本地解析报失败、反之亦然，都发生过。每项写后回读该对象，
-   结束后全量对账计数。
+   结束后全量对账计数。回读查询漏选子字段（如 associations 里漏 `channelModel`/
+   `priority`）会把完好在库的数据误读成空——验证前核对查询形状与要断言的字段一致。
 5. **整体替换语义**：`UpdateModelInput` 的 `modelCard`、`UpdateChannelInput.settings`、
    `settings.associations` 都是全量替换——必须"读全对象 → 只改目标字段 → 整体回写"。
    只传 `cost` 会把卡片其余字段清成零值（能力位全变 ×）。
@@ -98,61 +99,76 @@ loop:
 
 请求模型的 free 判定横切各步，只读渠道声明价：input/output 均声明为零价即免费；
 正价或未声明即非免费，未声明的非免费模型交 rp5h 缺失门禁。零价由采集层统一供给：
-watcher 转写渠道价格表的 `Free` 字样（go/goat），sensenova 静态节人工以零价
+watcher 转写渠道价格表的 `Free` 字样（go watcher；goat 已退役仅本地调试），sensenova 静态节人工以零价
 声明——判定链上不存在旗标或 id 后缀启发式。判定免费而渠道未声明缓存价时，卡片
 成本以零起步（`_merge_channel_cost`）。
 
 上表文件都是**采集时刻的镜像**：判断上游现在提供什么、页面列着什么，只认两个
-现场来源——`syncChannelModels(channelID, pattern: "")` 返回的原始上游清单
-（配方与清理判据见 channel-sync.md），以及 live 页面抓取。本地快照是滞后的；
+现场来源——`syncChannelModels` 返回的实时清单（语义见部署怪癖），以及
+live 页面抓取。本地快照是滞后的；
 `supportedModels` 是过滤后的（被挡 id 不出现，无法反推上游是否还提供）。
 
 ## 部署怪癖与已知事实
 
 - Server：`https://axon.jasonqin.site`（vol-server 上 nginx 反代到 `127.0.0.1:8868`）。
   AxonHub 完整 admin schema 在 axonhub 源码仓库 `internal/server/gql/*.graphql`；本部署可能与快照有漂移，
-  形状可疑时优先用 axonhub-cli 的 `find <type> -e axonhub --input --detail` 探线上 schema。
+  形状可疑时先用 introspection 探线上类型：`{ __type(name: "Model") { fields { name } } }`
+  一行即可（curl 直发）；axonhub-cli 的 `find` 只列查询入口，不给类型字段。
+- **对账读配方**（可直接跑，省去逐次试错）：
+  ```graphql
+  query { models(first: 100) { edges { node { id modelID name status remark
+    developer type group icon
+    modelCard { cost { input output cacheRead cacheWrite } }
+    settings { associations { type priority disabled
+      channelModel { channelId modelId } modelId { modelId } regex { pattern } } } } } } }
+
+  query { queryChannels(input: {first: 50}) { edges { node { id name status
+    autoSyncModelPattern supportedModels } } } }
+  ```
+  字段名是 `modelID`（非 modelId）；模型无 `enabled` 只有 `status`；
+  `modelCard`/`associations`/`regex`/`modelId` 全要子字段选择；`queryChannels`
+  是 relay 且分页参数在 `input` 里。
 - 模板类 relay 连接必须显式 `first:`，否则 `either first or last must be provided`；
   多个根字段合并在一个请求里会失败（如 models + queryChannels 同发返回 null），拆开发；
   渠道的 `tags` 与 `settings` 也不能组合在同一条 channel 查询里。
 - `when` 条件的根必须是 group：裸 `condition` 会被拒（`root when condition must be a group`）；
-- 瞬态 `unknown field` 错误（`GRAPHQL_VALIDATION_FAILED`，部署窗口期出现、自行消失）：
-  退避重试 + 回读，不改输入形状；持续报错才是形状问题。
 - 可选 settings 字段（`disableDeveloperSettingsInheritance`/`loadBalancerStrategy`/`traceStickyMode`）
   未变就省略——多传反而可能触发瞬态校验器。
 - GraphQL ID 是 GID（`gid://axonhub/Model/23`）；association 输入的 `channelId` 用整数。
 - 模型 ID 陷阱：上游用厂商前缀 ID（`deepseek/deepseek-v4-flash`、`zai-org/GLM-5.3`），Model 实体用
-  裸 ID（`deepseek-v4-flash`），association 按**精确字符串**匹配渠道路由键。commandcode-goat 曾开
-  `autoTrimedModelPrefixes`（前缀全量提取）+`lowercaseModelId`，带前缀条目派生出裸小写路由键
-  （source=auto_trim），写入默认钉规范 ID 即命中；**该渠道已退役**，遗留经验仍有效：
-  `hideOriginalModels` 保持关闭——direct 键与 trim 键并存是同一模型的两个入口别名（非冲突），开着它裸拼写条目反而会失去路由键
-  （gpt-5.6-sol/luna 断链先例）。残余例外：`:free` 冒号后缀（`ling-3.0-flash-sante:free`）、
-  别名渠道拼写（`tencent-hy3` 类，`channelAliases` 有值时）、未开统一开关的渠道（opencode-go 的
-  `stealth/` 前缀即此列，前缀提取表未收录时模型侧钉原生拼写是既定绕法）。
+  裸 ID（`deepseek-v4-flash`），association 按**精确字符串**匹配渠道路由键。开了前缀提取
+  （`autoTrimedModelPrefixes`）+ 小写化的渠道会派生裸小写路由键（source=auto_trim），
+  association 钉规范 ID 即命中；`hideOriginalModels` 保持关闭——direct 键与 trim 键并存是
+  同一模型的两个入口别名（非冲突），开着它裸拼写条目反而会失去路由键。钉原生拼写的
+  例外：`:free` 冒号后缀、别名渠道拼写（`channelAliases` 有值）、未开统一开关的渠道。
   其余修复手段：渠道侧 `settings.modelMappings`；模型侧 association 链
   （`channel_model` 钉渠道+精确 ID / `model` 全局精确 ID / `regex` 全局正则）。
   验证分工：`testChannel(channelID, modelID)` 真实打上游测可达（不走映射/trim 层，id 须在
   supportedModels 内）；`queryModelChannelConnections(associations:…)` 测路由解析
-  （是查询不是 mutation，返回 source=direct/mapping/auto_trim）。两者不可互替。
+  （返回 source=direct/mapping/auto_trim），**只解析 id 级渠道命中，经目标实体自身
+  关联链的间接跳不可见——空结果不等于断链**。两者不可互替。
 - 后端为 SQLite：批量写/测试必须**串行**，并发（如同时发多个 `testChannel`）即报
   `database is locked (SQLITE_BUSY)`；串行加短间隔稳定。
 - graphql-cli 的 `query`/`mutate` stdout 是不带 `{"data": …}` 包装的多行裸 JSON
   （顶层直接是字段名），整体取首尾大括号解析；先过滤 `npm notice` 行。
 - `CreateModelInput` 必填 `settings`（如 `{associations: []}`），而
   `model_card_update.py --id` 的 payload 不含 settings——建卡前需注入。
-- 软删探测的 `node(id:…)` 对不存在的 ID 抛整请求级错误：一条查询带多个别名
-  探测不可行，只能逐 ID 请求（可并发）。
-- 排查「上游现在还提供哪些模型」用 `syncChannelModels(channelID, pattern: "")`
-  一次性同步拿原始清单（不污染存储 pattern；配方与清理判据见 channel-sync.md）。
+- `syncChannelModels(channelID, pattern: $p)` 一次性同步并落 `supportedModels`，
+  载荷必须选子字段 `{ channelID supportedModels }`。`pattern` 传 `""` **不会**套用
+  存储的 autoSyncModelPattern（结果夹带上一代过滤的残留标记），但也不污染存储值；
+  要立即按现行正则重滤，把存储 pattern 原样传回再调一次（值相同零副作用）。
+  服务器出口对上游 EOF 是常态（可连续数小时），退避重试；小时级自动同步恢复后
+  也会自行重滤。（配方与清理判据见 channel-sync.md）
 - `updateChannel` 的 `input.status` 会被服务端**静默忽略**（mutation 正常返回、
   对账读仍为 enabled；remark 等其他字段写入正常）。禁用一个渠道的等效手段：
   把其 `autoSyncModelPattern` 设为永假式 `(?i)^(?!).*$`——同步层
-  不再供给任何模型；彻底下线则配合模型侧清链（移除该渠道的 channel_model 条目）。
-- 渠道退役先例（commandcode-goat，2026-09-30）：订阅取消、insufficient
-  credits 实测确认。处置链：渠道正则全排除禁供给 → 全部回退链移除该渠道条目 →
-  ④ 重算映射（候选池剔除该渠道，free 池与公式档重排）→ 该渠道独有死卡删除 →
-  快照节与 blocklist 条目移除、采集 job 下线。若恢复订阅：重建 workflow job、
-  恢复快照节、重新走 ①②③④。
+  不再供给任何模型；更彻底的是 `deleteChannel(id)`（单 `id` 参数，ant 渠道
+  硬删已验证），配合模型侧清链（移除该渠道的 channel_model 条目）。
+- 渠道退役处置链（先例：commandcode-goat 2026-09-30 留壳禁用；ant 2026-10-09
+  `deleteChannel` 硬删）：全部回退链移除该渠道条目 → ④ 重算映射（候选池剔除该
+  渠道，free 池与公式档重排）→ 该渠道独有死卡删除 → 快照节与 blocklist 条目
+  移除、采集 job 下线；渠道本体按深度二选一：永假式正则留壳禁用，或
+  `deleteChannel` 硬删。若恢复订阅：重建 workflow job、恢复快照节、重新走 ①②③④。
 
 ## 事件响应
 

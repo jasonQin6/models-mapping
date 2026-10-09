@@ -81,7 +81,9 @@ stdout 是"请求 → 候选"映射 JSON（含请求 Arena 分与置信度），
 5. 确认门：展示"请求 → 候选"清单，一次确认。
 6. 写入：逐条 `updateModel`，`settings` 按形状嵌套在 `-v` 变量里整体回写。
 7. 验证：`queryModelChannelConnections(associations: $assocs)`——目标渠道
-   解析出预期 `actualModel` 且 `source: mapping` 或 `direct` 即完成。
+   解析出预期 `actualModel` 且 `source: mapping` 或 `direct` 即完成。该查询
+   只解析 id 级渠道命中，经目标实体自身关联链的间接跳不可见——空结果不等于
+   断链（映射靶是收敛基版、渠道侧是变体拼写的场景即是）。
 
 ## 规则
 
