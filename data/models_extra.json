@@ -3,24 +3,6 @@
     "deepseek-flash": "deepseek-v4.1-flash"
   },
   "channels": {
-    "ant": {
-      "ling-3.0-flash": {
-        "cost": {
-          "input": 0,
-          "output": 0
-        },
-        "name": "Ling 3.0 Flash",
-        "rp5h": null,
-        "tok_s": null,
-        "usage_quota": null
-      },
-      "qwen3.8-flash": {
-        "name": "Qwen3.8 Flash",
-        "rp5h": null,
-        "tok_s": null,
-        "usage_quota": null
-      }
-    },
     "opencode-go": {
       "deepseek-v4-flash": {
         "cost": {

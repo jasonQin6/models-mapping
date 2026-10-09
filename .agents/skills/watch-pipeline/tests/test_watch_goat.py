@@ -81,7 +81,7 @@ def test_build_goat_fields_keeps_channel_declared_facts_only() -> None:
     }
 
 
-def test_main_html_writes_channel_section_and_skips_claude(tmp_path: Path) -> None:
+def test_main_html_writes_channel_section_including_claude(tmp_path: Path) -> None:
     out = tmp_path / "models_extra.json"
 
     assert (
@@ -101,10 +101,23 @@ def test_main_html_writes_channel_section_and_skips_claude(tmp_path: Path) -> No
     document = json.loads(out.read_text(encoding="utf-8"))
     assert document["schema_version"] == 1
     models = document["channels"]["commandcode-goat"]
-    # Channel-provided claude models are not collected.
-    assert set(models) == {"qwen3.30b", "qwen3.32b", "deepseek-v4-flash-fast"}
+    # Channel claude ids have no special status: they are transcribed like
+    # every other row.
+    assert set(models) == {
+        "qwen3.30b",
+        "qwen3.32b",
+        "deepseek-v4-flash-fast",
+        "claude-sonnet-5",
+    }
     assert models["qwen3.30b"]["rp5h"] == 1000
     assert models["qwen3.30b"]["usage_quota"] == 5.0
+    assert models["claude-sonnet-5"] == {
+        "name": "Claude Sonnet 5",
+        "rp5h": 2000,
+        "usage_quota": 20,
+        "tok_s": 140,
+        "cost": {"input": 3.0, "output": 15.0, "cache_read": 0.3, "cache_write": 0.75},
+    }
 
     goat_only = models["deepseek-v4-flash-fast"]
     assert goat_only["name"] == "DeepSeek V4 Flash Fast"

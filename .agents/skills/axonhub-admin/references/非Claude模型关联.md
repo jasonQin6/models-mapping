@@ -48,8 +48,8 @@ python3 .agents/skills/axonhub-admin/scripts/channel_assoc.py [--id <modelID>]
 3. 默认形态：按该顺序的 `channel_model` 链——p0 主用（去重胜出渠道），其后是
    回退顺序；单渠道模型退化为 p0 钉死。
 4. free 变种合并：一个 free 家族合并到同一全局模型下——主规则指向基础变种，
-   兄弟 free 变种作为渠道内回退（`ling-3.0-flash` → ant 的 `vl`/`sante`/
-   `fin` 于 p0/p1/p2）。
+   兄弟 free 变种作为渠道内回退（同一渠道上的多拼写按 p0/p1/… 排布；先例
+   `ling-3.0-flash` → ant 的 `vl`/`sante`/`fin`，该渠道已退役）。
 5. 可选强化（按需逐模型采纳，不是默认）：
    - **严格回退降级**——主规则保持 p0 并带 `exclude: [{channelIds: [<回退渠道>]}]`，
      回退渠道获得 p1 `channel_model` 规则：日常流量永不碰它，429 和故障才会。

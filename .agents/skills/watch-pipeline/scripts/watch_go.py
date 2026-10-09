@@ -8,8 +8,7 @@ document leaves the section.  The section carries channel-declared
 facts only (quotas, prices); public card data is filled offline by axonhub-admin from
 ``data/all_models.json``, never here.
 
-Channel-provided ``claude-*`` models are not collected.  The
-parser transcribes declarations only — the document's zero prices are kept
+The parser transcribes declarations only — the document's zero prices are kept
 as-is, the pricing table's ``Free`` wording transcribes as zero prices
 (freeness itself is compute-layer's call from the declared cost), and free
 quotas are re-derived at compute time from the model's owning channel so
@@ -29,7 +28,6 @@ from urllib.request import Request, urlopen
 from error_state import clear_error, dump_page, persist_error
 from models_extra import (
     DEFAULT_EXTRA_PATH,
-    is_excluded_model,
     update_channel,
 )
 
@@ -322,7 +320,7 @@ def parse_mdx(content: str) -> Dict[str, dict]:
 def build_go_section(content: str) -> Dict[str, dict]:
     """Parse go.mdx into the opencode-go section of models_extra.json.
 
-    Keys are exactly the go.mdx model ids (claude-* dropped); values carry
+    Keys are exactly the go.mdx model ids; values carry
     channel-declared facts only: display name, quotas, and the four prices
     assembled into ``cost`` (``cache_*`` keys align with models.dev and the
     goat section).
@@ -332,7 +330,7 @@ def build_go_section(content: str) -> Dict[str, dict]:
     models: Dict[str, dict] = {}
     for key, source in parsed.items():
         model_id = str(source.get("model_id") or key).strip()
-        if not model_id or is_excluded_model(model_id):
+        if not model_id:
             continue
         record = {
             "name": _json_value(source.get("name")) or model_id,

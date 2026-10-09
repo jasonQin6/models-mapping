@@ -32,7 +32,6 @@ from typing import Any, Optional
 from error_state import clear_error, error_dump_path, persist_error
 from models_extra import (
     DEFAULT_EXTRA_PATH,
-    is_excluded_model,
     update_channel,
 )
 
@@ -300,8 +299,6 @@ def main(argv: Optional[list[str]] = None) -> int:
         models: dict[str, dict] = {}
         for name, slug in entries:
             mid = to_model_id(slug)
-            if is_excluded_model(mid):
-                continue
             raw = main_by_norm.get(norm_name(name), {})
             record = build_goat_fields(
                 name, slug,

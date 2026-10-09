@@ -9,19 +9,19 @@ from channel_sync import main, materialize_blocklist, sync_pattern  # noqa: E402
 from testutil import arena_doc, arena_models, rec  # noqa: E402
 
 
-def test_sync_pattern_enumerates_blocklist_with_fixed_claude_block() -> None:
+def test_sync_pattern_enumerates_blocklist() -> None:
     pattern = sync_pattern(["zai-org/GLM-5.2-fast", "minimax-m3"])
 
     # (?i) prefix, vendor prefixes stripped, metacharacters escaped, ids terminated.
     # Original spelling is kept verbatim; case-insensitivity comes from (?i).
     assert pattern == (
-        r"(?i)^(?!.*(^|/)claude-)"
+        r"(?i)^"
         r"(?!.*(^|/)(?:GLM\-5\.2\-fast|minimax\-m3)(?:$|[:/])).*$"
     )
 
 
-def test_sync_pattern_without_entries_is_claude_block_only() -> None:
-    assert sync_pattern([]) == r"(?i)^(?!.*(^|/)claude-).*$"
+def test_sync_pattern_without_entries_allows_everything() -> None:
+    assert sync_pattern([]) == r"(?i)^.*$"
 
 
 def test_sync_pattern_dedupes_bare_forms() -> None:
@@ -38,13 +38,13 @@ def test_sync_pattern_blocks_and_allows_by_id(tmp_path: Path) -> None:
         "minimax-m3",
         "MiniMaxAI/MiniMax-M3",        # mixed case with vendor prefix
         "minimax-m3:beta",              # colon-suffixed variant
-        "anthropic/claude-sonnet-4-5",  # Claude served by AxonHub global models
-        "claude-opus-5",
     ]
     allowed = [
         "minimax-m3-ultra",             # termination required: longer id passes
         "zai-org/GLM-5.3",
-        "someclaude-x",                 # claude must sit at a segment start
+        "anthropic/claude-sonnet-4-5",  # channel claude ids are no longer special
+        "claude-opus-5",
+        "someclaude-x",
     ]
     for value in blocked:
         assert re.match(pattern, value) is None, value

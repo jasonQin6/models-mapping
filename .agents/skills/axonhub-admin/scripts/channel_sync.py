@@ -11,10 +11,9 @@ filter's logic:
    (human-owned reasons pass through, conflicts keep the human entry) and
    write ``data/blocklist.json`` atomically.
 2. Generate the per-channel allow regex as a pure enumeration of the stored
-   blocklist: a fixed ``claude-*`` block (Claude is served by AxonHub's own
-   global models and is never collected) plus one terminated match per
-   blocklist id.  Output is JSON on stdout for the confirm-then-write flow;
-   the actual ``updateChannel`` mutation happens in the interactive session.
+   blocklist: one terminated match per blocklist id.  Output is JSON on
+   stdout for the confirm-then-write flow; the actual ``updateChannel``
+   mutation happens in the interactive session.
 
 Pure offline: no credentials, no network, no AxonHub writes.
 
@@ -274,15 +273,14 @@ def sync_pattern(entry_ids: Iterable[str]) -> str:
 
     ``(?i)`` is required — synced upstream ids are mixed-case with vendor
     prefixes (``zai-org/GLM-5``, ``MiniMaxAI/MiniMax-M2.5``) and a
-    case-sensitive pattern silently under-blocks.  The fixed ``claude-*``
-    block matches by prefix anywhere in the id; each blocklist id matches by
-    its bare form terminated by end, ``:`` (variant suffixes), or ``/``.
+    case-sensitive pattern silently under-blocks.  Each blocklist id matches
+    by its bare form terminated by end, ``:`` (variant suffixes), or ``/``.
     Target dialect is regexp2; this generated subset behaves identically in
     Python ``re``.
     """
 
     bare = sorted({bare for bare in (bare_id(item) for item in entry_ids) if bare})
-    lookaheads = [r"(?!.*(^|/)claude-)"]
+    lookaheads = []
     if bare:
         alternation = "|".join(re.escape(item) for item in bare)
         lookaheads.append(r"(?!.*(^|/)(?:" + alternation + r")(?:$|[:/]))")

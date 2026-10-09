@@ -23,20 +23,9 @@ from typing import Any, Mapping
 SCHEMA_VERSION = 1
 DEFAULT_EXTRA_PATH = Path("data/models_extra.json")
 
-# Channel-provided claude models are out of scope everywhere: Claude requests
-# are served by self-built AxonHub models mapped by arena score, never by a
-# channel's own claude list.
-EXCLUDED_ID_PREFIXES = ("claude",)
-
 
 class ExtraStoreError(ValueError):
     """Raised when the store document has an unsupported shape."""
-
-
-def is_excluded_model(model_id: str) -> bool:
-    """Return True for channel claude models this pipeline must not collect."""
-
-    return model_id.strip().lower().startswith(EXCLUDED_ID_PREFIXES)
 
 
 def load_document(path: Path) -> dict[str, Any]:

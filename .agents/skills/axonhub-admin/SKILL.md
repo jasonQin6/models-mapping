@@ -98,7 +98,7 @@ loop:
 
 请求模型的 free 判定横切各步，只读渠道声明价：input/output 均声明为零价即免费；
 正价或未声明即非免费，未声明的非免费模型交 rp5h 缺失门禁。零价由采集层统一供给：
-watcher 转写渠道价格表的 `Free` 字样（go/goat），ant/sensenova 静态节人工以零价
+watcher 转写渠道价格表的 `Free` 字样（go/goat），sensenova 静态节人工以零价
 声明——判定链上不存在旗标或 id 后缀启发式。判定免费而渠道未声明缓存价时，卡片
 成本以零起步（`_merge_channel_cost`）。
 
@@ -146,7 +146,7 @@ watcher 转写渠道价格表的 `Free` 字样（go/goat），ant/sensenova 静�
   一次性同步拿原始清单（不污染存储 pattern；配方与清理判据见 channel-sync.md）。
 - `updateChannel` 的 `input.status` 会被服务端**静默忽略**（mutation 正常返回、
   对账读仍为 enabled；remark 等其他字段写入正常）。禁用一个渠道的等效手段：
-  把其 `autoSyncModelPattern` 设为全排除式 `(?i)^(?!.*(^|/)claude-)$`——同步层
+  把其 `autoSyncModelPattern` 设为永假式 `(?i)^(?!).*$`——同步层
   不再供给任何模型；彻底下线则配合模型侧清链（移除该渠道的 channel_model 条目）。
 - 渠道退役先例（commandcode-goat，2026-09-30）：订阅取消、insufficient
   credits 实测确认。处置链：渠道正则全排除禁供给 → 全部回退链移除该渠道条目 →

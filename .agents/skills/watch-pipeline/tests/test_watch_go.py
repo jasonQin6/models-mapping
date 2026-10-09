@@ -9,7 +9,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 
-from models_extra import ExtraStoreError, is_excluded_model, load_document, update_channel
+from models_extra import ExtraStoreError, load_document, update_channel
 from watch_go import build_go_section, main, normalize_model_key
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -22,8 +22,14 @@ def _fixture_content() -> str:
 def test_build_go_section_fixture_yields_channel_facts() -> None:
     models = build_go_section(_fixture_content())
 
-    # go.mdx owns the list: exactly its ids, the channel claude model dropped.
-    assert set(models) == {"grok-4.6", "sample-bot", "freebie", "union-alpha"}
+    # go.mdx owns the list: exactly its ids, channel claude models included.
+    assert set(models) == {
+        "grok-4.6",
+        "sample-bot",
+        "freebie",
+        "union-alpha",
+        "claude-sonnet-5",
+    }
     grok = models["grok-4.6"]
     assert grok["name"] == "Grok 4.6"
     assert grok["rp5h"] == 169
@@ -83,13 +89,21 @@ def test_free_model_transcribes_declarations_without_backfill() -> None:
     assert freebie["cost"] == {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0}
 
 
-def test_channel_claude_models_are_not_collected() -> None:
+def test_channel_claude_models_are_collected_like_any_other() -> None:
     models = build_go_section(_fixture_content())
 
-    assert "claude-sonnet-5" not in models
-    assert is_excluded_model("claude-sonnet-5")
-    assert is_excluded_model("Claude-Opus-4")
-    assert not is_excluded_model("grok-4.6")
+    # Channel claude ids have no special status: the watcher transcribes
+    # their declared facts exactly as for every other id.
+    sonnet = models["claude-sonnet-5"]
+    assert sonnet["name"] == "Claude Sonnet 5"
+    assert sonnet["rp5h"] == 100
+    assert sonnet["usage_quota"] == 50
+    assert sonnet["cost"] == {
+        "input": 3.0,
+        "output": 15.0,
+        "cache_read": 0.3,
+        "cache_write": 0.75,
+    }
 
 
 def test_missing_requests_table_is_structural_drift() -> None:
@@ -196,6 +210,7 @@ def test_main_writes_section_from_local_fixture(tmp_path: Path) -> None:
         "sample-bot",
         "freebie",
         "union-alpha",
+        "claude-sonnet-5",
     }
 
 
