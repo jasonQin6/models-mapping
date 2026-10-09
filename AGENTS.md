@@ -29,7 +29,7 @@ python3 -m pytest -q
 
 - Python 3.12+，只用标准库；公开函数带类型注解。
 - `data/models_extra.json`（仅 `channels` 节与顶层 `aliases`）渠道节内记录的契约字段由对应采集脚本独占写入，按字段级合并（新 id 插入、消失 id 连记录删除，契约外字段保留）；免费语义即 `cost` 零价：采集器把渠道免费措辞转写为零价（静态节人工声明），计算层只读价格判定，无旗标或 id 后缀启发式；顶层 `aliases` 人工维护；例外：`sensenova` 为人工维护静态节，任何 watcher 不得触碰（`ant` 静态节已随渠道退役移除，2026-10-09）。模型卡按 `data/provider_conf.json`（PublicProviderConf 快照，优先）→ `data/all_models.json`（models.dev 快照，兜底）分层取用，渠道 `cost` 逐字段优先；变体收敛只采纳 `provider_conf.json` 里"去掉变体尾部"方向的 `canonical_model_id` 声明（见 CONTEXT.md 的 Canonical model）；仅 Arena 允许使用文档化的 fallback 链。
-- 渠道自带的 `claude-*` 模型照常采集、作为普通候选参与②③④（原"不采集"规则 2026-10-09 删除）；请求侧 Claude 全局模型 + Arena 映射供给不变；GPT 按名透传，不参与映射。
+- 渠道自带的 `claude-*` 模型照常采集、作为普通候选参与②③④（原"不采集"规则 2026-10-09 删除）；渠道直供的 claude-* 尊重渠道自服、不进 REQUESTS 不写映射（2026-10-09 定）；请求侧 Claude 全局模型 + Arena 映射供给不变；GPT 按名透传，不参与映射。
 - 外部抓取只发生在 watch-pipeline；axonhub-admin 的计算脚本只消费仓库内快照做离线计算（不联网、不持凭据）；AxonHub 写入只在交互会话执行，CI 永不写 AxonHub、也不持有其凭据。
 - CI workflow 安全：第三方 Actions 固定到已审核版本或 commit SHA、最小权限；不把抓取内容、commit message 或分支名拼进 shell 命令；CI 不执行测试，`pytest` 由维护者本地运行。
 - `data/arena.json` 的 `manual: true` 记录、`models_extra.json` 的 `aliases` 是手工维护数据，采集/重生成必须保留（脚本已保证，不得绕过脚本直写文件）。

@@ -7,8 +7,9 @@
 ## 建议计算（脚本怎么算的）
 
 请求模型是 [claude_map.py](../scripts/claude_map.py) 顶层人工维护的 `REQUESTS`
-字典（claude-\* id → 人工备注，加删条目即增减请求模型）。GPT 模型按名透传，
-不在本流程维护。跑（在仓库根，纯离线）：
+字典（claude-\* id → 人工备注，加删条目即增减请求模型）。渠道直供的
+claude-* 尊重渠道自服，不进 `REQUESTS`、不写映射，只作公式候选。GPT 模型按
+名透传，不在本流程维护。跑（在仓库根，纯离线）：
 
 ```bash
 python3 .agents/skills/axonhub-admin/scripts/claude_map.py
