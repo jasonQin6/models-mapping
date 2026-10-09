@@ -46,12 +46,9 @@ from snapshot import (  # noqa: E402
 # claude-haiku-5.5）与 effort 后缀（-high/-max）由匹配链归一，-high 只是
 # reasoning effort，不构成不同模型。
 REQUESTS: dict[str, str] = {
-    # 2026-09-30 首批 7 个（goat-only 目标收敛后的代表集）
-    "claude-haiku-4-5": "",
-    "claude-opus-4-1": "",
-    "claude-opus-4-5": "",
+    # 2026-09-30 首批中的 4-6 及以上（4-5 及以下代际 2026-10-09 淘汰：
+    # haiku-4-5/sonnet-4-5/opus-4-1/opus-4-5 实体已删）
     "claude-opus-5": "",
-    "claude-sonnet-4-5": "",
     "claude-sonnet-4-6": "",
     "claude-sonnet-5": "",
     # 2026-10-09 对齐 Arena 现行 Anthropic 阵容（opus-4-6/4-7/4-8、
@@ -66,10 +63,12 @@ REQUESTS: dict[str, str] = {
     "claude-fable-5-1": "",
 }
 
+# 2026-10-09 调权：接近度为最高权重（0.50），绝对分与 rp5h 降为辅助
+# （0.30/0.20）——映射优先挑分数最邻近的候选，而非绝对分最高者。
 DEFAULT_WEIGHTS = {
-    "score": 0.35,
-    "rp5h": 0.30,
-    "proximity": 0.35,
+    "score": 0.30,
+    "rp5h": 0.20,
+    "proximity": 0.50,
     "penalty_k": 0.2,
     "upgrade_bonus": 0.1,
 }

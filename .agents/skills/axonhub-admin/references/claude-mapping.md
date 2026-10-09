@@ -26,11 +26,13 @@ stdout 是"请求 → 候选"映射 JSON（含请求 Arena 分与置信度），
 - **映射公式**——每个请求对全部非 free 候选打分，取最高：
   ```text
   match =
-      0.35 * arena_score
-    + 0.30 * log_rp5h
-    + 0.35 * proximity
+      0.30 * arena_score
+    + 0.20 * log_rp5h
+    + 0.50 * proximity
     - downgrade_penalty
     + upgrade_bonus
+
+  （2026-10-09 调权：接近度 0.50 为最高权重，映射优先挑分数最邻近候选）
 
   arena_score      = candidate_arena_score / max_candidate_arena_score
   log_rp5h         = log(candidate_rp5h + 1) / log(max_candidate_rp5h + 1)

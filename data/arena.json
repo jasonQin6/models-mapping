@@ -1,9 +1,4 @@
 {
-  "schema_version": 1,
-  "source": {
-    "url": "https://lmarena.ai/leaderboard/code/webdev",
-    "fetched_at": "2026-10-09T04:05:57.604949+00:00"
-  },
   "models": {
     "Inkling Small": {
       "arena_score": 1408.78,
@@ -425,6 +420,10 @@
       "arena_score": 1540,
       "manual": true
     },
+    "longcat-2.5-preview": {
+      "arena_score": 1500,
+      "manual": true
+    },
     "mercury-2": {
       "arena_score": 1170.71,
       "organization": "Inception AI"
@@ -577,6 +576,10 @@
       "arena_score": 1519.06,
       "organization": "Bytedance"
     },
+    "sensenova-6.8-flash-lite": {
+      "arena_score": 1500,
+      "manual": true
+    },
     "solar-pro4": {
       "arena_score": 1371.02,
       "organization": "Upstage"
@@ -597,5 +600,10 @@
       "arena_score": 1238.09,
       "organization": ""
     }
+  },
+  "schema_version": 1,
+  "source": {
+    "fetched_at": "2026-10-09T04:05:57.604949+00:00",
+    "url": "https://lmarena.ai/leaderboard/code/webdev"
   }
 }
