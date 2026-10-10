@@ -128,17 +128,16 @@ live 页面抓取。本地快照是滞后的；
   未变就省略——多传反而可能触发瞬态校验器。
 - GraphQL ID 是 GID（`gid://axonhub/Model/23`）；association 输入的 `channelId` 用整数。
 - 模型 ID 陷阱：上游用厂商前缀 ID（`deepseek/deepseek-v4-flash`、`zai-org/GLM-5.3`），Model 实体用
-  裸 ID（`deepseek-v4-flash`），association 按**精确字符串**匹配渠道路由键。开了前缀提取
-  （`autoTrimedModelPrefixes`）+ 小写化的渠道会派生裸小写路由键（source=auto_trim），
-  association 钉规范 ID 即命中；`hideOriginalModels` 保持关闭——direct 键与 trim 键并存是
-  同一模型的两个入口别名（非冲突），开着它裸拼写条目反而会失去路由键。钉原生拼写的
+  裸 ID（`deepseek-v4-flash`），association 按**精确字符串**匹配渠道路由键；开了前缀提取+
+  小写化的渠道会派生裸小写路由键（source=auto_trim），钉规范 ID 即命中。钉原生拼写的
   例外：`:free` 冒号后缀、别名渠道拼写（`channelAliases` 有值）、未开统一开关的渠道。
   其余修复手段：渠道侧 `settings.modelMappings`；模型侧 association 链
   （`channel_model` 钉渠道+精确 ID / `model` 全局精确 ID / `regex` 全局正则）。
   验证分工：`testChannel(channelID, modelID)` 真实打上游测可达（不走映射/trim 层，id 须在
   supportedModels 内）；`queryModelChannelConnections(associations:…)` 测路由解析
   （返回 source=direct/mapping/auto_trim），**只解析 id 级渠道命中，经目标实体自身
-  关联链的间接跳不可见——空结果不等于断链**。两者不可互替。
+  关联链的间接跳不可见——空结果不等于断链**。两者不可互替。前缀提取/
+  `hideOriginalModels` 等渠道开关的键位教训见 [references/goat.md](references/goat.md)。
 - 后端为 SQLite：批量写/测试必须**串行**，并发（如同时发多个 `testChannel`）即报
   `database is locked (SQLITE_BUSY)`；`axh.py` 的 `gql_write` 内置最小写入间隔，
   手写调用须自行串行加短间隔。

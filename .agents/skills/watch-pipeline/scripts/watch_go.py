@@ -322,8 +322,7 @@ def build_go_section(content: str) -> Dict[str, dict]:
 
     Keys are exactly the go.mdx model ids; values carry
     channel-declared facts only: display name, quotas, and the four prices
-    assembled into ``cost`` (``cache_*`` keys align with models.dev and the
-    goat section).
+    assembled into ``cost`` (``cache_*`` keys align with models.dev).
     """
 
     parsed = parse_mdx(content)

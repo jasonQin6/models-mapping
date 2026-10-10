@@ -34,11 +34,10 @@ python3 .agents/skills/axonhub-admin/scripts/channel_assoc.py [--id <modelID>]
   的 free 变种合并落到同一条 association 链上。
 
 脚本输出的 `channelPriority` 即默认链形状：`channel_model` 规则按 rp5h 降序、
-优先级数字即回退顺序；要钉住的 ID 默认取规范 ID——主渠道 commandcode-goat 已开
-`autoTrimedModelPrefixes`（前缀全量提取）+`lowercaseModelId`+`hideOriginalModels`，
-路由键统一为裸小写，规范 ID 精确命中。例外钉渠道原生拼写：清单带 `:free` 冒号
-后缀的（`ling-3.0-flash-sante:free`）、`channelAliases` 有值的别名渠道拼写、
-未开统一开关的新渠道——association 输入的整数 `channelId` 属线上状态，对账读后
+优先级数字即回退顺序；要钉住的 ID 默认取规范 ID——开了前缀提取+小写化的渠道
+会派生裸小写路由键，规范 ID 精确命中（开关历史见 [goat.md](goat.md)）。例外钉
+渠道原生拼写：`:free` 冒号后缀、`channelAliases` 有值的别名渠道拼写、未开
+统一开关的新渠道——association 输入的整数 `channelId` 属线上状态，对账读后
 替换。
 
 ## 流程

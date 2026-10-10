@@ -14,17 +14,14 @@ This skill is the maintenance manual for the collection layer. It owns `.agents/
 | models-dev | *(pure `curl` in yml, no script)* | models.dev/models.json | `data/all_models.json` | — |
 | provider-conf | *(pure `curl` in yml, no script)* | PublicProviderConf `dist/all.json` (dev branch raw) | `data/provider_conf.json` | — |
 | opencode-go | `scripts/watch_go.py` | opencode `go.mdx` | `data/models_extra.json` (`channels.opencode-go`) | `reference/go/` |
-| goat *(已退役)* | `scripts/watch_goat.py` | commandcode.ai GOAT plan page | — | — |
 | arena | `scripts/watch_arena.py` | lmarena.ai WebDev leaderboard | `data/arena.json` | `reference/arena/` |
 
 Arena runs **weekly** (watch-arena.yml, Monday UTC 03:00, manual dispatch anytime): the leaderboard moves slowly, the crawler is the most brittle of the channels, and the mapping formula does not need fresher scores. `watch-pipeline.yml` no longer schedules it.
 
-goat 渠道退役（2026-09-30）：Command Code Goat 订阅取消，goat 采集 job 已从
-workflow 下线，`channels.commandcode-goat` 节已随退役从快照移除；
-`watch_goat.py` 与其测试/fixture 仅作本地调试保留，若恢复订阅需重建
-workflow job 并按其 field contract 重新验收。
+goat 渠道已于 2026-09-30 退役（订阅取消）：采集 job、脚本、测试、快照节均已移除；
+教训与恢复路径见 axonhub-admin skill 的 `references/goat.md`。
 
-Execution entrypoints are `.github/workflows/watch-pipeline.yml` (daily cron) and `.github/workflows/watch-arena.yml` (weekly cron). Every script is stdlib-only Python 3.12+ and replays offline: `watch_go.py` takes a positional go.mdx path, `watch_goat.py` takes `--html`, and `watch_arena.py` takes `--input`.
+Execution entrypoints are `.github/workflows/watch-pipeline.yml` (daily cron) and `.github/workflows/watch-arena.yml` (weekly cron). Every script is stdlib-only Python 3.12+ and replays offline: `watch_go.py` takes a positional go.mdx path and `watch_arena.py` takes `--input`.
 
 ## Field contracts
 
@@ -36,26 +33,19 @@ Each script persists failures to `reference/<channel>/last-error.json` inside th
 
 1. **Discover**: check `reference/*/last-error.json` (a dirty `git status` on the repo, or a failed watch-pipeline run).
 2. **Diagnose**: read `error`; if a `dump` path is present, inspect the dumped upstream page — structure changed.
-3. **Adapt**: compare the dumped page against the channel script's parser; fix the selectors (e.g. `parse_tables`/`col_index` in watch_goat.py, `_find_entries_array` in watch_arena.py).
-4. **Verify offline**: replay the dump through the script and extend `tests/fixtures/` with a representative excerpt:
-   ```bash
-   python3 .agents/skills/watch-pipeline/scripts/watch_goat.py \
-     --html .agents/skills/watch-pipeline/reference/goat/failed-page.html \
-     --extra /tmp/models_extra.json
-   python3 -m pytest .agents/skills/watch-pipeline/tests -q
-   ```
+3. **Adapt**: compare the dumped page against the channel script's parser; fix the selectors (e.g. `_find_entries_array` in watch_arena.py).
+4. **Verify offline**: replay the dump through the script and extend `tests/fixtures/` with a representative excerpt, then `python3 -m pytest .agents/skills/watch-pipeline/tests -q`.
 5. **Commit**: the fix together with the updated fixture. The success run in CI removes `last-error.json`; do not hand-edit it away without a verified fix.
 
 ## Snapshot invariants
 
-- `data/models_extra.json` is the shared store `{schema_version, updated_at, channels}`; each collector updates **only its own** `channels.<channel>` section via `models_extra.update_channel` (read-modify-write, field-level merge, atomic), so writers must serialize — CI orders goat after go. Contract fields refresh in place; hand-maintained fields on surviving records are preserved, and ids that left the channel declaration are removed with their record.
-- Sections carry channel-declared facts only (`rp5h`, `usage_quota`, `cost{}`, goat `tok_s`); card data is never collected here — axonhub-admin's offline scripts fill it from the provider-conf overlay (`data/provider_conf.json`) with `data/all_models.json` as fallback. Freeness has no marker of its own: the watchers transcribe their channels' free price wording (`Free` cells in go.mdx, `free` on GOAT) into zero prices — an ordinary contract value an upstream rescission simply refreshes — and the compute layer reads prices only; no free flag or id-suffix heuristic exists anywhere. Speed-marketing variants (`-fast`/`-highspeed`) are excluded by axonhub-admin's materialized `speed:` class, not by collection: exclusions live in axonhub-admin's `data/blocklist.json`, which this layer neither reads nor writes — collection stores no exclusion state, so a delete/re-add cycle cannot lose one.
+- `data/models_extra.json` is the shared store `{schema_version, updated_at, channels}`; each collector updates **only its own** `channels.<channel>` section via `models_extra.update_channel` (read-modify-write, field-level merge, atomic), so writers must serialize. Contract fields refresh in place; hand-maintained fields on surviving records are preserved, and ids that left the channel declaration are removed with their record.
+- Sections carry channel-declared facts only (`rp5h`, `usage_quota`, `cost{}`); card data is never collected here — axonhub-admin's offline scripts fill it from the provider-conf overlay (`data/provider_conf.json`) with `data/all_models.json` as fallback. Freeness has no marker of its own: the watchers transcribe their channels' free price wording (`Free` cells in go.mdx) into zero prices — an ordinary contract value an upstream rescission simply refreshes — and the compute layer reads prices only; no free flag or id-suffix heuristic exists anywhere. Speed-marketing variants (`-fast`/`-highspeed`) are excluded by axonhub-admin's materialized `speed:` class, not by collection: exclusions live in axonhub-admin's `data/blocklist.json`, which this layer neither reads nor writes — collection stores no exclusion state, so a delete/re-add cycle cannot lose one.
 - Channel-provided `claude-*` models carry no special status: they are collected like any other id (rule removed 2026-10-09); request-side Claude global models and arena mapping live in axonhub-admin.
 - The go section's keys are exactly the go.mdx model ids; an id that leaves the document leaves the section.
-- The goat section's keys are the channel's entitlement facts; GOAT hard gates: main-table rows skipped for missing columns, `to_model_id` collisions, or zero models fail the run with no write (partial lists must never publish).
 - `data/provider_conf.json` is the verbatim `all.json` aggregate (git stores content-addressed objects, so daily snapshots only grow by their actual delta); no projection or normalization happens here — axonhub-admin's `snapshot.load_provider_conf` does the vendor/canonical aggregation offline.
 - `watch_arena.py` owns only `data/arena.json`; joining Arena ids to OpenCode ids happens in `axonhub-admin`'s offline scripts (`registry.py`), never here.
-- Success messages: `watch-arena: wrote N models ...` / `watch-go: N Go models -> ...` / `watch-goat: N models -> ...`.
+- Success messages: `watch-arena: wrote N models ...` / `watch-go: N Go models -> ...`.
 
 ## CI security
 
