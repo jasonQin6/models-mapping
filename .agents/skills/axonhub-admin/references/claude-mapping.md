@@ -79,7 +79,7 @@ stdout 是"请求 → 候选"映射 JSON（含请求 Arena 分与置信度），
    确认的候选。这是唯一整体替换 `settings.associations` 的场景（由本 skill
    仅为固定请求模型写入）；其他模型的既有 associations 不碰。
 5. 确认门：展示"请求 → 候选"清单，一次确认。
-6. 写入：逐条 `updateModel`，`settings` 按形状嵌套在 `-v` 变量里整体回写。
+6. 写入：逐条 `updateModel`，`settings` 整体回写（`-v` 形状见 SKILL.md 执行循环）。
 7. 验证：`queryModelChannelConnections(associations: $assocs)`——目标渠道
    解析出预期 `actualModel` 且 `source: mapping` 或 `direct` 即完成。该查询
    只解析 id 级渠道命中，经目标实体自身关联链的间接跳不可见——空结果不等于

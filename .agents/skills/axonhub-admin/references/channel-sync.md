@@ -62,7 +62,7 @@ pattern: "")` 一次性以空正则同步并返回原始清单（不污染存储
    比对**——渠道侧可能落后于本次生成结果（实例：两渠道的存储正则曾长期漏挡
    已在册条目，靠这次比对才暴露），不一致就进入第 3 步回写，一致则跳过。
 3. 一次 `updateChannel` 同时写 `autoSyncSupportedModels: true` 与
-   `autoSyncModelPattern`（`-v` 按形状嵌套变量）。
+   `autoSyncModelPattern`（`-v` 形状见 SKILL.md 执行循环）。
 4. 回读该渠道：`supportedModels` = 同步清单 − blocklist 即完成；时滞来自
    上游重同步周期，属正常。渠道对账读要拆两条查再按 id 拼接（`tags` 与
    `settings` 组合查询会报错）：

@@ -22,6 +22,18 @@ npx -y @axonhub/graphql-cli <command>
 `go install github.com/looplj/graphql-cli@latest` also builds the binary
 from source; that path is not verified in this repository — prefer npx.
 
+## Structured helper: scripts/axh.py
+
+For scripted reads/writes prefer the helper over raw graphql-cli calls:
+
+- `python3 scripts/axh.py recon` — reconciliation read printing live models +
+  channels as JSON (token from `AXONHUB_JWT` or `/tmp/axonhub_jwt`).
+- `gql_read(query)` — curl POST, returns the `data` object.
+- `gql_write(mutation, variables)` — graphql-cli write with the AxonHub
+  `{"id": …, "input": {…}}` variable shape, serial write spacing (SQLite
+  backend), bare-JSON parsing with `npm notice` filtering, and dual-mode
+  error detection (`Error:` lines and `"errors"` keys both raise).
+
 ## Workflows
 
 ### 1. Obtain a token

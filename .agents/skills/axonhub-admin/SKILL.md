@@ -40,7 +40,8 @@ description: 本仓对 AxonHub 部署（https://axon.jasonqin.site）的四步�
 
 1. 环境变量 `AXONHUB_JWT` 非空则直接用（签发后 7 天有效）。
 2. 否则用 browser-use 打开 `https://axon.jasonqin.site/`（应已登录），在页面上下文执行
-   `localStorage.getItem('axonhub_access_token')` 取 token。
+   `localStorage.getItem('axonhub_access_token')` 取 token，并写入 `/tmp/axonhub_jwt`
+   （权限 600；`axh.py` 默认读取）。
 3. 注入 graphql-cli：`npx -y @axonhub/graphql-cli endpoint login axonhub --type token --token "$TOKEN"`。
 4. 校验：`curl -X POST .../admin/graphql` 查 `{ me { id email } }`，HTTP 200 且有 `data.me` 即通过；401 则回第 2 步重取。
 
@@ -114,20 +115,11 @@ live 页面抓取。本地快照是滞后的；
   AxonHub 完整 admin schema 在 axonhub 源码仓库 `internal/server/gql/*.graphql`；本部署可能与快照有漂移，
   形状可疑时先用 introspection 探线上类型：`{ __type(name: "Model") { fields { name } } }`
   一行即可（curl 直发）；axonhub-cli 的 `find` 只列查询入口，不给类型字段。
-- **对账读配方**（可直接跑，省去逐次试错）：
-  ```graphql
-  query { models(first: 100) { edges { node { id modelID name status remark
-    developer type group icon
-    modelCard { cost { input output cacheRead cacheWrite } }
-    settings { associations { type priority disabled
-      channelModel { channelId modelId } modelId { modelId } regex { pattern } } } } } } }
-
-  query { queryChannels(input: {first: 50}) { edges { node { id name status
-    autoSyncModelPattern supportedModels } } } }
-  ```
-  字段名是 `modelID`（非 modelId）；模型无 `enabled` 只有 `status`；
-  `modelCard`/`associations`/`regex`/`modelId` 全要子字段选择；`queryChannels`
-  是 relay 且分页参数在 `input` 里。
+- **对账读**：`python3 .agents/skills/axonhub-cli/scripts/axh.py recon` 一次
+  拿到 models + channels 的线上 JSON（token 从 `AXONHUB_JWT` 或
+  `/tmp/axonhub_jwt`）。本部署字段名是 `modelID`（非 modelId），模型无
+  `enabled` 只有 `status`，`modelCard`/`associations` 等对象字段全要子字段
+  选择；查询原文见 axh.py 的 `RECON_QUERIES`。
 - 模板类 relay 连接必须显式 `first:`，否则 `either first or last must be provided`；
   多个根字段合并在一个请求里会失败（如 models + queryChannels 同发返回 null），拆开发；
   渠道的 `tags` 与 `settings` 也不能组合在同一条 channel 查询里。
@@ -148,9 +140,11 @@ live 页面抓取。本地快照是滞后的；
   （返回 source=direct/mapping/auto_trim），**只解析 id 级渠道命中，经目标实体自身
   关联链的间接跳不可见——空结果不等于断链**。两者不可互替。
 - 后端为 SQLite：批量写/测试必须**串行**，并发（如同时发多个 `testChannel`）即报
-  `database is locked (SQLITE_BUSY)`；串行加短间隔稳定。
-- graphql-cli 的 `query`/`mutate` stdout 是不带 `{"data": …}` 包装的多行裸 JSON
-  （顶层直接是字段名），整体取首尾大括号解析；先过滤 `npm notice` 行。
+  `database is locked (SQLITE_BUSY)`；`axh.py` 的 `gql_write` 内置最小写入间隔，
+  手写调用须自行串行加短间隔。
+- graphql-cli 的 stdout 是不带 `{"data": …}` 包装的裸 JSON、混 `npm notice`
+  噪音——经 `axh.py` 的 `gql_read`/`gql_write` 调用，解析与错误双模式检测
+  已内置；手写时错误要双模式查（`Error:` 行与响应内 `"errors"` 都要查）。
 - `CreateModelInput` 必填 `settings`（如 `{associations: []}`），而
   `model_card_update.py --id` 的 payload 不含 settings——建卡前需注入。
 - `syncChannelModels(channelID, pattern: $p)` 一次性同步并落 `supportedModels`，

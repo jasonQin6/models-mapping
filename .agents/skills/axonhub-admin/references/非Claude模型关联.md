@@ -56,7 +56,7 @@ python3 .agents/skills/axonhub-admin/scripts/channel_assoc.py [--id <modelID>]
    - **时段门控路由**——free 渠道上的 p0 规则包在 `when` 的 daily_time group
      里，不设限的主池降为 p1（输入形状见 SKILL.md 的部署怪癖）。
 6. 写入走 SKILL.md 的执行循环：`settings.associations` 是全量替换——读全对象、
-   只改目标字段、整体回写；`-v` 按形状嵌套变量。
+   只改目标字段、整体回写（`-v` 形状见执行循环）。
 7. 验证：`queryModelChannelConnections(associations: $assocs)`——目标渠道解析
    出预期 `actualModel` 且 `source: mapping` / `direct` / `auto_trim` 即完成。
 
