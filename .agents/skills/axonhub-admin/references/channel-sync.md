@@ -52,12 +52,11 @@ pattern: "")` 一次性以空正则同步并返回原始清单（不污染存储
    ```
    重建结果原子写回 `data/blocklist.json`（摘要走 stderr），每渠道允许正则以
    JSON 打到 stdout。正则形状：`(?i)` 前缀必需（同步 ID 是带厂商前缀的混合
-   大小写，小写模式静默漏挡）；固定 `claude-*` 前缀屏蔽（Claude 由自建全局
-   模型供给，永不采集）；条目按剥厂商前缀的裸 ID、`(^|/)ID($|[:/])` 匹配
-   （元字符转义；regexp2 方言，与 Python `re` 行为一致）。实测形状
-   （goat，2026-09-11）：
+   大小写，小写模式静默漏挡）；条目按剥厂商前缀的裸 ID、`(^|/)ID($|[:/])`
+   匹配（元字符转义；regexp2 方言，与 Python `re` 行为一致）。实测形状
+   （opencode-go，2026-10-09）：
    ```text
-   (?i)^(?!.*(^|/)claude-)(?!.*(^|/)(?:deepseek\-v4\-flash\-fast|…|tencent\-hy3)(?:$|[:/])).*$
+   (?i)^(?!.*(^|/)(?:gpt\-5\.6\-luna|grok\-4\.6|hy3|kimi\-k2\.7\-code|longcat\-2\.0|mimo\-v2\.5|mimo\-v2\.5\-pro|minimax\-m2\.7|minimax\-m3|muse\-spark\-1\.2\-contributor|qwen3\.7\-max|qwen3\.7\-plus)(?:$|[:/])).$
    ```
 2. 确认屏蔽集与正则（一次确认），**并与渠道当前存储的 `autoSyncModelPattern`
    比对**——渠道侧可能落后于本次生成结果（实例：两渠道的存储正则曾长期漏挡

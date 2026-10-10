@@ -13,7 +13,7 @@ AxonHub 相关概念以页面与接口自带的叫法为准（页面用词：模
 _Avoid_: 模型卡实体（模型卡只指 modelCard 资料）、目标实体
 
 **Channel（渠道）**：AxonHub 页面"渠道"下的服务通道，按名称（如
-`commandcode-goat`）标识，字段含服务商、状态、权重与支持的模型。
+`opencode-go`）标识，字段含服务商、状态、权重与支持的模型。
 _Avoid_: Provider（Provider 特指发布模型标识符的上游命名空间）
 
 **Provider**：发布一组模型标识符及其协议能力的上游服务命名空间；渠道页叫

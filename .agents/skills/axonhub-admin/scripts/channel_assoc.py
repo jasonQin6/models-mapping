@@ -35,10 +35,10 @@ from snapshot import (  # noqa: E402
     load_provider_conf,
 )
 
-# The two collected channels whose shared models drive channel-priority
-# associations; the static sections (ant, sensenova) are not part
-# of the intersection.
-INTERSECTION_CHANNELS = ("commandcode-goat", "opencode-go")
+# The collected channels whose shared models drive channel-priority
+# associations (opencode-go watcher + sensenova human-maintained static
+# section).
+INTERSECTION_CHANNELS = ("opencode-go", "sensenova")
 
 
 def build_associations(result: Mapping[str, Any]) -> list[dict[str, Any]]:

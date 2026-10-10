@@ -99,7 +99,7 @@ loop:
 
 请求模型的 free 判定横切各步，只读渠道声明价：input/output 均声明为零价即免费；
 正价或未声明即非免费，未声明的非免费模型交 rp5h 缺失门禁。零价由采集层统一供给：
-watcher 转写渠道价格表的 `Free` 字样（go watcher；goat 已退役仅本地调试），sensenova 静态节人工以零价
+watcher 转写渠道价格表的 `Free` 字样，sensenova 静态节人工以零价
 声明——判定链上不存在旗标或 id 后缀启发式。判定免费而渠道未声明缓存价时，卡片
 成本以零起步（`_merge_channel_cost`）。
 
@@ -164,8 +164,7 @@ live 页面抓取。本地快照是滞后的；
   把其 `autoSyncModelPattern` 设为永假式 `(?i)^(?!).*$`——同步层
   不再供给任何模型；更彻底的是 `deleteChannel(id)`（单 `id` 参数，ant 渠道
   硬删已验证），配合模型侧清链（移除该渠道的 channel_model 条目）。
-- 渠道退役处置链（先例：commandcode-goat 2026-09-30 留壳禁用；ant 2026-10-09
-  `deleteChannel` 硬删）：全部回退链移除该渠道条目 → ④ 重算映射（候选池剔除该
+- 渠道退役处置链（先例：ant 2026-10-09 `deleteChannel` 硬删）：全部回退链移除该渠道条目 → ④ 重算映射（候选池剔除该
   渠道，free 池与公式档重排）→ 该渠道独有死卡删除 → 快照节与 blocklist 条目
   移除、采集 job 下线；渠道本体按深度二选一：永假式正则留壳禁用，或
   `deleteChannel` 硬删。若恢复订阅：重建 workflow job、恢复快照节、重新走 ①②③④。

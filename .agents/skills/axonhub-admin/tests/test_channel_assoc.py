@@ -10,12 +10,14 @@ from testutil import build, rec  # noqa: E402
 
 def test_channel_priority_orders_by_rp5h_and_counts_intersection() -> None:
     # Two collected channels declare the same canonical (via the alias map):
-    # the higher rp5h is p0, the null-rp5h static section trails last.
+    # the higher rp5h is p0, the null-rp5h static section trails last. The
+    # intersection counts models served by both INTERSECTION_CHANNELS
+    # (opencode-go + sensenova).
     sections = {
         "commandcode-goat": {"tencent-hy3": rec(rp5h=7080)},
-        "opencode-go": {"hy3": rec(rp5h=4300)},
+        "opencode-go": {"hy3": rec(rp5h=4300), "kimi-k3": rec(rp5h=110)},
         "ant": {"hy3": rec(rp5h=None)},
-        "sensenova": {"solo": rec(rp5h=100)},
+        "sensenova": {"solo": rec(rp5h=100), "kimi-k3": rec(rp5h=None)},
     }
 
     result = build(sections, aliases={"tencent-hy3": "hy3"})
@@ -29,6 +31,7 @@ def test_channel_priority_orders_by_rp5h_and_counts_intersection() -> None:
     assert plans["hy3"]["channelPriority"][2]["rp5h"] is None
     # Single-channel models degrade to a p0 pin.
     assert [step["channel"] for step in plans["solo"]["channelPriority"]] == ["sensenova"]
+    # kimi-k3 is served by both opencode-go (rp5h 110) and sensenova (null).
     assert intersection_count(result) == 1
 
 
