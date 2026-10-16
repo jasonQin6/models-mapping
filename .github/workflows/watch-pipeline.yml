@@ -95,12 +95,12 @@ jobs:
 
       - name: Fetch source document
         env:
-          GO_COMMIT_API_URL: https://api.github.com/repos/anomalyco/opencode/commits?path=packages/web/src/content/docs/go.mdx&sha=dev&per_page=1
+          GO_COMMIT_API_URL: https://api.github.com/repos/anomalyco/opencode/commits?path=services/www/src/docs/content/console/go.mdx&sha=dev&per_page=1
         run: |
           set -euo pipefail
           latest_hash="$(curl -fsSL --max-time 30 "$GO_COMMIT_API_URL" | python3 -c 'import json, sys; print(json.load(sys.stdin)[0]["sha"])')"
           curl -fsSL --max-time 30 \
-            "https://raw.githubusercontent.com/anomalyco/opencode/$latest_hash/packages/web/src/content/docs/go.mdx" \
+            "https://raw.githubusercontent.com/anomalyco/opencode/$latest_hash/services/www/src/docs/content/console/go.mdx" \
             -o "$RUNNER_TEMP/go.mdx"
 
       - name: Update opencode-go section of models_extra

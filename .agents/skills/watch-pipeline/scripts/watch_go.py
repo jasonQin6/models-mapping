@@ -34,7 +34,7 @@ from models_extra import (
 
 GO_MDX_URL = (
     "https://raw.githubusercontent.com/anomalyco/opencode/"
-    "dev/packages/web/src/content/docs/go.mdx"
+    "dev/services/www/src/docs/content/console/go.mdx"
 )
 CHANNEL = "go"
 
