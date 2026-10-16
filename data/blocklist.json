@@ -42,10 +42,6 @@
         "reason": "retired: 被 muse-spark-1.3-contributor 取代（用户裁决淘汰实体 muse-spark-1.2）"
       },
       {
-        "id": "qwen3.7-max",
-        "reason": "retired: 上游已下架（用户裁决淘汰）"
-      },
-      {
         "id": "qwen3.7-plus",
         "reason": "lowscore: arena 1480 < 1500"
       }
@@ -66,5 +62,5 @@
     "tier": "human — subscription-tier gap (stable set)"
   },
   "schema_version": 1,
-  "updated_at": "2026-10-09T06:35:46Z"
+  "updated_at": "2026-10-16T04:55:41Z"
 }
