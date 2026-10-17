@@ -4,14 +4,14 @@
   },
   "channels": {
     "opencode-go": {
-      "cat-jam-free": {
+      "beam-free": {
         "cost": {
           "cache_read": 0.0,
           "cache_write": null,
           "input": 0.0,
           "output": 0.0
         },
-        "name": "Cat Jam Free",
+        "name": "Beam Free",
         "rp5h": null,
         "usage_quota": null
       },
@@ -114,17 +114,6 @@
         "rp5h": 4230,
         "usage_quota": 15.0
       },
-      "grok-4.6": {
-        "cost": {
-          "cache_read": 0.5,
-          "cache_write": null,
-          "input": 2.0,
-          "output": 6.0
-        },
-        "name": "Grok 4.6",
-        "rp5h": 169,
-        "usage_quota": 15.0
-      },
       "grok-4.7": {
         "cost": {
           "cache_read": 0.5,
@@ -157,17 +146,6 @@
         "name": "Hy4 preview",
         "rp5h": 1350,
         "usage_quota": 30.0
-      },
-      "kimi-k2.6": {
-        "cost": {
-          "cache_read": 0.16,
-          "cache_write": null,
-          "input": 0.95,
-          "output": 4.0
-        },
-        "name": "Kimi K2.6",
-        "rp5h": 1150,
-        "usage_quota": 60.0
       },
       "kimi-k2.7-code": {
         "cost": {
@@ -256,17 +234,6 @@
         "name": "MiMo-V2.6-Pro",
         "rp5h": 3250,
         "usage_quota": 15.0
-      },
-      "minimax-m2.7": {
-        "cost": {
-          "cache_read": 0.06,
-          "cache_write": 0.375,
-          "input": 0.3,
-          "output": 1.2
-        },
-        "name": "MiniMax M2.7",
-        "rp5h": 3400,
-        "usage_quota": 60.0
       },
       "minimax-m3": {
         "cost": {
@@ -421,5 +388,5 @@
     }
   },
   "schema_version": 1,
-  "updated_at": "2026-10-16T04:42:38Z"
+  "updated_at": "2026-10-17T03:34:37Z"
 }
